@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: complete
-stopped_at: Phase 9 workflow guardrails implemented and verified locally; push and live deploy still remain
-last_updated: "2026-06-23T05:02:00.000Z"
-last_activity: 2026-06-23 - Workflow branch filters now have unit regression coverage
+stopped_at: Phase 10 upstream parity check implemented and verified locally; push and live deploy still remain
+last_updated: "2026-06-23T05:07:00.000Z"
+last_activity: 2026-06-23 - Live upstream Cordn server method parity can be checked with pnpm check:upstream
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 16
-  completed_plans: 16
+  total_phases: 10
+  completed_phases: 10
+  total_plans: 17
+  completed_plans: 17
   percent: 100
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 9 of 9 (Workflow Guardrails)
+Phase: 10 of 10 (Upstream Parity Check)
 Plan: 1 of 1 in current phase
 Status: Complete locally, broader objective incomplete
-Last activity: 2026-06-23 - Workflow branch filters now have unit regression coverage
+Last activity: 2026-06-23 - Live upstream Cordn server method parity can be checked with pnpm check:upstream
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 16
+- Total plans completed: 17
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -68,6 +68,7 @@ Recent decisions affecting current work:
 - Phase 7: Resource telemetry now binds to Cordn adapter operations and coordinator subscription counts in addition to SDK transport events.
 - Phase 8: CI and nsite deploy workflows now target both `main` and the current local `master` branch.
 - Phase 9: CI/deploy branch filters are covered by unit tests so branch readiness is not only documented.
+- Phase 10: `pnpm check:upstream` compares browser Cordn method keys against live upstream `src/server`.
 
 ### Pending Todos
 

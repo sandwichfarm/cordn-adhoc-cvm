@@ -18,6 +18,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 
 - [ ] Browser-resident coordinator using `@contextvm/sdk` `NostrServerTransport`
 - [ ] Browser Cordn coordinator method surface registered on the MCP server
+- [ ] Live upstream parity command for Cordn `src/server` method names
 - [ ] Auto-generated coordinator keypair (nsec stored in memory; optional encrypted localStorage persistence)
 - [ ] Optional SQLite-WASM coordinator data persistence for Cordn method state
 - [ ] Relay configuration panel — add/remove/toggle Nostr relay URLs, guarded behind a confirm-to-edit pattern
@@ -49,6 +50,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
   The runtime hydrates this snapshot before startup and clears kvvfs/fallback state on disable or destroy.
 - **Telemetry source**: the resource monitor binds both SDK transport events and Cordn adapter events.
   Cordn operations feed the message-rate window, and group subscriptions publish the coordinator's active subscription count.
+- **Upstream parity**: `pnpm check:upstream` sparse-clones Cordn upstream and compares `src/server` coordinator method keys to the browser constants.
 - **Guarded config**: relay URLs and persistence settings are read-only by default; the user must explicitly click "Edit configuration" to unlock the form, preventing accidental relay list wipes while the coordinator is running.
 - **Test strategy**: Vitest for pure functions (key derivation, state machine transitions, config validation). Playwright for the rendered app (can't unit-test WebSocket + Nostr relay interactions without a live relay, so Playwright uses a mock relay via `ws` in a fixture).
 
@@ -71,6 +73,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | Destroy zeroes key in memory | Browser GC timing is non-deterministic; explicit zeroing reduces the window for key extraction from heap snapshots | — Pending |
 | SQLite-WASM snapshot persistence for coordinator data | Hydration happens before startup; snapshots preserve the storage contract | Pending |
 | Adapter-backed telemetry | Adapter callbacks track Cordn method and subscription lifecycles directly | Pending |
+| Upstream parity script | Live method-key comparison catches upstream Cordn server drift before release claims | Pending |
 
 ---
 *Last updated: 2026-06-23 after Phase 6 coordinator persistence*

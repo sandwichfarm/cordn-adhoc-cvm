@@ -11,6 +11,7 @@ Phase 6 persists Cordn coordinator method data in browser SQLite-WASM storage.
 Phase 7 wires browser telemetry to real Cordn adapter activity.
 Phase 8 makes deploy triggers match both common default branches and the current local branch.
 Phase 9 adds workflow tests that lock deploy branch readiness against regression.
+Phase 10 adds a live upstream parity check for Cordn `src/server` method names.
 
 ## Phases
 
@@ -23,6 +24,7 @@ Phase 9 adds workflow tests that lock deploy branch readiness against regression
 - [x] **Phase 7: Adapter-Backed Telemetry** - Resource monitor updates from Cordn method activity and live subscriptions
 - [x] **Phase 8: Deploy Branch Readiness** - CI and nsite deploy trigger on `main` and current `master`
 - [x] **Phase 9: Workflow Guardrails** - Unit tests cover CI/deploy branch filters
+- [x] **Phase 10: Upstream Parity Check** - Script compares browser method keys to live Cordn upstream
 
 ## Phase Details
 
@@ -173,6 +175,21 @@ Plans:
 - [x] 09-01: Workflow guardrails - add unit coverage for CI/deploy branch filters
 **UI hint**: no
 
+### Phase 10: Upstream Parity Check
+**Goal**: Operators can verify the browser server method surface against live upstream Cordn `src/server`
+**Depends on**: Phase 9
+**Requirements**: CORDN-01
+**Success Criteria** (what must be TRUE):
+  1. A repo-local command clones upstream Cordn `src/server`
+  2. The command compares upstream `COORDINATOR_METHODS` usage to browser `COORDINATOR_METHODS`
+  3. The command fails on missing or extra browser method keys
+  4. The command reports the upstream commit checked
+**Plans**: 1 plan
+
+Plans:
+- [x] 10-01: Upstream parity script - sparse clone, method-key comparison, package script, verification
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -186,3 +203,4 @@ Plans:
 | 7. Adapter-Backed Telemetry | 1/1 | Complete | 2026-06-23 |
 | 8. Deploy Branch Readiness | 1/1 | Complete | 2026-06-23 |
 | 9. Workflow Guardrails | 1/1 | Complete | 2026-06-23 |
+| 10. Upstream Parity Check | 1/1 | Complete | 2026-06-23 |
