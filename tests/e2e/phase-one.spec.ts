@@ -119,6 +119,11 @@ test("destroys persisted state after explicit confirmation", async ({ page }) =>
   await page.getByPlaceholder("confirm passphrase").fill("destroy-passphrase");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByTestId("persistence-state")).toHaveText("encrypted");
+  await page.evaluate(async () => {
+    const cache = await caches.open("cordn-test-cache");
+    await cache.put("/cache-proof", new Response("cached coordinator state"));
+  });
+  await expect.poll(() => page.evaluate(async () => (await caches.keys()).includes("cordn-test-cache"))).toBe(true);
 
   await page.getByRole("button", { name: "Destroy" }).click();
   await page.getByTestId("confirm-destroy").click();
@@ -126,4 +131,5 @@ test("destroys persisted state after explicit confirmation", async ({ page }) =>
   await expect(page.getByTestId("persistence-state")).toHaveText("off");
   await expect(page.getByRole("button", { name: "Copy coordinator public key" })).not.toHaveText(initialNpub ?? "");
   await expect.poll(() => page.evaluate(() => localStorage.length)).toBe(0);
+  await expect.poll(() => page.evaluate(async () => (await caches.keys()).includes("cordn-test-cache"))).toBe(false);
 });

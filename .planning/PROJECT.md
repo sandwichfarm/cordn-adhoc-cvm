@@ -46,6 +46,8 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - **ContextVM SDK** (`@contextvm/sdk`) is the transport layer. `NostrServerTransport` wraps a Nostr keypair and relay list to present an MCP server endpoint over the network. It handles encryption, serialization, and relay management internally.
 - **nsite/nsyte** deploys static builds (Vite output) to Blossom file storage, publishing the root manifest as a Nostr event. The `nsite-action` GitHub Action handles CI deploy; it requires `NSYTE_BUNKER_URL` and `NSYTE_RELAY` secrets plus a Blossom server URL.
 - **Key persistence**: the coordinator nsec must never leave the browser unencrypted. Persistence is opt-in; when enabled, the key is encrypted with a user-supplied passphrase before writing to `localStorage`. The destroy action must zero-fill the in-memory key buffer and call `localStorage.removeItem` atomically.
+- **Destroy proof**: Playwright seeds Cache Storage before confirmed destroy and verifies the cache is removed alongside
+  localStorage and regenerated identity checks.
 - **Coordinator persistence**: Cordn method data persists through a SQLite-WASM snapshot when persistence is enabled.
   The runtime hydrates this snapshot before startup and clears kvvfs/fallback state on disable or destroy.
 - **Telemetry source**: the resource monitor binds both SDK transport events and Cordn adapter events.
@@ -80,6 +82,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | Upstream parity script | Live method-key comparison catches upstream Cordn server drift before release claims | Pending |
 | Subscription-floor max-users guard | The browser can observe active subscriptions today; authoritative MLS membership is not exposed by the current adapter | Pending |
 | Visual operator shell | A shell-level grid/rail treatment gives the minimal GUI a distinctive cypherpunk operator-console direction without adding controls | Pending |
+| Destroy Cache Storage proof | The destroy e2e seeds Cache Storage and verifies confirmed destroy removes it | Pending |
 
 ---
-*Last updated: 2026-06-23 after Phase 12 visual operator shell*
+*Last updated: 2026-06-23 after Phase 13 destroy cache proof*

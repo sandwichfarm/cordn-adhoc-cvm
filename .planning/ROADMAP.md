@@ -14,6 +14,7 @@ Phase 9 adds workflow tests that lock deploy branch readiness against regression
 Phase 10 adds a live upstream parity check for Cordn `src/server` method names.
 Phase 11 makes the max-users guard truthful by sourcing and labeling its live floor as active subscriptions.
 Phase 12 adds a visual operator shell and screenshot-backed layout guard for the minimal cypherpunk GUI.
+Phase 13 proves the confirmed destroy flow clears browser Cache Storage, not only localStorage.
 
 ## Phases
 
@@ -29,6 +30,7 @@ Phase 12 adds a visual operator shell and screenshot-backed layout guard for the
 - [x] **Phase 10: Upstream Parity Check** - Script compares browser method keys to live Cordn upstream
 - [x] **Phase 11: Subscription Limit Truthfulness** - Max-users guard is sourced from live active subscriptions and labeled accurately
 - [x] **Phase 12: Visual Operator Shell** - Screenshot-backed shell polish and no-overflow Playwright guard
+- [x] **Phase 13: Destroy Cache Proof** - Playwright seeds Cache Storage and verifies confirmed destroy clears it
 
 ## Phase Details
 
@@ -224,6 +226,21 @@ Plans:
 - [x] 12-01: Visual operator shell - signal-grid shell, header accent, screenshot verdict, overflow test
 **UI hint**: yes
 
+### Phase 13: Destroy Cache Proof
+**Goal**: The destroy flow has browser-level proof that Cache Storage is cleared along with persisted coordinator state
+**Depends on**: Phase 12
+**Requirements**: PERSIST-05, PERSIST-06, SEC-04, TEST-07
+**Success Criteria** (what must be TRUE):
+  1. Playwright seeds a real Cache Storage entry before destroy
+  2. The test proves the seeded cache exists before confirmation
+  3. Confirmed destroy removes the seeded cache
+  4. Existing localStorage and regenerated-identity assertions remain covered
+**Plans**: 1 plan
+
+Plans:
+- [x] 13-01: Destroy cache proof - seed browser cache, confirm destroy, assert cache removal
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -240,3 +257,4 @@ Plans:
 | 10. Upstream Parity Check | 1/1 | Complete | 2026-06-23 |
 | 11. Subscription Limit Truthfulness | 1/1 | Complete | 2026-06-23 |
 | 12. Visual Operator Shell | 1/1 | Complete | 2026-06-23 |
+| 13. Destroy Cache Proof | 1/1 | Complete | 2026-06-23 |
