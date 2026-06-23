@@ -6,7 +6,7 @@ Cordn Browser is built in three phases: Phase 1 delivers a fully functional coor
 
 ## Phases
 
-- [ ] **Phase 1: Core Foundation** - Working browser coordinator with key gen, lifecycle controls, relay config, cypherpunk UI, and CI test gate
+- [x] **Phase 1: Core Foundation** - Working browser coordinator with key gen, lifecycle controls, relay config, cypherpunk UI, and CI test gate
 - [ ] **Phase 2: Security & Persistence** - Encrypted key persistence, confirmed destroy action, per-relay status, and persistence error handling
 - [ ] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
 
@@ -25,11 +25,11 @@ Cordn Browser is built in three phases: Phase 1 delivers a fully functional coor
 **Plans**: 5 plans
 
 Plans:
-- [ ] 01-01: Project scaffolding — Vite 8, Svelte 5, TypeScript strict, Tailwind v4, ESLint (ban svelte/store), run vite build to confirm no Node built-in leaks
-- [ ] 01-02: State machine + key management — pure StateMachine.ts with Vitest coverage; KeyManager holding Uint8Array lifetime
-- [ ] 01-03: Coordinator store + transport — CoordinatorStore (.svelte.ts), TransportFactory, ConfigStore with edit guard locked on non-idle state
-- [ ] 01-04: UI components — LifecyclePanel, RelayConfigPanel (guarded), status badge, npub display, beforeunload WS cleanup
-- [ ] 01-05: Tests + CI — Vitest state machine + relay URL validation; Playwright start/stop/config-edit e2e; GitHub Actions lint→unit→playwright workflow
+- [x] 01-01: Project scaffolding — Vite 8, Svelte 5, TypeScript strict, Tailwind v4, ESLint (ban svelte/store), run vite build to confirm no Node built-in leaks
+- [x] 01-02: State machine + key management — pure StateMachine.ts with Vitest coverage; KeyManager holding Uint8Array lifetime
+- [x] 01-03: Coordinator store + transport — CoordinatorStore (.svelte.ts), TransportFactory, ConfigStore with edit guard locked on non-idle state
+- [x] 01-04: UI components — LifecyclePanel, RelayConfigPanel (guarded), status badge, npub display, beforeunload WS cleanup
+- [x] 01-05: Tests + CI — Vitest state machine + relay URL validation; Playwright start/stop/config-edit e2e; GitHub Actions lint→unit→playwright workflow
 **UI hint**: yes
 
 ### Phase 2: Security & Persistence
@@ -71,6 +71,6 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Foundation | 0/5 | Not started | - |
+| 1. Core Foundation | 5/5 | Complete | 2026-06-23 |
 | 2. Security & Persistence | 0/3 | Not started | - |
 | 3. Telemetry & Deployment | 0/2 | Not started | - |

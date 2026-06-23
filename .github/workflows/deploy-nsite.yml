@@ -1,0 +1,71 @@
+name: Deploy nsite
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: publish-dist
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Check deploy secrets
+        id: secrets
+        shell: bash
+        env:
+          NBUNK_SECRET: ${{ secrets.NBUNK_SECRET }}
+          NSYTE_RELAY: ${{ secrets.NSYTE_RELAY }}
+          BLOSSOM_SERVER_URL: ${{ secrets.BLOSSOM_SERVER_URL }}
+        run: |
+          if [[ -z "$NBUNK_SECRET" || -z "$NSYTE_RELAY" || -z "$BLOSSOM_SERVER_URL" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping nsite deploy: set NBUNK_SECRET, NSYTE_RELAY, and BLOSSOM_SERVER_URL repository secrets."
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.secrets.outputs.ready == 'true'
+        uses: actions/checkout@v6.0.3
+
+      - name: Setup pnpm
+        if: steps.secrets.outputs.ready == 'true'
+        uses: pnpm/action-setup@v6.0.9
+        with:
+          version: 10.17.1
+
+      - name: Setup Node
+        if: steps.secrets.outputs.ready == 'true'
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.secrets.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        if: steps.secrets.outputs.ready == 'true'
+        run: pnpm build
+
+      - name: Deploy to Nostr and Blossom
+        if: steps.secrets.outputs.ready == 'true'
+        uses: sandwichfarm/nsite-action@v0.5.1
+        with:
+          nbunksec: ${{ secrets.NBUNK_SECRET }}
+          directory: ./dist
+          fallback: /index.html
+          relays: |
+            ${{ secrets.NSYTE_RELAY }}
+          servers: |
+            ${{ secrets.BLOSSOM_SERVER_URL }}
+          name: ${{ secrets.NSITE_NAME }}
