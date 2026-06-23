@@ -3,7 +3,7 @@ import { DEFAULT_MAX_USERS, validateMaxUsers, validateRelayUrl } from "./config-
 const CONFIG_STORAGE_KEY = "cordn:v1:config";
 const CONFIG_STORAGE_VERSION = 1;
 const DEFAULT_RELAYS: RelayConfig[] = [
-  { id: "default-relay-damus", url: "wss://relay.damus.io", enabled: true },
+  { id: "default-relay-contextvm", url: "wss://relay.contextvm.org", enabled: true },
 ];
 
 export interface RelayConfig {

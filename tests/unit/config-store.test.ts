@@ -105,7 +105,7 @@ describe("ConfigStore runtime limits", () => {
     store.resetToDefaults();
     const reloaded = new ConfigStore();
 
-    expect(reloaded.relays.map((relay) => relay.url)).toEqual(["wss://relay.damus.io"]);
+    expect(reloaded.relays.map((relay) => relay.url)).toEqual(["wss://relay.contextvm.org"]);
     expect(reloaded.announce).toBe(false);
   });
 });

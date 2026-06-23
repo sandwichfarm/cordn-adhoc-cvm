@@ -102,7 +102,7 @@ test("persists relay and runtime configuration across reloads", async ({ page })
   await page.reload();
 
   await expect(page.getByText(relay.url)).toBeVisible();
-  await expect(page.getByText("wss://relay.damus.io")).toBeHidden();
+  await expect(page.getByText("wss://relay.contextvm.org")).toBeHidden();
   await expect(page.getByLabel("Toggle announcement")).toBeChecked();
   await expect(page.getByTestId("max-users-input")).toHaveValue("17");
 });
