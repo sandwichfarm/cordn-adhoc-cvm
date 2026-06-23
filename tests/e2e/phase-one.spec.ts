@@ -32,6 +32,10 @@ test("generates copyable identity on first load", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("operator-shell")).toBeVisible();
+  await expect(page.getByRole("link", { name: "git" })).toHaveAttribute(
+    "href",
+    "https://github.com/sandwichfarm/cordn-adhoc-cvm/",
+  );
   await expect(page.getByRole("button", { name: "Copy coordinator public key" })).toContainText("npub");
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   await expect(page.getByLabel("Toggle announcement")).not.toBeChecked();

@@ -24,6 +24,14 @@
         <div>
           <p class="operator-kicker text-xs uppercase tracking-[0.24em] text-[#617767]">Web-based MLS coordinator</p>
           <h1 class="operator-title mt-2 text-3xl uppercase text-[#d1ffd9] sm:text-5xl">Cordn Ad-Hoc</h1>
+          <a
+            class="mt-3 inline-flex w-fit border border-[#21482b] px-3 py-2 text-xs uppercase tracking-[0.18em] text-[#87ff9f] hover:border-[#87ff9f] hover:bg-[#87ff9f] hover:text-black"
+            href="https://github.com/sandwichfarm/cordn-adhoc-cvm/"
+            rel="noreferrer"
+            target="_blank"
+          >
+            git
+          </a>
         </div>
         <NpubDisplay identity={coordinatorStore.identity} />
       </header>
