@@ -10,6 +10,7 @@ Phase 5 registers the real Cordn coordinator method surface in the browser.
 Phase 6 persists Cordn coordinator method data in browser SQLite-WASM storage.
 Phase 7 wires browser telemetry to real Cordn adapter activity.
 Phase 8 makes deploy triggers match both common default branches and the current local branch.
+Phase 9 adds workflow tests that lock deploy branch readiness against regression.
 
 ## Phases
 
@@ -21,6 +22,7 @@ Phase 8 makes deploy triggers match both common default branches and the current
 - [x] **Phase 6: Coordinator Persistence** - SQLite-WASM snapshot persistence for Cordn coordinator method data
 - [x] **Phase 7: Adapter-Backed Telemetry** - Resource monitor updates from Cordn method activity and live subscriptions
 - [x] **Phase 8: Deploy Branch Readiness** - CI and nsite deploy trigger on `main` and current `master`
+- [x] **Phase 9: Workflow Guardrails** - Unit tests cover CI/deploy branch filters
 
 ## Phase Details
 
@@ -156,6 +158,21 @@ Plans:
 - [x] 08-01: Branch-ready workflows - add `master` to CI/deploy branch filters and validate workflow YAML
 **UI hint**: no
 
+### Phase 9: Workflow Guardrails
+**Goal**: Local tests fail if CI/deploy workflow branch support regresses
+**Depends on**: Phase 8
+**Requirements**: CICD-01, CICD-03
+**Success Criteria** (what must be TRUE):
+  1. Unit tests assert CI pull request filters include `main` and `master`
+  2. Unit tests assert nsite deploy workflow-run filters include `main` and `master`
+  3. Existing deploy secret/action assertions remain covered
+  4. Full local CI passes
+**Plans**: 1 plan
+
+Plans:
+- [x] 09-01: Workflow guardrails - add unit coverage for CI/deploy branch filters
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -168,3 +185,4 @@ Plans:
 | 6. Coordinator Persistence | 1/1 | Complete | 2026-06-23 |
 | 7. Adapter-Backed Telemetry | 1/1 | Complete | 2026-06-23 |
 | 8. Deploy Branch Readiness | 1/1 | Complete | 2026-06-23 |
+| 9. Workflow Guardrails | 1/1 | Complete | 2026-06-23 |

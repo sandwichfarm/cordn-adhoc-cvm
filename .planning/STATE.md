@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: complete
-stopped_at: Phase 8 deploy branch readiness implemented and verified locally; push and live deploy still remain
-last_updated: "2026-06-23T04:53:00.000Z"
-last_activity: 2026-06-23 - CI and nsite deploy triggers now support main and master
+stopped_at: Phase 9 workflow guardrails implemented and verified locally; push and live deploy still remain
+last_updated: "2026-06-23T05:02:00.000Z"
+last_activity: 2026-06-23 - Workflow branch filters now have unit regression coverage
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 15
-  completed_plans: 15
+  total_phases: 9
+  completed_phases: 9
+  total_plans: 16
+  completed_plans: 16
   percent: 100
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 8 of 8 (Deploy Branch Readiness)
+Phase: 9 of 9 (Workflow Guardrails)
 Plan: 1 of 1 in current phase
 Status: Complete locally, broader objective incomplete
-Last activity: 2026-06-23 - CI and nsite deploy triggers now support main and master
+Last activity: 2026-06-23 - Workflow branch filters now have unit regression coverage
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 15
+- Total plans completed: 16
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -67,6 +67,7 @@ Recent decisions affecting current work:
 - Phase 6: Persistent coordinator mode hydrates a SQLite-WASM backed snapshot before startup and clears kvvfs/fallback storage on disable or destroy.
 - Phase 7: Resource telemetry now binds to Cordn adapter operations and coordinator subscription counts in addition to SDK transport events.
 - Phase 8: CI and nsite deploy workflows now target both `main` and the current local `master` branch.
+- Phase 9: CI/deploy branch filters are covered by unit tests so branch readiness is not only documented.
 
 ### Pending Todos
 
