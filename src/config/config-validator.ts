@@ -26,7 +26,7 @@ export const MIN_MAX_USERS = 1;
 export const DEFAULT_MAX_USERS = 64;
 export const BROWSER_MAX_USERS_CAP = 256;
 
-export function validateMaxUsers(value: number, activeUserCount: number): string | null {
+export function validateMaxUsers(value: number, activeSubscriptionCount: number): string | null {
   if (!Number.isSafeInteger(value)) {
     return "Maximum users must be a whole number";
   }
@@ -39,8 +39,8 @@ export function validateMaxUsers(value: number, activeUserCount: number): string
     return `Browser limit is ${BROWSER_MAX_USERS_CAP} users`;
   }
 
-  if (value < activeUserCount) {
-    return `Maximum users cannot be below ${activeUserCount} active users`;
+  if (value < activeSubscriptionCount) {
+    return `Maximum users cannot be below ${activeSubscriptionCount} active subscriptions`;
   }
 
   return null;

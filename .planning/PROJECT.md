@@ -25,7 +25,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - [ ] Coordinator start/stop/destroy lifecycle — destroy wipes key + state from memory and storage
 - [ ] Browser resource limit display — show active subscription count, message rate, memory estimate
 - [ ] Adapter-backed telemetry source for Cordn method activity and live subscriptions
-- [ ] Browser runtime limits — announcement default off, maximum users cap, active-user guard for max-users edits
+- [ ] Browser runtime limits — announcement default off, maximum users cap, active-subscription guard for max-users edits
 - [ ] Minimal cypherpunk GUI with Svelte 5 + Vite + Tailwind (dark, monospace, no gradients, no icons except Unicode)
 - [ ] Unit tests (Vitest) covering coordinator state machine and key persistence helpers
 - [ ] Playwright e2e tests covering start, config edit, stop, destroy flows
@@ -52,6 +52,8 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
   Cordn operations feed the message-rate window, and group subscriptions publish the coordinator's active subscription count.
 - **Upstream parity**: `pnpm check:upstream` sparse-clones Cordn upstream and compares `src/server` coordinator method keys to the browser constants.
 - **Guarded config**: relay URLs and persistence settings are read-only by default; the user must explicitly click "Edit configuration" to unlock the form, preventing accidental relay list wipes while the coordinator is running.
+- **Limit guard source**: the browser currently uses active coordinator subscriptions as the max-users edit floor.
+  This is honest browser-visible telemetry, not authoritative MLS group membership.
 - **Test strategy**: Vitest for pure functions (key derivation, state machine transitions, config validation). Playwright for the rendered app (can't unit-test WebSocket + Nostr relay interactions without a live relay, so Playwright uses a mock relay via `ws` in a fixture).
 
 ## Constraints
@@ -74,6 +76,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | SQLite-WASM snapshot persistence for coordinator data | Hydration happens before startup; snapshots preserve the storage contract | Pending |
 | Adapter-backed telemetry | Adapter callbacks track Cordn method and subscription lifecycles directly | Pending |
 | Upstream parity script | Live method-key comparison catches upstream Cordn server drift before release claims | Pending |
+| Subscription-floor max-users guard | The browser can observe active subscriptions today; authoritative MLS membership is not exposed by the current adapter | Pending |
 
 ---
-*Last updated: 2026-06-23 after Phase 6 coordinator persistence*
+*Last updated: 2026-06-23 after Phase 11 subscription limit truthfulness*

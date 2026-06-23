@@ -35,7 +35,7 @@ describe("validateMaxUsers", () => {
     },
   );
 
-  test("rejects reducing below the active user count", () => {
-    expect(validateMaxUsers(3, 4)).toBe("Maximum users cannot be below 4 active users");
+  test("rejects reducing below the active subscription count", () => {
+    expect(validateMaxUsers(3, 4)).toBe("Maximum users cannot be below 4 active subscriptions");
   });
 });

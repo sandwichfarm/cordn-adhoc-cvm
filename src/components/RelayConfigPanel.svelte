@@ -152,7 +152,7 @@
     <div class="mb-4 flex items-center justify-between gap-4">
       <h3 class="text-xs uppercase tracking-[0.18em] text-[#87ff9f]">Runtime options</h3>
       <span class="border border-[#21482b] px-3 py-1 text-xs uppercase text-[#a7b0aa]" data-testid="max-users-state">
-        {config.activeUserCount}/{config.maxUsers} users
+        {config.activeSubscriptionCount}/{config.maxUsers} active subscriptions
       </span>
     </div>
 

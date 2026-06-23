@@ -35,7 +35,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await page.getByLabel("Toggle announcement").check();
   await page.getByTestId("max-users-input").fill("32");
   await page.getByTestId("max-users-input").blur();
-  await expect(page.getByTestId("max-users-state")).toContainText("0/32 users");
+  await expect(page.getByTestId("max-users-state")).toContainText("0/32 active subscriptions");
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");

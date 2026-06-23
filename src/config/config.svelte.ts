@@ -20,7 +20,7 @@ export class ConfigStore {
   limitError = $state<string | null>(null);
   announce = $state(false);
   maxUsers = $state(DEFAULT_MAX_USERS);
-  activeUserCount = $state(0);
+  activeSubscriptionCount = $state(0);
 
   get enabledRelayUrls(): string[] {
     return this.relays.filter((relay) => relay.enabled).map((relay) => relay.url);
@@ -82,7 +82,7 @@ export class ConfigStore {
   }
 
   setMaxUsers(value: number): boolean {
-    const error = validateMaxUsers(value, this.activeUserCount);
+    const error = validateMaxUsers(value, this.activeSubscriptionCount);
     if (error) {
       this.limitError = error;
       return false;
@@ -93,10 +93,10 @@ export class ConfigStore {
     return true;
   }
 
-  setActiveUserCount(value: number): void {
-    this.activeUserCount = Math.max(0, Math.trunc(value));
-    if (this.maxUsers < this.activeUserCount) {
-      this.maxUsers = this.activeUserCount;
+  setActiveSubscriptionCount(value: number): void {
+    this.activeSubscriptionCount = Math.max(0, Math.trunc(value));
+    if (this.maxUsers < this.activeSubscriptionCount) {
+      this.maxUsers = this.activeSubscriptionCount;
     }
     this.limitError = null;
   }

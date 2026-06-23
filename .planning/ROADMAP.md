@@ -12,19 +12,21 @@ Phase 7 wires browser telemetry to real Cordn adapter activity.
 Phase 8 makes deploy triggers match both common default branches and the current local branch.
 Phase 9 adds workflow tests that lock deploy branch readiness against regression.
 Phase 10 adds a live upstream parity check for Cordn `src/server` method names.
+Phase 11 makes the max-users guard truthful by sourcing and labeling its live floor as active subscriptions.
 
 ## Phases
 
 - [x] **Phase 1: Core Foundation** - Working browser coordinator with key gen, lifecycle controls, relay config, cypherpunk UI, and CI test gate
 - [x] **Phase 2: Security & Persistence** - Encrypted key persistence, confirmed destroy action, per-relay status, and persistence error handling
 - [x] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
-- [x] **Phase 4: Runtime Limits & Guarded Options** - Announcement option, maximum users browser cap, and active-user guard invariant
+- [x] **Phase 4: Runtime Limits & Guarded Options** - Announcement option, maximum users browser cap, and guarded limit invariant
 - [x] **Phase 5: Browser Cordn Methods** - Browser-safe Cordn coordinator core and MCP method registration
 - [x] **Phase 6: Coordinator Persistence** - SQLite-WASM snapshot persistence for Cordn coordinator method data
 - [x] **Phase 7: Adapter-Backed Telemetry** - Resource monitor updates from Cordn method activity and live subscriptions
 - [x] **Phase 8: Deploy Branch Readiness** - CI and nsite deploy trigger on `main` and current `master`
 - [x] **Phase 9: Workflow Guardrails** - Unit tests cover CI/deploy branch filters
 - [x] **Phase 10: Upstream Parity Check** - Script compares browser method keys to live Cordn upstream
+- [x] **Phase 11: Subscription Limit Truthfulness** - Max-users guard is sourced from live active subscriptions and labeled accurately
 
 ## Phase Details
 
@@ -84,19 +86,19 @@ Plans:
 **UI hint**: yes
 
 ### Phase 4: Runtime Limits & Guarded Options
-**Goal**: The browser coordinator exposes explicit runtime options from the original objective and guards maximum-users edits against browser and active-user limits
+**Goal**: The browser coordinator exposes explicit runtime options from the original objective and guards maximum-users edits against browser-visible limits
 **Depends on**: Phase 3
 **Requirements**: CONFIG-01, CONFIG-02, LIMIT-01, LIMIT-02, LIMIT-03
 **Success Criteria** (what must be TRUE):
   1. Announcement is visible as a runtime option and defaults off
   2. Maximum users is visible as a runtime option with a browser cap
   3. Runtime options are locked while the coordinator is running
-  4. Maximum users cannot be reduced below active user count
+  4. Maximum users cannot be reduced below the active subscription floor
   5. Transport startup receives the configured announcement setting
 **Plans**: 1 plan
 
 Plans:
-- [x] 04-01: Runtime limits — announcement toggle, max-users input, active-user guard, transport option wiring, tests
+- [x] 04-01: Runtime limits - announcement toggle, max-users input, guarded limit floor, transport option wiring, tests
 **UI hint**: yes
 
 ### Phase 5: Browser Cordn Methods
@@ -190,6 +192,21 @@ Plans:
 - [x] 10-01: Upstream parity script - sparse clone, method-key comparison, package script, verification
 **UI hint**: no
 
+### Phase 11: Subscription Limit Truthfulness
+**Goal**: The runtime limit guard stops implying authoritative MLS membership and instead reflects the browser-visible subscription floor
+**Depends on**: Phase 10
+**Requirements**: LIMIT-02, LIMIT-03, TELEMETRY-01
+**Success Criteria** (what must be TRUE):
+  1. Runtime option state labels the live floor as active subscriptions
+  2. Config validation errors refer to active subscriptions
+  3. The max-users floor is synchronized from the resource monitor subscription count
+  4. Unit and Playwright coverage lock the visible wording
+**Plans**: 1 plan
+
+Plans:
+- [x] 11-01: Subscription limit truthfulness - rename guard source, wire telemetry floor, update tests
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -204,3 +221,4 @@ Plans:
 | 8. Deploy Branch Readiness | 1/1 | Complete | 2026-06-23 |
 | 9. Workflow Guardrails | 1/1 | Complete | 2026-06-23 |
 | 10. Upstream Parity Check | 1/1 | Complete | 2026-06-23 |
+| 11. Subscription Limit Truthfulness | 1/1 | Complete | 2026-06-23 |
