@@ -18,7 +18,7 @@ async function configureMockRelay(page: import("@playwright/test").Page): Promis
     return;
   }
 
-  const removeDefaultRelay = page.getByLabel(/Remove wss:\/\/relay\.damus\.io/);
+  const removeDefaultRelay = page.getByLabel(/Remove wss:\/\/relay\.contextvm\.org/);
   if (await removeDefaultRelay.isVisible()) {
     await removeDefaultRelay.click();
   }
