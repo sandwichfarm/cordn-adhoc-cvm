@@ -33,6 +33,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId(`relay-status-${relay.url}`)).toContainText("connected");
   await expect(page.getByRole("button", { name: "Edit configuration" })).toBeDisabled();
   await expect(page.getByTestId("lock-indicator")).toContainText("locked");
 
@@ -47,4 +48,45 @@ test("rejects invalid relay URLs inline", async ({ page }) => {
   await page.getByPlaceholder("wss://relay.example").fill("https://relay.example");
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.getByTestId("relay-error")).toContainText("ws:// or wss://");
+});
+
+test("persists encrypted key, rejects wrong passphrase, and unlocks after reload", async ({ page }) => {
+  await page.goto("/");
+  const initialNpub = await page.getByRole("button", { name: "Copy coordinator public key" }).textContent();
+
+  await page.getByRole("button", { name: "Enable persistence" }).click();
+  await page.getByPlaceholder("passphrase", { exact: true }).fill("phase-two-passphrase");
+  await page.getByPlaceholder("confirm passphrase").fill("phase-two-passphrase");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("persistence-state")).toHaveText("encrypted");
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Unlock Cordn" })).toBeVisible();
+
+  await page.getByPlaceholder("passphrase", { exact: true }).fill("wrong-passphrase");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page.getByTestId("passphrase-error")).toContainText("Wrong passphrase");
+
+  await page.getByPlaceholder("passphrase", { exact: true }).fill("phase-two-passphrase");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("idle");
+  await expect(page.getByRole("button", { name: "Copy coordinator public key" })).toHaveText(initialNpub ?? "");
+});
+
+test("destroys persisted state after explicit confirmation", async ({ page }) => {
+  await page.goto("/");
+  const initialNpub = await page.getByRole("button", { name: "Copy coordinator public key" }).textContent();
+
+  await page.getByRole("button", { name: "Enable persistence" }).click();
+  await page.getByPlaceholder("passphrase", { exact: true }).fill("destroy-passphrase");
+  await page.getByPlaceholder("confirm passphrase").fill("destroy-passphrase");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("persistence-state")).toHaveText("encrypted");
+
+  await page.getByRole("button", { name: "Destroy" }).click();
+  await page.getByTestId("confirm-destroy").click();
+  await expect(page.getByTestId("status-badge")).toHaveText("idle");
+  await expect(page.getByTestId("persistence-state")).toHaveText("off");
+  await expect(page.getByRole("button", { name: "Copy coordinator public key" })).not.toHaveText(initialNpub ?? "");
+  await expect.poll(() => page.evaluate(() => localStorage.length)).toBe(0);
 });

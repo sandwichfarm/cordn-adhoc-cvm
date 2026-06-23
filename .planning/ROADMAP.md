@@ -7,7 +7,7 @@ Cordn Browser is built in three phases: Phase 1 delivers a fully functional coor
 ## Phases
 
 - [x] **Phase 1: Core Foundation** - Working browser coordinator with key gen, lifecycle controls, relay config, cypherpunk UI, and CI test gate
-- [ ] **Phase 2: Security & Persistence** - Encrypted key persistence, confirmed destroy action, per-relay status, and persistence error handling
+- [x] **Phase 2: Security & Persistence** - Encrypted key persistence, confirmed destroy action, per-relay status, and persistence error handling
 - [ ] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
 
 ## Phase Details
@@ -45,9 +45,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: Key persistence — KeyStorage PBKDF2 + AES-GCM encrypt/decrypt; single-blob localStorage write; passphrase prompt UI; Vitest encryption tests
-- [ ] 02-02: Destroy flow + security hardening — confirm dialog, Uint8Array.fill(0) + localStorage.removeItem in one synchronous block, SEC-01/02/04
-- [ ] 02-03: Per-relay status + persistence error handling — RELAY-06 status display, ERR-02 inline relay errors, ERR-03 passphrase error, TEST-07 destroy e2e
+- [x] 02-01: Key persistence — KeyStorage PBKDF2 + AES-GCM encrypt/decrypt; single-blob localStorage write; passphrase prompt UI; Vitest encryption tests
+- [x] 02-02: Destroy flow + security hardening — confirm dialog, Uint8Array.fill(0) + localStorage.removeItem in one synchronous block, SEC-01/02/04
+- [x] 02-03: Per-relay status + persistence error handling — RELAY-06 status display, ERR-02 inline relay errors, ERR-03 passphrase error, TEST-07 destroy e2e
 **UI hint**: yes
 
 ### Phase 3: Telemetry & Deployment
@@ -72,5 +72,5 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Foundation | 5/5 | Complete | 2026-06-23 |
-| 2. Security & Persistence | 0/3 | Not started | - |
+| 2. Security & Persistence | 3/3 | Complete | 2026-06-23 |
 | 3. Telemetry & Deployment | 0/2 | Not started | - |

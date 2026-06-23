@@ -27,12 +27,24 @@ export class KeyManager {
     return new KeyManager(generateSecretKey());
   }
 
+  static fromBytes(secretKey: Uint8Array): KeyManager {
+    return new KeyManager(new Uint8Array(secretKey));
+  }
+
   getSecretKeyHex(): string {
     if (!this.secretKey) {
       throw new Error("Coordinator key has been destroyed");
     }
 
     return bytesToHex(this.secretKey);
+  }
+
+  getSecretKeyBytes(): Uint8Array {
+    if (!this.secretKey) {
+      throw new Error("Coordinator key has been destroyed");
+    }
+
+    return new Uint8Array(this.secretKey);
   }
 
   destroy(): void {

@@ -13,6 +13,44 @@
   const editingAllowed = $derived(config.editMode && !coordinator.locked);
   const lockLabel = $derived(editingAllowed ? "editing" : "locked");
 
+  function statusLabel(url: string): string {
+    return coordinator.relayStatuses[url] ?? "idle";
+  }
+
+  function statusClass(url: string): string {
+    const status = statusLabel(url);
+    if (status === "connected") {
+      return "text-[#87ff9f] border-[#21482b]";
+    }
+
+    if (status === "connecting") {
+      return "text-[#f1f58f] border-[#302f1c] animate-pulse";
+    }
+
+    if (status === "error") {
+      return "text-[#ff8f8f] border-[#493030]";
+    }
+
+    return "hidden";
+  }
+
+  function statusGlyph(url: string): string {
+    const status = statusLabel(url);
+    if (status === "connected") {
+      return "●";
+    }
+
+    if (status === "connecting") {
+      return "⟳";
+    }
+
+    if (status === "error") {
+      return "✗";
+    }
+
+    return "";
+  }
+
   function addRelay(): void {
     if (config.addRelay(relayInput)) {
       relayInput = "";
@@ -30,7 +68,7 @@
 
   <div class="space-y-3">
     {#each config.relays as relay (relay.id)}
-      <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 border border-[#16331f] bg-[#050805] p-3">
+      <div class="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 border border-[#16331f] bg-[#050805] p-3">
         <input
           class="h-4 w-4 accent-[#87ff9f]"
           type="checkbox"
@@ -40,6 +78,13 @@
           onchange={() => config.toggleRelay(relay.id)}
         />
         <span class:line-through={!relay.enabled} class="min-w-0 truncate text-sm text-[#d1ffd9]">{relay.url}</span>
+        <span
+          class={`border px-2 py-1 text-xs uppercase ${statusClass(relay.url)}`}
+          data-testid={`relay-status-${relay.url}`}
+          title={statusLabel(relay.url)}
+        >
+          {statusGlyph(relay.url)} {statusLabel(relay.url)}
+        </span>
         <button
           class="border border-[#493030] px-2 text-sm text-[#ff8f8f] disabled:cursor-not-allowed disabled:border-[#261818] disabled:text-[#553838]"
           type="button"

@@ -1,11 +1,11 @@
 {
     "schema_version": 1,
-    "commit": "69413dc6c60d64ffa0b25d624f9c7084df5ae289",
-    "indexed_at": "2026-06-23T03:34:10Z",
+    "commit": "16563d1e9fd8e7e1a428a936f788604ce3995529",
+    "indexed_at": "2026-06-23T03:51:18Z",
     "project": "home-sandwich-Develop-cordn-browser",
-    "nodes": 317,
-    "edges": 374,
-    "original_size": 1310720,
-    "compressed_size": 33772,
-    "compression_level": 9
+    "nodes": 474,
+    "edges": 566,
+    "original_size": 1966080,
+    "compressed_size": 81208,
+    "compression_level": 3
 }

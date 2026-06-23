@@ -6,6 +6,7 @@
   }
 
   let { coordinator }: Props = $props();
+  let confirmDialog: HTMLDialogElement | undefined = $state();
 
   const statusClass = $derived(
     coordinator.status === "running"
@@ -17,6 +18,16 @@
 
   const canStart = $derived(coordinator.status === "idle");
   const canStop = $derived(coordinator.status === "running");
+  const canDestroy = $derived(coordinator.status === "idle" || coordinator.status === "running");
+
+  function openDestroyDialog(): void {
+    confirmDialog?.showModal();
+  }
+
+  async function confirmDestroy(): Promise<void> {
+    confirmDialog?.close();
+    await coordinator.destroy();
+  }
 </script>
 
 <section class="border-y border-[#16331f] py-10 text-center">
@@ -44,6 +55,14 @@
     >
       Stop
     </button>
+    <button
+      class="border border-[#ff8f8f] px-7 py-3 uppercase text-[#ff8f8f] transition enabled:hover:bg-[#ff8f8f] enabled:hover:text-black disabled:cursor-not-allowed disabled:border-[#3a1d1d] disabled:text-[#553838]"
+      type="button"
+      disabled={!canDestroy}
+      onclick={openDestroyDialog}
+    >
+      Destroy
+    </button>
   </div>
 
   {#if coordinator.error}
@@ -61,4 +80,30 @@
       </button>
     </div>
   {/if}
+
+  <dialog bind:this={confirmDialog} class="border border-[#ff8f8f] bg-black p-0 text-[#d1ffd9] backdrop:bg-black/80">
+    <div class="max-w-md p-5 text-left">
+      <h2 class="text-lg uppercase text-[#ff8f8f]">Destroy state</h2>
+      <p class="mt-3 text-sm text-[#a7b0aa]">
+        This stops the coordinator, clears encrypted storage, zero-fills the in-memory key, and generates a new identity.
+      </p>
+      <div class="mt-5 flex justify-end gap-3">
+        <button
+          class="border border-[#6d746f] px-4 py-2 text-sm uppercase text-[#a7b0aa]"
+          type="button"
+          onclick={() => confirmDialog?.close()}
+        >
+          Cancel
+        </button>
+        <button
+          class="border border-[#ff8f8f] px-4 py-2 text-sm uppercase text-[#ff8f8f] hover:bg-[#ff8f8f] hover:text-black"
+          type="button"
+          data-testid="confirm-destroy"
+          onclick={() => void confirmDestroy()}
+        >
+          Confirm destroy
+        </button>
+      </div>
+    </div>
+  </dialog>
 </section>
