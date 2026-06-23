@@ -12,7 +12,7 @@
 <main class="flex min-h-screen items-center justify-center bg-black px-4 text-[#87ff9f]">
   <section class="w-full max-w-lg border border-[#16331f] bg-[#050805] p-6">
     <p class="text-xs uppercase tracking-[0.24em] text-[#617767]">encrypted coordinator key found</p>
-    <h1 class="mt-3 text-3xl uppercase text-[#d1ffd9]">Unlock Cordn</h1>
+    <h1 class="mt-3 text-3xl uppercase text-[#d1ffd9]">Unlock Cordn Ad-Hoc</h1>
     <form
       class="mt-6 grid gap-4"
       onsubmit={(event) => {

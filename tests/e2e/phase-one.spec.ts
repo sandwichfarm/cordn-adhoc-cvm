@@ -152,7 +152,7 @@ test("persists encrypted key, rejects wrong passphrase, and unlocks after reload
   await expect(page.getByTestId("persistence-state")).toHaveText("encrypted");
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Unlock Cordn" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unlock Cordn Ad-Hoc" })).toBeVisible();
 
   await page.getByPlaceholder("passphrase", { exact: true }).fill("wrong-passphrase");
   await page.getByRole("button", { name: "Unlock" }).click();

@@ -4,6 +4,13 @@ Web-based MLS coordinator for ad-hoc Cordn groups. The app runs a ContextVM/Nost
 coordinator in a browser tab, publishes its coordinator pubkey, and lets Cordn clients
 use that browser tab as the group coordination server.
 
+## Purpose
+
+Cordn Ad-hoc is for quickly bringing up a temporary MLS coordinator for Cordn without
+provisioning a backend. It is meant for short-lived groups, demos, local testing, and
+operator-controlled coordination sessions where a browser tab can stay open for the
+life of the group.
+
 ## What It Does
 
 - Runs the Cordn coordinator protocol from a browser.
@@ -46,6 +53,16 @@ The app listens on `127.0.0.1`. If Vite reports that the default port is busy, u
 6. Watch the debug log if the client does not connect or does not mark messages as sent.
 
 The coordinator locks runtime configuration while running. Stop it before changing relays, announcement mode, or user limits.
+
+## Warnings and Pitfalls
+
+- The browser tab is the coordinator. Closing it, refreshing it, or losing network access interrupts coordination.
+- Relay lists must match what clients can reach. A working coordinator still looks offline to clients on the wrong relays.
+- Persisted browser config overrides new defaults. Reset defaults if a stale relay list keeps coming back.
+- Encrypted identity persistence is optional. Without it, a fresh browser profile or cleared storage creates a new coordinator pubkey.
+- Only run one coordinator per pubkey. A second instance should fail with `cordn already running`; if it does not, stop both and restart one.
+- This is not a hardened always-on service. Use a proper hosted coordinator when availability matters.
+- The debug log can show encrypted event metadata and request shapes. Avoid sharing screenshots when coordination details are sensitive.
 
 ## Debugging Client Delivery
 

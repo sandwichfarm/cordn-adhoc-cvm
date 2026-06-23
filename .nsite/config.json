@@ -1,0 +1,20 @@
+{
+  "$schema": "https://nsyte.run/schemas/config.schema.json",
+  "bunkerPubkey": "e771af0b05c8e95fcdf6feb3500544d2fb1ccd384788e9f490bb3ee28e8ed66f",
+  "relays": [
+    "wss://nos.lol",
+    "wss://relay.damus.io",
+    "wss://nsite.run",
+    "wss://relay.nosto.re",
+    "wss://relay.primal.net"
+  ],
+  "servers": [
+    "https://nostr.download",
+    "https://nsite.run",
+    "https://cdn.hzrd149.com",
+    "https://blssm.us"
+  ],
+  "id": "cordnadhoc",
+  "title": "CORDN AD-HOC CVM",
+  "description": "An ad-hoc cordn contextvm that runs in the browser"
+}
