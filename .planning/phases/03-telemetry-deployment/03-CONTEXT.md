@@ -149,7 +149,7 @@ Colors: values in green `#87ff9f`; "unavailable" in gray `#6d746f`; label row in
 
 **D-10:** `.github/workflows/deploy-nsite.yml` already exists and is complete. It satisfies CICD-03, CICD-04, CICD-05, CICD-06:
 - Triggers via `workflow_run` on CI success on `main` (CICD-03)
-- Uses `sandwichfarm/nsite-action@v0.5.1` with `NBUNK_SECRET`, `NSYTE_RELAY`, `BLOSSOM_SERVER_URL` (CICD-04 — `NBUNK_SECRET` is the correct nbunksec format for nsite-action; REQUIREMENTS.md uses `NSYTE_BUNKER_URL` as a placeholder name but the implementation is correct)
+- Uses `sandwichfarm/nsite-action@v0.5.1` with `NBUNK_SECRET`, `NSYTE_RELAYS`, `BLOSSOM_SERVER_URLS` (CICD-04 — `NBUNK_SECRET` is the correct nbunksec format for nsite-action)
 - Skip-on-missing-secrets via `steps.secrets.outputs.ready` conditional on every step (CICD-06)
 - `scripts/setup-secrets.sh` prompts for all four secrets including optional `NSITE_NAME` (CICD-05)
 

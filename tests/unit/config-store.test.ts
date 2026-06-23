@@ -1,9 +1,14 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ConfigStore } from "../../src/config/config.svelte";
 import { DEFAULT_MAX_USERS } from "../../src/config/config-validator";
 
 describe("ConfigStore runtime limits", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
   test("defaults announcement off and exposes coordinator options", () => {
     const store = new ConfigStore();
 
@@ -47,5 +52,60 @@ describe("ConfigStore runtime limits", () => {
       url: "wss://relay.example",
       enabled: true,
     });
+  });
+
+  test("persists relay and runtime configuration across store instances", () => {
+    const first = new ConfigStore();
+    first.removeRelay(first.relays[0].id);
+    expect(first.addRelay("wss://relay.example")).toBe(true);
+    first.toggleRelay(first.relays[0].id);
+    first.setAnnouncement(true);
+    expect(first.setMaxUsers(12)).toBe(true);
+
+    const second = new ConfigStore();
+
+    expect(second.relays).toEqual([
+      {
+        id: expect.any(String),
+        url: "wss://relay.example",
+        enabled: false,
+      },
+    ]);
+    expect(second.announce).toBe(true);
+    expect(second.maxUsers).toBe(12);
+  });
+
+  test("ignores invalid persisted config entries", () => {
+    localStorage.setItem(
+      "cordn:v1:config",
+      JSON.stringify({
+        version: 1,
+        relays: [
+          { url: "javascript:alert(1)", enabled: true },
+          { url: "wss://relay.valid.example", enabled: true },
+        ],
+        announce: true,
+        maxUsers: 999,
+      }),
+    );
+
+    const store = new ConfigStore();
+
+    expect(store.relays.map((relay) => relay.url)).toEqual(["wss://relay.valid.example"]);
+    expect(store.announce).toBe(true);
+    expect(store.maxUsers).toBe(DEFAULT_MAX_USERS);
+  });
+
+  test("reset clears persisted config and restores defaults", () => {
+    const store = new ConfigStore();
+    store.removeRelay(store.relays[0].id);
+    store.addRelay("wss://relay.example");
+    store.setAnnouncement(true);
+
+    store.resetToDefaults();
+    const reloaded = new ConfigStore();
+
+    expect(reloaded.relays.map((relay) => relay.url)).toEqual(["wss://relay.damus.io"]);
+    expect(reloaded.announce).toBe(false);
   });
 });

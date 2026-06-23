@@ -25,7 +25,7 @@
   aria-label="Copy coordinator public key"
   onclick={copyPubkey}
 >
-  <span class="block text-[10px] uppercase tracking-[0.18em] text-[#617767]">pubkey</span>
+  <span class="block text-[10px] uppercase tracking-[0.18em] text-[#617767]">coordinator pubkey</span>
   <span class="block truncate">{truncated}</span>
   {#if copied}
     <span class="block text-xs text-[#f1f58f]">copied hex</span>

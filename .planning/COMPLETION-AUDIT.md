@@ -34,15 +34,15 @@ The live nsite publication requirement is not proven because deploy secrets are 
 Live nsite publish is blocked. GitHub deploy run `28003890153` completed successfully as a guarded skip:
 
 - `NBUNK_SECRET` was empty.
-- `NSYTE_RELAY` was empty.
-- `BLOSSOM_SERVER_URL` was empty.
+- `NSYTE_RELAYS` was empty.
+- `BLOSSOM_SERVER_URLS` was empty.
 - `Deploy to Nostr and Blossom` was skipped.
 
 Local environment check also showed:
 
 - `NBUNK_SECRET=missing`
-- `NSYTE_RELAY=missing`
-- `BLOSSOM_SERVER_URL=missing`
+- `NSYTE_RELAYS=missing`
+- `BLOSSOM_SERVER_URLS=missing`
 - `NSITE_NAME=missing`
 
 ## Remaining Action

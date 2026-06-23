@@ -1,5 +1,6 @@
 <script lang="ts">
   import LifecyclePanel from "./components/LifecyclePanel.svelte";
+  import DebugLogPanel from "./components/DebugLogPanel.svelte";
   import NpubDisplay from "./components/NpubDisplay.svelte";
   import PassphrasePrompt from "./components/PassphrasePrompt.svelte";
   import PersistencePanel from "./components/PersistencePanel.svelte";
@@ -21,8 +22,8 @@
     <div class="operator-shell mx-auto flex max-w-6xl flex-col gap-6" data-testid="operator-shell">
       <header class="operator-header flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p class="operator-kicker text-xs uppercase tracking-[0.24em] text-[#617767]">ContextVM relay coordinator</p>
-          <h1 class="operator-title mt-2 text-3xl uppercase text-[#d1ffd9] sm:text-5xl">Cordn Browser</h1>
+          <p class="operator-kicker text-xs uppercase tracking-[0.24em] text-[#617767]">Web-based MLS coordinator</p>
+          <h1 class="operator-title mt-2 text-3xl uppercase text-[#d1ffd9] sm:text-5xl">Cordn Ad-Hoc</h1>
         </div>
         <NpubDisplay identity={coordinatorStore.identity} />
       </header>
@@ -33,6 +34,7 @@
       {/if}
       <RelayConfigPanel config={configStore} coordinator={coordinatorStore} />
       <PersistencePanel coordinator={coordinatorStore} />
+      <DebugLogPanel coordinator={coordinatorStore} />
     </div>
   </main>
 {/if}

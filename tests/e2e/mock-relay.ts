@@ -1,5 +1,13 @@
 import { WebSocketServer, type WebSocket } from "ws";
 
+interface StoredEvent {
+  id?: string;
+  kind?: number;
+  pubkey?: string;
+  created_at?: number;
+  tags?: string[][];
+}
+
 export interface MockRelay {
   url: string;
   close: () => Promise<void>;
@@ -8,10 +16,16 @@ export interface MockRelay {
 export async function startMockRelay(port = 8765): Promise<MockRelay> {
   const server = new WebSocketServer({ port });
   const sockets = new Set<WebSocket>();
+  const events: StoredEvent[] = [];
+  const subscriptions = new Map<WebSocket, Array<{ id: string; filters: Filter[] }>>();
 
   server.on("connection", (socket) => {
     sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
+    subscriptions.set(socket, []);
+    socket.on("close", () => {
+      sockets.delete(socket);
+      subscriptions.delete(socket);
+    });
     socket.on("message", (raw) => {
       let message: unknown;
       try {
@@ -26,12 +40,31 @@ export async function startMockRelay(port = 8765): Promise<MockRelay> {
 
       const [type, second] = message;
       if (type === "REQ" && typeof second === "string") {
+        const filters = message.slice(2).filter(isFilter);
+        subscriptions.get(socket)?.push({ id: second, filters });
+        for (const event of events) {
+          if (filters.some((filter) => matchesFilter(event, filter))) {
+            socket.send(JSON.stringify(["EVENT", second, event]));
+          }
+        }
         socket.send(JSON.stringify(["EOSE", second]));
       }
 
       if (type === "EVENT") {
-        const eventId = typeof message[1]?.id === "string" ? message[1].id : "";
+        const event = isStoredEvent(message[1]) ? message[1] : null;
+        const eventId = event?.id ?? "";
+        if (event) {
+          events.push(event);
+          broadcastEvent(event, subscriptions);
+        }
         socket.send(JSON.stringify(["OK", eventId, true, ""]));
+      }
+
+      if (type === "CLOSE" && typeof second === "string") {
+        const socketSubscriptions = subscriptions.get(socket);
+        if (socketSubscriptions) {
+          subscriptions.set(socket, socketSubscriptions.filter((subscription) => subscription.id !== second));
+        }
       }
     });
   });
@@ -57,4 +90,67 @@ export async function startMockRelay(port = 8765): Promise<MockRelay> {
       });
     },
   };
+}
+
+function broadcastEvent(event: StoredEvent, subscriptions: Map<WebSocket, Array<{ id: string; filters: Filter[] }>>): void {
+  for (const [socket, socketSubscriptions] of subscriptions) {
+    if (socket.readyState !== 1) {
+      continue;
+    }
+
+    for (const subscription of socketSubscriptions) {
+      if (subscription.filters.some((filter) => matchesFilter(event, filter))) {
+        socket.send(JSON.stringify(["EVENT", subscription.id, event]));
+      }
+    }
+  }
+}
+
+function isStoredEvent(value: unknown): value is StoredEvent {
+  return typeof value === "object" && value !== null;
+}
+
+interface Filter {
+  ids?: string[];
+  kinds?: number[];
+  authors?: string[];
+  since?: number;
+  limit?: number;
+  [key: `#${string}`]: string[] | undefined;
+}
+
+function isFilter(value: unknown): value is Filter {
+  return typeof value === "object" && value !== null;
+}
+
+function matchesFilter(event: StoredEvent, filter: Filter): boolean {
+  if (filter.kinds && !filter.kinds.includes(event.kind ?? -1)) {
+    return false;
+  }
+
+  if (filter.authors && !filter.authors.includes(event.pubkey ?? "")) {
+    return false;
+  }
+
+  if (filter.ids && !filter.ids.includes(event.id ?? "")) {
+    return false;
+  }
+
+  if (typeof filter.since === "number" && (event.created_at ?? 0) < filter.since) {
+    return false;
+  }
+
+  for (const [key, values] of Object.entries(filter)) {
+    if (!key.startsWith("#") || !values?.length) {
+      continue;
+    }
+
+    const tagName = key.slice(1);
+    const eventTagValues = event.tags?.filter((tag) => tag[0] === tagName).map((tag) => tag[1]) ?? [];
+    if (!values.some((value: string) => eventTagValues.includes(value))) {
+      return false;
+    }
+  }
+
+  return true;
 }

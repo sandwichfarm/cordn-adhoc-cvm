@@ -21,9 +21,11 @@ describe("nsite deployment workflow", () => {
     expect(workflow).toContain("branches:");
     expect(workflow).toContain("- main");
     expect(workflow).toContain("- master");
-    expect(workflow).toContain("Skipping nsite deploy: set NBUNK_SECRET, NSYTE_RELAY, and BLOSSOM_SERVER_URL");
+    expect(workflow).toContain("Skipping nsite deploy: set NBUNK_SECRET, NSYTE_RELAYS, and BLOSSOM_SERVER_URLS");
     expect(workflow).toContain("sandwichfarm/nsite-action@v0.5.1");
     expect(workflow).toContain("nbunksec: ${{ secrets.NBUNK_SECRET }}");
+    expect(workflow).toContain("${{ secrets.NSYTE_RELAYS }}");
+    expect(workflow).toContain("${{ secrets.BLOSSOM_SERVER_URLS }}");
   });
 
   test("keeps the secrets helper executable", () => {

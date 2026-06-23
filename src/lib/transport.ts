@@ -1,15 +1,20 @@
 import { McpServer } from "@contextvm/mcp-sdk/server/mcp";
-import { PrivateKeySigner } from "@contextvm/sdk/signer";
+import type { JSONRPCMessage } from "@contextvm/mcp-sdk/types";
+import type { RelayHandler } from "@contextvm/sdk/core";
+import { ApplesauceRelayPool } from "@contextvm/sdk/relay";
 import { NostrServerTransport } from "@contextvm/sdk/transport";
+import type { NostrEvent } from "nostr-tools";
 import type { BrowserCoordinatorOptions } from "../config/config.svelte";
 import { createCoordinator, type Coordinator } from "../cordn/coordinator";
 import { createBrowserCoordinatorStorage } from "../cordn/coordinator/storage/browserSqliteStorage";
+import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
 import {
   CoordinatorAdapter,
   type AbuseProtectionOptions,
   type ResolveRequestEvent,
   registerCoordinatorMethods,
 } from "../cordn/server/coordinatorMethods";
+import { COORDINATOR_METHODS } from "../cordn/contracts";
 
 export interface RunningTransport {
   server: McpServer;
@@ -17,6 +22,23 @@ export interface RunningTransport {
   coordinator: Coordinator;
   adapter: CoordinatorAdapter;
   close: () => void;
+}
+
+export interface TransportDiagnostics {
+  onStarted?: (details: { publicKeyHex: string; relayUrls: string[] }) => void;
+  onNostrEvent?: (details: { summary: string }) => void;
+  onInboundMessage?: (details: { method: string; clientPubkey: string; summary: string }) => void;
+  onNostrPublish?: (details: { phase: "attempt" | "accepted"; summary: string }) => void;
+  onOutboundMessage?: (details: { type: string; summary: string; error?: string }) => void;
+  onOutboundError?: (error: Error) => void;
+  onClosed?: () => void;
+}
+
+interface InspectableNostrServerTransport {
+  processIncomingEvent: (event: NostrEvent) => Promise<void>;
+  getInternalStateForTesting: () => {
+    openStreamWriters: Map<string, { isActive: boolean }>;
+  };
 }
 
 function closeIfPresent(value: unknown): void {
@@ -44,16 +66,17 @@ function createBrowserAbuseProtection(options: BrowserCoordinatorOptions): Abuse
 
 export class TransportFactory {
   async create(
-    privateKeyHex: string,
+    privateKey: Uint8Array,
     relayUrls: string[],
     options: BrowserCoordinatorOptions,
     persistent: boolean,
+    diagnostics?: TransportDiagnostics,
   ): Promise<RunningTransport> {
     if (relayUrls.length === 0) {
       throw new Error("At least one enabled relay is required");
     }
 
-    const signer = new PrivateKeySigner(privateKeyHex);
+    const signer = new BrowserNostrSigner(privateKey);
     const server = new McpServer({
       name: "cordn-browser",
       version: "0.1.0",
@@ -62,9 +85,10 @@ export class TransportFactory {
       storage: await createBrowserCoordinatorStorage(persistent),
     });
 
+    const relayHandler = createInstrumentedRelayHandler(relayUrls, diagnostics);
     const transport = new NostrServerTransport({
       signer,
-      relayHandler: relayUrls,
+      relayHandler,
       serverInfo: {
         name: "cordn-browser",
         about: `Cordn coordinator running in a browser tab; max users ${options.maxUsers}`,
@@ -75,6 +99,40 @@ export class TransportFactory {
       oversizedTransfer: { enabled: true },
       openStream: { enabled: true },
     });
+    const inspectableTransport = transport as unknown as InspectableNostrServerTransport;
+    const processIncomingEvent = inspectableTransport.processIncomingEvent.bind(transport);
+    inspectableTransport.processIncomingEvent = async (event) => {
+      diagnostics?.onNostrEvent?.({
+        summary: summarizeNostrEvent(event),
+      });
+      await processIncomingEvent(event);
+    };
+    transport.addInboundMiddleware(async (message, ctx, forward) => {
+      const disabledStreamId = disableUnusedOpenStream(inspectableTransport, message);
+      diagnostics?.onInboundMessage?.({
+        method: getJsonRpcMethod(message),
+        clientPubkey: ctx.clientPubkey,
+        summary: summarizeJsonRpcMessage(message, disabledStreamId),
+      });
+      await forward(message);
+    });
+    const send = transport.send.bind(transport);
+    transport.send = async (message) => {
+      try {
+        await send(message);
+        diagnostics?.onOutboundMessage?.({
+          type: getJsonRpcMessageType(message),
+          summary: summarizeJsonRpcMessage(message),
+          error: getJsonRpcErrorMessage(message),
+        });
+      } catch (error) {
+        const normalizedError = error instanceof Error ? error : new Error(String(error));
+        diagnostics?.onOutboundError?.(normalizedError);
+        throw error;
+      }
+    };
+    transport.onerror = (error) => diagnostics?.onOutboundError?.(error);
+    transport.onclose = () => diagnostics?.onClosed?.();
     const resolveRequestEvent: ResolveRequestEvent = (requestEventId) =>
       transport.getNostrRequestEvent(requestEventId) ?? null;
     const adapter = new CoordinatorAdapter(
@@ -86,6 +144,10 @@ export class TransportFactory {
     registerCoordinatorMethods(server, adapter);
 
     await server.connect(transport);
+    diagnostics?.onStarted?.({
+      publicKeyHex: await signer.getPublicKey(),
+      relayUrls,
+    });
 
     return {
       server,
@@ -99,6 +161,194 @@ export class TransportFactory {
       },
     };
   }
+}
+
+function createInstrumentedRelayHandler(
+  relayUrls: string[],
+  diagnostics?: TransportDiagnostics,
+): RelayHandler {
+  const relayPool = new ApplesauceRelayPool(relayUrls);
+
+  return {
+    connect: () => relayPool.connect(),
+    disconnect: () => relayPool.disconnect(),
+    publish: async (event, options) => {
+      diagnostics?.onNostrPublish?.({
+        phase: "attempt",
+        summary: summarizeNostrEvent(event),
+      });
+      await relayPool.publish(event, options);
+      diagnostics?.onNostrPublish?.({
+        phase: "accepted",
+        summary: summarizeNostrEvent(event),
+      });
+    },
+    subscribe: (filters, onEvent, onEose) => relayPool.subscribe(filters, onEvent, onEose),
+    unsubscribe: () => relayPool.unsubscribe(),
+    getRelayUrls: () => relayPool.getRelayUrls(),
+  };
+}
+
+function getJsonRpcMethod(message: JSONRPCMessage): string {
+  if ("method" in message) {
+    return message.method;
+  }
+
+  return "response";
+}
+
+function getJsonRpcMessageType(message: JSONRPCMessage): string {
+  if ("method" in message) {
+    return message.method;
+  }
+
+  if ("error" in message) {
+    return "error response";
+  }
+
+  return "result response";
+}
+
+function getJsonRpcErrorMessage(message: JSONRPCMessage): string | undefined {
+  if (!("error" in message)) {
+    return undefined;
+  }
+
+  return message.error.message;
+}
+
+function summarizeNostrEvent(event: NostrEvent): string {
+  const tags = event.tags.map((tag) => tag.slice(0, 2).join("=")).slice(0, 6).join(" ");
+  const parts = [
+    `kind=${event.kind}`,
+    `id=${abbreviateHex(event.id)}`,
+    `pubkey=${abbreviateHex(event.pubkey)}`,
+  ];
+  if (tags) {
+    parts.push(`tags=${tags}`);
+  }
+
+  if (event.content.length > 0) {
+    parts.push(`content=${truncateForLog(event.content)}`);
+  }
+
+  return parts.join(" ");
+}
+
+function disableUnusedOpenStream(
+  transport: InspectableNostrServerTransport,
+  message: JSONRPCMessage,
+): string | undefined {
+  if (!("method" in message)) {
+    return undefined;
+  }
+
+  const params = getRecord(message.params ?? {});
+  const toolName = params.name;
+  const isStreamingTool =
+    message.method === "tools/call" &&
+    (
+      toolName === COORDINATOR_METHODS.subscribeGroupMessages ||
+      toolName === COORDINATOR_METHODS.subscribeManyGroupMessages
+    );
+  if (isStreamingTool) {
+    return undefined;
+  }
+
+  const meta = params._meta;
+  if (typeof meta !== "object" || meta === null) {
+    return undefined;
+  }
+
+  const requestEventId = getRecord(meta).requestEventId;
+  if (typeof requestEventId !== "string") {
+    return undefined;
+  }
+
+  const writers = transport.getInternalStateForTesting().openStreamWriters;
+  if (!writers.has(requestEventId)) {
+    return undefined;
+  }
+
+  writers.delete(requestEventId);
+  return requestEventId;
+}
+
+function summarizeJsonRpcMessage(message: JSONRPCMessage, disabledStreamId?: string): string {
+  const parts = [`type=${getJsonRpcMessageType(message)}`];
+  if ("id" in message) {
+    parts.push(`id=${String(message.id)}`);
+  }
+
+  if ("params" in message && typeof message.params === "object" && message.params !== null) {
+    parts.push(`params=${Object.keys(message.params).slice(0, 8).join(",")}`);
+    const params = getRecord(message.params);
+    if (message.method === "notifications/cancelled") {
+      const requestId = params.requestId;
+      if (typeof requestId === "string" || typeof requestId === "number") {
+        parts.push(`requestId=${String(requestId)}`);
+      }
+
+      const reason = params.reason;
+      if (typeof reason === "string" && reason.length > 0) {
+        parts.push(`reason=${truncateForLog(reason)}`);
+      }
+    }
+
+    const toolName = params.name;
+    if (message.method === "tools/call" && typeof toolName === "string") {
+      parts.push(`tool=${toolName}`);
+      const toolArguments = params.arguments;
+      if (typeof toolArguments === "object" && toolArguments !== null) {
+        parts.push(`args=${summarizeObjectKeys(toolArguments)}`);
+      }
+    }
+  }
+
+  if ("result" in message && typeof message.result === "object" && message.result !== null) {
+    parts.push(`result=${summarizeObjectKeys(message.result)}`);
+    const structuredContent = getRecord(message.result).structuredContent;
+    if (typeof structuredContent === "object" && structuredContent !== null) {
+      parts.push(`structured=${summarizeObjectKeys(structuredContent)}`);
+      const structuredRecord = getRecord(structuredContent);
+      for (const key of ["cursor", "gid", "at"]) {
+        const value = structuredRecord[key];
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          parts.push(`${key}=${String(value)}`);
+        }
+      }
+    }
+  }
+
+  if ("error" in message) {
+    parts.push(`error=${truncateForLog(message.error.message)}`);
+  }
+
+  if (disabledStreamId) {
+    parts.push(`disabled_unused_stream=${abbreviateHex(disabledStreamId)}`);
+  }
+
+  return parts.join(" ");
+}
+
+function summarizeObjectKeys(value: object): string {
+  return Object.keys(value).slice(0, 8).join(",");
+}
+
+function getRecord(value: object): Record<string, unknown> {
+  return value as Record<string, unknown>;
+}
+
+function truncateForLog(value: string): string {
+  return value.length > 180 ? `${value.slice(0, 180)}...` : value;
+}
+
+function abbreviateHex(value: string): string {
+  if (value.length <= 16) {
+    return value;
+  }
+
+  return `${value.slice(0, 8)}...${value.slice(-8)}`;
 }
 
 export const transportFactory = new TransportFactory();

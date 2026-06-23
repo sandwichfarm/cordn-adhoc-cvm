@@ -50,7 +50,7 @@ export const keyStorage = new KeyStorage();
 
 **D-02:** `WrongPassphraseError` is a named class (`class WrongPassphraseError extends Error`) for catch-clause type narrowing in the passphrase prompt flow.
 
-**D-03:** localStorage schema: single blob at key `cordn:v1:persistence`. Only the encrypted key is persisted — relay config is ephemeral (resets to default on page load). No separate entries; satisfies Pitfall 5 (atomic single-write).
+**D-03:** localStorage schema: single blob at key `cordn:v1:persistence`. Only the encrypted key is persisted in this blob. Superseded 2026-06-23: relay/runtime configuration now persists separately as non-secret browser config.
 
 **D-04:** PBKDF2 at `600_000` iterations (NIST SP 800-132 current recommendation). This satisfies the `≥ 100,000` requirement (PERSIST-03) while meeting the security bar recommended in PITFALLS.md. Defined as a named constant, not a magic number.
 
@@ -152,7 +152,7 @@ The following were decided autonomously (no user input available):
 
 3. **`PassphrasePrompt` replaces the main UI (not an overlay modal):** The app is a single-screen tool; showing a passphrase prompt as a full-page replacement is less visually noisy than a modal. Stays consistent with the "no gradients, no decorative chrome" aesthetic.
 
-4. **Relay config stays ephemeral:** Only the key is persisted. Relay list resets to default (`wss://relay.damus.io`) on every page load. Phase 2 requirements only mention key persistence; persisting relay config adds complexity without a requirement.
+4. **Superseded 2026-06-23:** Relay/runtime configuration now persists across page loads as non-secret browser config. Key material remains separately encrypted.
 
 5. **Native `<dialog>` for confirm:** No third-party modal library; no custom overlay component. `<dialog>` is the browser-native confirm pattern, aligns with the cypherpunk minimal-dependency aesthetic.
 

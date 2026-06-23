@@ -23,12 +23,12 @@ jobs:
         shell: bash
         env:
           NBUNK_SECRET: ${{ secrets.NBUNK_SECRET }}
-          NSYTE_RELAY: ${{ secrets.NSYTE_RELAY }}
-          BLOSSOM_SERVER_URL: ${{ secrets.BLOSSOM_SERVER_URL }}
+          NSYTE_RELAYS: ${{ secrets.NSYTE_RELAYS }}
+          BLOSSOM_SERVER_URLS: ${{ secrets.BLOSSOM_SERVER_URLS }}
         run: |
-          if [[ -z "$NBUNK_SECRET" || -z "$NSYTE_RELAY" || -z "$BLOSSOM_SERVER_URL" ]]; then
+          if [[ -z "$NBUNK_SECRET" || -z "$NSYTE_RELAYS" || -z "$BLOSSOM_SERVER_URLS" ]]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping nsite deploy: set NBUNK_SECRET, NSYTE_RELAY, and BLOSSOM_SERVER_URL repository secrets."
+            echo "Skipping nsite deploy: set NBUNK_SECRET, NSYTE_RELAYS, and BLOSSOM_SERVER_URLS repository secrets."
             exit 0
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -66,7 +66,7 @@ jobs:
           directory: ./dist
           fallback: /index.html
           relays: |
-            ${{ secrets.NSYTE_RELAY }}
+            ${{ secrets.NSYTE_RELAYS }}
           servers: |
-            ${{ secrets.BLOSSOM_SERVER_URL }}
+            ${{ secrets.BLOSSOM_SERVER_URLS }}
           name: ${{ secrets.NSITE_NAME }}

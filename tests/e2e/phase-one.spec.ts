@@ -14,7 +14,15 @@ test.afterAll(async () => {
 
 async function configureMockRelay(page: import("@playwright/test").Page): Promise<void> {
   await page.getByRole("button", { name: "Edit configuration" }).click();
-  await page.getByLabel(/Remove wss:\/\/relay\.damus\.io/).click();
+  if (await page.getByText(relay.url).isVisible()) {
+    return;
+  }
+
+  const removeDefaultRelay = page.getByLabel(/Remove wss:\/\/relay\.damus\.io/);
+  if (await removeDefaultRelay.isVisible()) {
+    await removeDefaultRelay.click();
+  }
+
   await page.getByPlaceholder("wss://relay.example").fill(relay.url);
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.getByText(relay.url)).toBeVisible();
@@ -76,6 +84,52 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await page.getByRole("button", { name: "Stop" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   await expect(page.getByTestId("resource-monitor")).toBeHidden();
+
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("debug-log-entries")).toContainText("single instance guard acquired");
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("idle");
+});
+
+test("persists relay and runtime configuration across reloads", async ({ page }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByLabel("Toggle announcement").check();
+  await page.getByTestId("max-users-input").fill("17");
+  await page.getByTestId("max-users-input").blur();
+
+  await page.reload();
+
+  await expect(page.getByText(relay.url)).toBeVisible();
+  await expect(page.getByText("wss://relay.damus.io")).toBeHidden();
+  await expect(page.getByLabel("Toggle announcement")).toBeChecked();
+  await expect(page.getByTestId("max-users-input")).toHaveValue("17");
+});
+
+test("blocks a second running coordinator for the same public key", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Enable persistence" }).click();
+  await page.getByPlaceholder("passphrase", { exact: true }).fill("single-instance-passphrase");
+  await page.getByPlaceholder("confirm passphrase").fill("single-instance-passphrase");
+  await page.getByRole("button", { name: "Save" }).click();
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("debug-log-entries")).toContainText("single instance guard acquired");
+
+  const secondPage = await page.context().newPage();
+  await secondPage.goto("/");
+  await secondPage.getByPlaceholder("passphrase", { exact: true }).fill("single-instance-passphrase");
+  await secondPage.getByRole("button", { name: "Unlock" }).click();
+  await configureMockRelay(secondPage);
+  await secondPage.getByRole("button", { name: "Start" }).click();
+
+  await expect(secondPage.getByTestId("status-badge")).toHaveText("idle");
+  await expect(secondPage.getByTestId("error-banner")).toContainText("cordn already running");
+  await expect(secondPage.getByTestId("debug-log-entries")).toContainText("cordn already running");
+
+  await secondPage.close();
 });
 
 test("rejects invalid relay URLs inline", async ({ page }) => {

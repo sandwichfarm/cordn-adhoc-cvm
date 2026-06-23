@@ -20,7 +20,7 @@ Deliver the Phase 2 security and persistence requirements:
 - `PBKDF2_ITERATIONS` is set to `600_000`.
 - `CoordinatorStore.destroy()` awaits transport stop first, then executes `keyManager.destroy()` and `keyStorage.clear()` in one synchronous block before any cache-cleanup awaits.
 - Relay status is optimistic: enabled relays move `connecting -> connected` on start success and `error` on start failure.
-- Relay config remains ephemeral; only the coordinator key is persisted.
+- Superseded 2026-06-23: Relay/runtime configuration persists as non-secret browser config; only the coordinator key uses encrypted persistence.
 
 ## Validation
 

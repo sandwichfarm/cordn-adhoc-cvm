@@ -95,7 +95,7 @@ All five gray areas were decided autonomously. Key judgment calls:
 - 600k PBKDF2 iterations over the 100k minimum
 - No `destroyed` state (reset-to-idle is simpler and meets requirements)
 - Full-page passphrase prompt instead of modal overlay
-- Relay config stays ephemeral (only key persisted, not relay list)
+- Superseded 2026-06-23: Relay/runtime configuration now persists as non-secret browser config; only key material remains separately encrypted.
 - Native `<dialog>` over custom modal component
 
 ## Deferred Ideas

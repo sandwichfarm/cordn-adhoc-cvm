@@ -21,7 +21,7 @@ status: passed
   - Deploy workflow concluded `success` as a guarded skip.
   - `Deploy to Nostr and Blossom` step was skipped because required secrets were empty.
 - Environment/repository secret check - inspected
-  - `NBUNK_SECRET`, `NSYTE_RELAY`, and `BLOSSOM_SERVER_URL` are missing locally.
+  - `NBUNK_SECRET`, `NSYTE_RELAYS`, and `BLOSSOM_SERVER_URLS` are missing locally.
   - `gh secret list --repo sandwichfarm/cordn-browser-cvm` returned no configured secrets.
 
 ## Known Gaps

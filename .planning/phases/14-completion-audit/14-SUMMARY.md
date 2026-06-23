@@ -14,4 +14,4 @@ completed: 2026-06-23
 
 ## Remaining Gaps
 
-- `NBUNK_SECRET`, `NSYTE_RELAY`, and `BLOSSOM_SERVER_URL` must be configured before live nsite publication can be proven.
+- `NBUNK_SECRET`, `NSYTE_RELAYS`, and `BLOSSOM_SERVER_URLS` must be configured before live nsite publication can be proven.

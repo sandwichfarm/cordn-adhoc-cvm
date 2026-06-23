@@ -44,9 +44,9 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 ## Context
 
 - **ContextVM SDK** (`@contextvm/sdk`) is the transport layer. `NostrServerTransport` wraps a Nostr keypair and relay list to present an MCP server endpoint over the network. It handles encryption, serialization, and relay management internally.
-- **nsite/nsyte** deploys static builds (Vite output) to Blossom file storage, publishing the root manifest as a Nostr event. The `nsite-action` GitHub Action handles CI deploy; it requires `NBUNK_SECRET` and `NSYTE_RELAY` secrets plus a Blossom server URL.
+- **nsite/nsyte** deploys static builds (Vite output) to Blossom file storage, publishing the root manifest as a Nostr event. The `nsite-action` GitHub Action handles CI deploy; it requires `NBUNK_SECRET`, `NSYTE_RELAYS`, and `BLOSSOM_SERVER_URLS` secrets.
 - **Completion audit**: `.planning/COMPLETION-AUDIT.md` maps the original objective to current evidence.
-  Live nsite publish remains unproven until `NBUNK_SECRET`, `NSYTE_RELAY`, and `BLOSSOM_SERVER_URL` are configured.
+  Live nsite publish remains unproven until `NBUNK_SECRET`, `NSYTE_RELAYS`, and `BLOSSOM_SERVER_URLS` are configured.
 - **Key persistence**: the coordinator nsec must never leave the browser unencrypted. Persistence is opt-in; when enabled, the key is encrypted with a user-supplied passphrase before writing to `localStorage`. The destroy action must zero-fill the in-memory key buffer and call `localStorage.removeItem` atomically.
 - **Destroy proof**: Playwright seeds Cache Storage before confirmed destroy and verifies the cache is removed alongside
   localStorage and regenerated identity checks.
