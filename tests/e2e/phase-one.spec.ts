@@ -40,6 +40,8 @@ test("generates copyable identity on first load", async ({ page }) => {
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   await expect(page.getByLabel("Toggle announcement")).not.toBeChecked();
   await expect(page.getByTestId("max-users-input")).toHaveValue("64");
+  await expect(page.getByTestId("storage-backend-select")).toHaveValue("memory");
+  await expect(page.getByTestId("message-buffer-input")).toHaveValue("1000");
 });
 
 test("operator shell does not overflow common viewports", async ({ page }) => {
@@ -71,7 +73,12 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await page.getByLabel("Toggle announcement").check();
   await page.getByTestId("max-users-input").fill("32");
   await page.getByTestId("max-users-input").blur();
-  await expect(page.getByTestId("max-users-state")).toContainText("32 key packages / identity");
+  await page.getByTestId("storage-backend-select").selectOption("indexeddb");
+  await page.getByTestId("message-buffer-input").fill("222");
+  await page.getByTestId("message-buffer-input").blur();
+  await expect(page.getByTestId("max-users-state")).toContainText(
+    "indexeddb storage · 222 buffered · 32 key packages / identity",
+  );
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");
@@ -80,6 +87,8 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId("lock-indicator")).toContainText("locked");
   await expect(page.getByLabel("Toggle announcement")).toBeDisabled();
   await expect(page.getByTestId("max-users-input")).toBeDisabled();
+  await expect(page.getByTestId("storage-backend-select")).toBeDisabled();
+  await expect(page.getByTestId("message-buffer-input")).toBeDisabled();
   await expect(page.getByTestId("resource-monitor")).toBeVisible();
   await expect(page.getByTestId("telemetry-client-streams")).toContainText("(est.)");
   await expect(page.getByTestId("telemetry-fanout-legs")).toContainText("(debug)");
@@ -103,6 +112,9 @@ test("persists relay and runtime configuration across reloads", async ({ page })
   await page.getByLabel("Toggle announcement").check();
   await page.getByTestId("max-users-input").fill("17");
   await page.getByTestId("max-users-input").blur();
+  await page.getByTestId("storage-backend-select").selectOption("indexeddb");
+  await page.getByTestId("message-buffer-input").fill("333");
+  await page.getByTestId("message-buffer-input").blur();
 
   await page.reload();
 
@@ -110,6 +122,8 @@ test("persists relay and runtime configuration across reloads", async ({ page })
   await expect(page.getByText("wss://relay.contextvm.org")).toBeHidden();
   await expect(page.getByLabel("Toggle announcement")).toBeChecked();
   await expect(page.getByTestId("max-users-input")).toHaveValue("17");
+  await expect(page.getByTestId("storage-backend-select")).toHaveValue("indexeddb");
+  await expect(page.getByTestId("message-buffer-input")).toHaveValue("333");
 });
 
 test("blocks a second running coordinator for the same public key", async ({ page }) => {

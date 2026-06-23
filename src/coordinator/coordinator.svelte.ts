@@ -1,5 +1,5 @@
 import { configStore } from "../config/config.svelte";
-import { clearPersistedCoordinatorState } from "../cordn/coordinator/storage/browserSqliteStorage";
+import { clearPersistedCoordinatorState } from "../cordn/coordinator/storage/browserCoordinatorStorage";
 import { KeyManager } from "../crypto/key-manager";
 import { keyStorage, WrongPassphraseError } from "../crypto/key-storage";
 import { transportFactory, type RunningTransport } from "../lib/transport";
@@ -132,7 +132,6 @@ export class CoordinatorStore {
         keyManager.getSecretKeyBytes(),
         configStore.enabledRelayUrls,
         configStore.coordinatorOptions,
-        this.persistenceEnabled,
         {
           onStarted: ({ publicKeyHex, relayUrls }) => {
             this.addDebugLog(

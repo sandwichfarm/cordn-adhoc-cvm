@@ -6,7 +6,7 @@ import { NostrServerTransport, type OpenStreamWriter } from "@contextvm/sdk/tran
 import type { NostrEvent } from "nostr-tools";
 import type { BrowserCoordinatorOptions } from "../config/config.svelte";
 import { createCoordinator, type Coordinator } from "../cordn/coordinator";
-import { createBrowserCoordinatorStorage } from "../cordn/coordinator/storage/browserSqliteStorage";
+import { createBrowserCoordinatorStorage } from "../cordn/coordinator/storage/browserCoordinatorStorage";
 import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
 import {
   CoordinatorAdapter,
@@ -72,7 +72,6 @@ export class TransportFactory {
     privateKey: Uint8Array,
     relayUrls: string[],
     options: BrowserCoordinatorOptions,
-    persistent: boolean,
     diagnostics?: TransportDiagnostics,
   ): Promise<RunningTransport> {
     if (relayUrls.length === 0) {
@@ -85,7 +84,10 @@ export class TransportFactory {
       version: "0.1.0",
     });
     const coordinator = createCoordinator({
-      storage: await createBrowserCoordinatorStorage(persistent),
+      storage: await createBrowserCoordinatorStorage({
+        backend: options.storageBackend,
+        messageBufferLimit: options.messageBufferLimit,
+      }),
     });
 
     const relayHandler = createInstrumentedRelayHandler(relayUrls, diagnostics);
@@ -94,7 +96,7 @@ export class TransportFactory {
       relayHandler,
       serverInfo: {
         name: "cordn-browser",
-        about: `Cordn coordinator running in a browser tab; key package quota ${options.maxUsers} per identity`,
+        about: `Cordn coordinator running in a browser tab; ${options.storageBackend} storage; key package quota ${options.maxUsers} per identity`,
       },
       isAnnouncedServer: options.announce,
       injectClientPubkey: true,

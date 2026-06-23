@@ -29,8 +29,12 @@ describe("ContextVM client round trip", () => {
     running = await transportFactory.create(
       keyManager.getSecretKeyBytes(),
       [relay.url],
-      { announce: false, maxUsers: 64 },
-      false,
+      {
+        announce: false,
+        maxUsers: 64,
+        storageBackend: "memory",
+        messageBufferLimit: 1_000,
+      },
       {
         onNostrEvent: ({ summary }) => diagnostics.push(`raw:${summary}`),
         onInboundMessage: ({ method, summary }) => diagnostics.push(`inbound:${method}:${summary}`),

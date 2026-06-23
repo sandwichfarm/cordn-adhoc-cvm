@@ -28,6 +28,14 @@ interface GroupLog {
   messages: GroupMessageRecord[];
 }
 
+export const DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT = 1_000;
+export const MIN_MEMORY_MESSAGE_BUFFER_LIMIT = 1;
+export const MAX_MEMORY_MESSAGE_BUFFER_LIMIT = 50_000;
+
+export interface InMemoryCoordinatorStorageOptions {
+  messageBufferLimit?: number;
+}
+
 export interface CoordinatorStorageSnapshot {
   version: 1;
   keyPackages: Array<{
@@ -85,13 +93,17 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   private readonly welcomesByIdentity = new Map<string, WelcomeQueueRecord[]>();
   private readonly joinRequestsByGroup = new Map<string, JoinRequestRecord[]>();
   private readonly groups = new Map<string, GroupLog>();
+  private readonly messageBufferLimit: number;
 
   constructor(
     snapshot?: CoordinatorStorageSnapshot | null,
     private readonly onChange?: (snapshot: CoordinatorStorageSnapshot) => void,
+    options: InMemoryCoordinatorStorageOptions = {},
   ) {
+    this.messageBufferLimit = normalizeMessageBufferLimit(options.messageBufferLimit);
     if (snapshot) {
       this.restoreSnapshot(snapshot);
+      this.enforceMessageBufferLimit();
     }
   }
 
@@ -353,6 +365,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     group.routing.lastMessageCursor = record.cursor;
 
     this.groups.set(params.groupId, group);
+    this.enforceMessageBufferLimit();
 
     this.persist();
     return record;
@@ -500,7 +513,63 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     }
   }
 
+  private enforceMessageBufferLimit(): boolean {
+    let totalMessages = 0;
+    for (const group of this.groups.values()) {
+      totalMessages += group.messages.length;
+    }
+
+    let evicted = false;
+    while (totalMessages > this.messageBufferLimit) {
+      const group = this.findGroupWithOldestMessage();
+      if (!group) {
+        break;
+      }
+
+      group.messages.shift();
+      totalMessages -= 1;
+      evicted = true;
+    }
+
+    return evicted;
+  }
+
+  private findGroupWithOldestMessage(): GroupLog | null {
+    let oldestGroup: GroupLog | null = null;
+    let oldestMessage: GroupMessageRecord | null = null;
+
+    for (const group of this.groups.values()) {
+      const message = group.messages[0];
+      if (!message) {
+        continue;
+      }
+
+      if (
+        !oldestMessage ||
+        message.createdAt < oldestMessage.createdAt ||
+        (message.createdAt === oldestMessage.createdAt && message.cursor < oldestMessage.cursor)
+      ) {
+        oldestMessage = message;
+        oldestGroup = group;
+      }
+    }
+
+    return oldestGroup;
+  }
+
   private persist(): void {
     this.onChange?.(this.toSnapshot());
   }
+}
+
+function normalizeMessageBufferLimit(value: number | undefined): number {
+  if (!Number.isSafeInteger(value)) {
+    return DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT;
+  }
+
+  const safeValue = value as number;
+  return Math.min(
+    MAX_MEMORY_MESSAGE_BUFFER_LIMIT,
+    Math.max(MIN_MEMORY_MESSAGE_BUFFER_LIMIT, safeValue),
+  );
 }
