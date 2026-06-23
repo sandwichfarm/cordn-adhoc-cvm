@@ -15,6 +15,7 @@ Phase 10 adds a live upstream parity check for Cordn `src/server` method names.
 Phase 11 makes the max-users guard truthful by sourcing and labeling its live floor as active subscriptions.
 Phase 12 adds a visual operator shell and screenshot-backed layout guard for the minimal cypherpunk GUI.
 Phase 13 proves the confirmed destroy flow clears browser Cache Storage, not only localStorage.
+Phase 14 audits the full objective evidence and records the remaining live nsite deploy-secret blocker.
 
 ## Phases
 
@@ -31,6 +32,7 @@ Phase 13 proves the confirmed destroy flow clears browser Cache Storage, not onl
 - [x] **Phase 11: Subscription Limit Truthfulness** - Max-users guard is sourced from live active subscriptions and labeled accurately
 - [x] **Phase 12: Visual Operator Shell** - Screenshot-backed shell polish and no-overflow Playwright guard
 - [x] **Phase 13: Destroy Cache Proof** - Playwright seeds Cache Storage and verifies confirmed destroy clears it
+- [x] **Phase 14: Completion Audit** - Requirement-by-requirement proof and live deploy blocker record
 
 ## Phase Details
 
@@ -241,6 +243,21 @@ Plans:
 - [x] 13-01: Destroy cache proof - seed browser cache, confirm destroy, assert cache removal
 **UI hint**: no
 
+### Phase 14: Completion Audit
+**Goal**: The original objective has an inspectable proof map that separates proven work from the remaining live deploy blocker
+**Depends on**: Phase 13
+**Requirements**: CICD-01, CICD-03, CICD-04, CICD-05, CICD-06
+**Success Criteria** (what must be TRUE):
+  1. Local CI and upstream parity are re-run for the pushed commit
+  2. GitHub CI and deploy run IDs are recorded
+  3. The deploy guarded-skip reason is recorded without exposing secrets
+  4. The remaining action to prove live nsite publication is explicit
+**Plans**: 1 plan
+
+Plans:
+- [x] 14-01: Completion audit - requirement map, run IDs, deploy-secret blocker
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -258,3 +275,4 @@ Plans:
 | 11. Subscription Limit Truthfulness | 1/1 | Complete | 2026-06-23 |
 | 12. Visual Operator Shell | 1/1 | Complete | 2026-06-23 |
 | 13. Destroy Cache Proof | 1/1 | Complete | 2026-06-23 |
+| 14. Completion Audit | 1/1 | Complete | 2026-06-23 |

@@ -44,7 +44,9 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 ## Context
 
 - **ContextVM SDK** (`@contextvm/sdk`) is the transport layer. `NostrServerTransport` wraps a Nostr keypair and relay list to present an MCP server endpoint over the network. It handles encryption, serialization, and relay management internally.
-- **nsite/nsyte** deploys static builds (Vite output) to Blossom file storage, publishing the root manifest as a Nostr event. The `nsite-action` GitHub Action handles CI deploy; it requires `NSYTE_BUNKER_URL` and `NSYTE_RELAY` secrets plus a Blossom server URL.
+- **nsite/nsyte** deploys static builds (Vite output) to Blossom file storage, publishing the root manifest as a Nostr event. The `nsite-action` GitHub Action handles CI deploy; it requires `NBUNK_SECRET` and `NSYTE_RELAY` secrets plus a Blossom server URL.
+- **Completion audit**: `.planning/COMPLETION-AUDIT.md` maps the original objective to current evidence.
+  Live nsite publish remains unproven until `NBUNK_SECRET`, `NSYTE_RELAY`, and `BLOSSOM_SERVER_URL` are configured.
 - **Key persistence**: the coordinator nsec must never leave the browser unencrypted. Persistence is opt-in; when enabled, the key is encrypted with a user-supplied passphrase before writing to `localStorage`. The destroy action must zero-fill the in-memory key buffer and call `localStorage.removeItem` atomically.
 - **Destroy proof**: Playwright seeds Cache Storage before confirmed destroy and verifies the cache is removed alongside
   localStorage and regenerated identity checks.
@@ -83,6 +85,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | Subscription-floor max-users guard | The browser can observe active subscriptions today; authoritative MLS membership is not exposed by the current adapter | Pending |
 | Visual operator shell | A shell-level grid/rail treatment gives the minimal GUI a distinctive cypherpunk operator-console direction without adding controls | Pending |
 | Destroy Cache Storage proof | The destroy e2e seeds Cache Storage and verifies confirmed destroy removes it | Pending |
+| Completion audit | Requirement evidence is recorded with the deploy-secret blocker called out explicitly | Pending |
 
 ---
-*Last updated: 2026-06-23 after Phase 13 destroy cache proof*
+*Last updated: 2026-06-23 after Phase 14 completion audit*

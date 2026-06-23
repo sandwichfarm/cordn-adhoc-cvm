@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: complete
-stopped_at: Phase 13 destroy cache proof implemented locally; push and live deploy still remain
-last_updated: "2026-06-23T07:28:00.000Z"
-last_activity: 2026-06-23 - Destroy Playwright test now seeds and verifies Cache Storage cleanup
+stopped_at: Phase 14 completion audit recorded; live nsite publish still requires repository secrets
+last_updated: "2026-06-23T07:38:00.000Z"
+last_activity: 2026-06-23 - Completion audit separates proven objective items from live deploy-secret blocker
 progress:
-  total_phases: 13
-  completed_phases: 13
-  total_plans: 20
-  completed_plans: 20
+  total_phases: 14
+  completed_phases: 14
+  total_plans: 21
+  completed_plans: 21
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** A single browser tab acts as a fully functional, self-sovereign Cordn coordinator reachable over Nostr relays — no backend, no account, no installation.
-**Current focus:** Objective gap closure - remote push and live deploy remain
+**Current focus:** Objective gap closure - live nsite publish remains
 
 ## Current Position
 
-Phase: 13 of 13 (Destroy Cache Proof)
+Phase: 14 of 14 (Completion Audit)
 Plan: 1 of 1 in current phase
 Status: Complete locally, broader objective incomplete
-Last activity: 2026-06-23 - Destroy Playwright test now seeds and verifies Cache Storage cleanup
+Last activity: 2026-06-23 - Completion audit separates proven objective items from live deploy-secret blocker
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 20
+- Total plans completed: 21
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -72,6 +72,7 @@ Recent decisions affecting current work:
 - Phase 11: The max-users edit floor is wired to active subscriptions and labeled as such, not as authoritative MLS membership.
 - Phase 12: The GUI has a screenshot-verified operator shell and a Playwright no-overflow guard for desktop/mobile viewports.
 - Phase 13: Confirmed destroy now has Playwright proof for Cache Storage cleanup in addition to localStorage cleanup.
+- Phase 14: `.planning/COMPLETION-AUDIT.md` records requirement evidence and the remaining live nsite deploy-secret blocker.
 
 ### Pending Todos
 
@@ -79,8 +80,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- No Git remote is configured, so pushing the current local implementation is blocked until a remote is added.
-- Production nsite deploy requires repository secrets and a successful GitHub Actions run on `main` or `master`.
+- Production nsite publication requires repository secrets. The deploy workflow currently succeeds as a guarded skip.
 - Authoritative active user count is not yet derived from real Cordn group membership.
 
 ## Deferred Items
