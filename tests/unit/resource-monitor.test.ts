@@ -27,12 +27,15 @@ class EventTransport {
   }
 }
 
-function runningTransport(transport: EventTransport): RunningTransport {
+function runningTransport(
+  transport: EventTransport,
+  adapter: Partial<RunningTransport["adapter"]> = {},
+): RunningTransport {
   return {
     server: {} as RunningTransport["server"],
     transport: transport as unknown as RunningTransport["transport"],
     coordinator: {} as RunningTransport["coordinator"],
-    adapter: {} as RunningTransport["adapter"],
+    adapter: adapter as RunningTransport["adapter"],
     close: vi.fn(),
   };
 }
@@ -66,6 +69,7 @@ describe("ResourceMonitor", () => {
     source.emit("event");
 
     expect(monitor.subscriptionCount).toBe(1);
+    expect(monitor.groupSubscriptionLegCount).toBe(1);
     expect(monitor.messageRate).toBe(2);
     expect(monitor.memoryBytes).toBe(42 * 1_048_576);
 
@@ -87,6 +91,7 @@ describe("ResourceMonitor", () => {
     source.emit("request");
 
     expect(monitor.subscriptionCount).toBe(0);
+    expect(monitor.groupSubscriptionLegCount).toBe(0);
     expect(monitor.messageRate).toBe(0);
     expect(monitor.memoryBytes).toBeNull();
     expect(source.listenerCount("subscribed")).toBe(0);
@@ -99,5 +104,27 @@ describe("ResourceMonitor", () => {
     monitor.start(runningTransport(new EventTransport()));
 
     expect(monitor.memoryBytes).toBeNull();
+  });
+
+  test("tracks active stream and fan-out leg metrics from adapter telemetry", () => {
+    let sink: Parameters<RunningTransport["adapter"]["setTelemetrySink"]>[0] | undefined;
+    const adapter: Partial<RunningTransport["adapter"]> = {
+      setTelemetrySink: vi.fn((nextSink) => {
+        sink = nextSink;
+      }),
+    };
+    const monitor = new ResourceMonitor();
+
+    monitor.start(runningTransport(new EventTransport(), adapter));
+    sink?.setSubscriptionMetrics?.({ activeStreams: 1, groupLegs: 34 });
+
+    expect(monitor.subscriptionCount).toBe(1);
+    expect(monitor.groupSubscriptionLegCount).toBe(34);
+
+    monitor.stop();
+
+    expect(adapter.setTelemetrySink).toHaveBeenLastCalledWith();
+    expect(monitor.subscriptionCount).toBe(0);
+    expect(monitor.groupSubscriptionLegCount).toBe(0);
   });
 });

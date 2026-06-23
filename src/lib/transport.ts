@@ -94,7 +94,7 @@ export class TransportFactory {
       relayHandler,
       serverInfo: {
         name: "cordn-browser",
-        about: `Cordn coordinator running in a browser tab; max users ${options.maxUsers}`,
+        about: `Cordn coordinator running in a browser tab; key package quota ${options.maxUsers} per identity`,
       },
       isAnnouncedServer: options.announce,
       injectClientPubkey: true,

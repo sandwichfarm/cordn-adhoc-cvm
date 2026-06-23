@@ -14,6 +14,7 @@ type BrowserPerformance = Performance & {
 
 export class ResourceMonitor {
   subscriptionCount = $state(0);
+  groupSubscriptionLegCount = $state(0);
   messageRate = $state(0);
   memoryBytes = $state<number | null>(null);
 
@@ -27,8 +28,13 @@ export class ResourceMonitor {
     if (typeof transport.adapter.setTelemetrySink === "function") {
       transport.adapter.setTelemetrySink({
         recordOperation: () => this.recordMessage(),
+        setSubscriptionMetrics: (metrics) => {
+          this.subscriptionCount = metrics.activeStreams;
+          this.groupSubscriptionLegCount = metrics.groupLegs;
+        },
         setActiveSubscriptions: (count) => {
           this.subscriptionCount = count;
+          this.groupSubscriptionLegCount = count;
         },
       });
       this.cleanupHandlers.push(() => transport.adapter.setTelemetrySink());
@@ -52,6 +58,7 @@ export class ResourceMonitor {
 
     this.messageTimes = [];
     this.subscriptionCount = 0;
+    this.groupSubscriptionLegCount = 0;
     this.messageRate = 0;
     this.memoryBytes = null;
   }
@@ -59,9 +66,11 @@ export class ResourceMonitor {
   private bindTransportEvents(source: TransportEventSource): void {
     this.bind(source, "subscribed", () => {
       this.subscriptionCount += 1;
+      this.groupSubscriptionLegCount += 1;
     });
     this.bind(source, "unsubscribed", () => {
       this.subscriptionCount = Math.max(0, this.subscriptionCount - 1);
+      this.groupSubscriptionLegCount = Math.max(0, this.groupSubscriptionLegCount - 1);
     });
     ["message", "event", "request"].forEach((event) => {
       this.bind(source, event, () => this.recordMessage());

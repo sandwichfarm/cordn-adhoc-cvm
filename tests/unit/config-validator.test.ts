@@ -25,17 +25,13 @@ describe("validateRelayUrl", () => {
 
 describe("validateMaxUsers", () => {
   test("accepts the default browser limit", () => {
-    expect(validateMaxUsers(DEFAULT_MAX_USERS, 0)).toBeNull();
+    expect(validateMaxUsers(DEFAULT_MAX_USERS)).toBeNull();
   });
 
   test.each([0, 1.5, Number.NaN, BROWSER_MAX_USERS_CAP + 1])(
-    "rejects invalid max users value %s",
+    "rejects invalid key-package quota value %s",
     (value) => {
-      expect(validateMaxUsers(value, 0)).toEqual(expect.any(String));
+      expect(validateMaxUsers(value)).toEqual(expect.any(String));
     },
   );
-
-  test("rejects reducing below the active subscription count", () => {
-    expect(validateMaxUsers(3, 4)).toBe("Maximum users cannot be below 4 active subscriptions");
-  });
 });

@@ -38,6 +38,11 @@ export interface CoordinatorOptions {
   welcomeMaxAgeMs?: number;
 }
 
+export interface ActiveSubscriptionMetrics {
+  activeStreams: number;
+  groupLegs: number;
+}
+
 function decodeOpaqueMessage(opaqueMessage: Uint8Array): MlsMessage {
   const decoded = mlsMessageDecoder(opaqueMessage, 0);
   if (!decoded) {
@@ -494,12 +499,23 @@ export class Coordinator {
     return this.storage.getGroupRouting(groupId);
   }
 
-  getActiveSubscriptionCount(): number {
-    let count = 0;
+  getActiveSubscriptionMetrics(): ActiveSubscriptionMetrics {
+    const activeSubscribers = new Set<GroupMessageSubscriber>();
+    let groupLegs = 0;
     for (const subscribers of this.groupSubscribers.values()) {
-      count += subscribers.size;
+      groupLegs += subscribers.size;
+      for (const subscriber of subscribers) {
+        activeSubscribers.add(subscriber);
+      }
     }
-    return count;
+    return {
+      activeStreams: activeSubscribers.size,
+      groupLegs,
+    };
+  }
+
+  getActiveSubscriptionCount(): number {
+    return this.getActiveSubscriptionMetrics().groupLegs;
   }
 }
 

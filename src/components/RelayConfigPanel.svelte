@@ -152,7 +152,7 @@
     <div class="mb-4 flex items-center justify-between gap-4">
       <h3 class="text-xs uppercase tracking-[0.18em] text-[#87ff9f]">Runtime options</h3>
       <span class="border border-[#21482b] px-3 py-1 text-xs uppercase text-[#a7b0aa]" data-testid="max-users-state">
-        {config.activeSubscriptionCount}/{config.maxUsers} active subscriptions
+        {config.maxUsers} key packages / identity
       </span>
     </div>
 
@@ -170,7 +170,7 @@
       </label>
 
       <label class="grid gap-2 border border-[#16331f] bg-[#050805] p-3 text-sm text-[#d1ffd9]">
-        <span class="uppercase tracking-[0.12em] text-[#6d746f]">maximum users</span>
+        <span class="uppercase tracking-[0.12em] text-[#6d746f]">key-package quota</span>
         <input
           class="border border-[#21482b] bg-black px-3 py-2 text-[#87ff9f] outline-none focus:border-[#87ff9f] disabled:cursor-not-allowed disabled:text-[#4b554e]"
           type="number"
@@ -179,7 +179,7 @@
           step="1"
           value={config.maxUsers}
           disabled={!editingAllowed}
-          aria-label="Maximum users"
+          aria-label="Key-package quota"
           data-testid="max-users-input"
           onchange={updateMaxUsers}
         />

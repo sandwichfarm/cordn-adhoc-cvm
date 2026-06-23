@@ -8,11 +8,6 @@
   import ResourceMonitor from "./components/ResourceMonitor.svelte";
   import { configStore } from "./config/config.svelte";
   import { coordinatorStore } from "./coordinator/coordinator.svelte";
-  import { resourceMonitor } from "./coordinator/resource-monitor.svelte";
-
-  $effect(() => {
-    configStore.setActiveSubscriptionCount(resourceMonitor.subscriptionCount);
-  });
 </script>
 
 {#if coordinatorStore.loadState === "prompting"}

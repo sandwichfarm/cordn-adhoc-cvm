@@ -26,21 +26,17 @@ export const MIN_MAX_USERS = 1;
 export const DEFAULT_MAX_USERS = 64;
 export const BROWSER_MAX_USERS_CAP = 256;
 
-export function validateMaxUsers(value: number, activeSubscriptionCount: number): string | null {
+export function validateMaxUsers(value: number): string | null {
   if (!Number.isSafeInteger(value)) {
-    return "Maximum users must be a whole number";
+    return "Key-package quota must be a whole number";
   }
 
   if (value < MIN_MAX_USERS) {
-    return `Maximum users must be at least ${MIN_MAX_USERS}`;
+    return `Key-package quota must be at least ${MIN_MAX_USERS}`;
   }
 
   if (value > BROWSER_MAX_USERS_CAP) {
-    return `Browser limit is ${BROWSER_MAX_USERS_CAP} users`;
-  }
-
-  if (value < activeSubscriptionCount) {
-    return `Maximum users cannot be below ${activeSubscriptionCount} active subscriptions`;
+    return `Browser limit is ${BROWSER_MAX_USERS_CAP} key packages per identity`;
   }
 
   return null;

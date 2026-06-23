@@ -156,35 +156,71 @@ describe("browser Cordn server adapter", () => {
     expect(recordOperation).toHaveBeenCalledWith("postGroupMessage");
   });
 
-  test("reports active subscription count to browser telemetry", async () => {
-    const setActiveSubscriptions = vi.fn();
+  test("reports active stream metrics to browser telemetry", async () => {
+    const setSubscriptionMetrics = vi.fn();
     const adapter = new CoordinatorAdapter(new Coordinator());
 
-    adapter.setTelemetrySink({ setActiveSubscriptions });
+    adapter.setTelemetrySink({ setSubscriptionMetrics });
 
     await expect(
       adapter.subscribeGroupMessages({ gid: "group-telemetry" }, createStreamingExtra()),
     ).rejects.toThrow("stream stopped");
 
-    expect(setActiveSubscriptions).toHaveBeenCalledTimes(3);
-    expect(setActiveSubscriptions.mock.calls.map(([count]) => count)).toEqual([0, 1, 0]);
+    expect(setSubscriptionMetrics).toHaveBeenCalledTimes(3);
+    expect(setSubscriptionMetrics.mock.calls.map(([metrics]) => metrics)).toEqual([
+      { activeStreams: 0, groupLegs: 0 },
+      { activeStreams: 1, groupLegs: 1 },
+      { activeStreams: 0, groupLegs: 0 },
+    ]);
   });
 
-  test("reports active subscription count after external stream cancellation", async () => {
-    const setActiveSubscriptions = vi.fn();
+  test("reports active stream metrics after external stream cancellation", async () => {
+    const setSubscriptionMetrics = vi.fn();
     const adapter = new CoordinatorAdapter(new Coordinator());
     const { extra, stream } = createExternallyAbortableStreamingExtra();
 
-    adapter.setTelemetrySink({ setActiveSubscriptions });
+    adapter.setTelemetrySink({ setSubscriptionMetrics });
     const subscription = adapter.subscribeGroupMessages({ gid: "group-telemetry" }, extra);
     await vi.waitFor(() => {
-      expect(setActiveSubscriptions.mock.calls.map(([count]) => count)).toContain(1);
+      expect(setSubscriptionMetrics.mock.calls.map(([metrics]) => metrics)).toContainEqual({
+        activeStreams: 1,
+        groupLegs: 1,
+      });
     });
 
     await stream.abort("client cancelled");
     await subscription;
 
-    expect(setActiveSubscriptions.mock.calls.map(([count]) => count)).toEqual([0, 1, 0]);
+    expect(setSubscriptionMetrics.mock.calls.map(([metrics]) => metrics)).toEqual([
+      { activeStreams: 0, groupLegs: 0 },
+      { activeStreams: 1, groupLegs: 1 },
+      { activeStreams: 0, groupLegs: 0 },
+    ]);
+  });
+
+  test("counts one multi-group subscription as one active stream with many fan-out legs", async () => {
+    const setSubscriptionMetrics = vi.fn();
+    const adapter = new CoordinatorAdapter(new Coordinator());
+    const { extra, stream } = createExternallyAbortableStreamingExtra();
+    const groups = Array.from({ length: 34 }, (_, index) => ({ gid: `group-${index}` }));
+
+    adapter.setTelemetrySink({ setSubscriptionMetrics });
+    const subscription = adapter.subscribeManyGroupMessages({ groups }, extra);
+    await vi.waitFor(() => {
+      expect(setSubscriptionMetrics.mock.calls.map(([metrics]) => metrics)).toContainEqual({
+        activeStreams: 1,
+        groupLegs: 34,
+      });
+    });
+
+    await stream.abort("client cancelled");
+    await subscription;
+
+    expect(setSubscriptionMetrics.mock.calls.map(([metrics]) => metrics)).toEqual([
+      { activeStreams: 0, groupLegs: 0 },
+      { activeStreams: 1, groupLegs: 34 },
+      { activeStreams: 0, groupLegs: 0 },
+    ]);
   });
 
   test("enforces injected caller identity before handling methods", () => {

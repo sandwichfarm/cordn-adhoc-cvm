@@ -22,23 +22,11 @@ describe("ConfigStore runtime limits", () => {
     expect(store.coordinatorOptions.announce).toBe(true);
   });
 
-  test("rejects lowering max users below active subscriptions", () => {
-    const store = new ConfigStore();
-    store.setActiveSubscriptionCount(5);
-
-    expect(store.setMaxUsers(4)).toBe(false);
-    expect(store.limitError).toBe("Maximum users cannot be below 5 active subscriptions");
-    expect(store.maxUsers).toBe(DEFAULT_MAX_USERS);
-  });
-
-  test("raises max users when active subscription count exceeds the previous limit", () => {
+  test("validates key-package quota without subscription telemetry coupling", () => {
     const store = new ConfigStore();
 
-    expect(store.setMaxUsers(2)).toBe(true);
-    store.setActiveSubscriptionCount(3);
-
-    expect(store.activeSubscriptionCount).toBe(3);
-    expect(store.maxUsers).toBe(3);
+    expect(store.setMaxUsers(4)).toBe(true);
+    expect(store.maxUsers).toBe(4);
     expect(store.limitError).toBeNull();
   });
 

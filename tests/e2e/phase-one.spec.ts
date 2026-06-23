@@ -71,7 +71,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await page.getByLabel("Toggle announcement").check();
   await page.getByTestId("max-users-input").fill("32");
   await page.getByTestId("max-users-input").blur();
-  await expect(page.getByTestId("max-users-state")).toContainText("0/32 active subscriptions");
+  await expect(page.getByTestId("max-users-state")).toContainText("32 key packages / identity");
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");
@@ -81,7 +81,8 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByLabel("Toggle announcement")).toBeDisabled();
   await expect(page.getByTestId("max-users-input")).toBeDisabled();
   await expect(page.getByTestId("resource-monitor")).toBeVisible();
-  await expect(page.getByTestId("telemetry-subscriptions")).toContainText("(est.)");
+  await expect(page.getByTestId("telemetry-client-streams")).toContainText("(est.)");
+  await expect(page.getByTestId("telemetry-fanout-legs")).toContainText("(debug)");
   await expect(page.getByTestId("telemetry-message-rate")).toContainText("/min (est.)");
   await expect(page.getByTestId("telemetry-memory")).toContainText(/unavailable|MB \(est\.\)/);
 

@@ -11,7 +11,10 @@ import {
 
 import { isLastResortKeyPackage } from "../lastResortKeyPackage";
 import type { GroupMessageRecord } from "../coordinator/types";
-import { Coordinator } from "../coordinator/coordinator";
+import {
+  Coordinator,
+  type ActiveSubscriptionMetrics,
+} from "../coordinator/coordinator";
 import {
   consumeKeyPackageInputSchema,
   consumeKeyPackageOutputSchema,
@@ -69,6 +72,7 @@ export interface AbuseProtectionOptions {
 
 export interface CoordinatorTelemetrySink {
   recordOperation?: (methodName: string) => void;
+  setSubscriptionMetrics?: (metrics: ActiveSubscriptionMetrics) => void;
   setActiveSubscriptions?: (count: number) => void;
 }
 
@@ -281,9 +285,13 @@ export class CoordinatorAdapter {
   }
 
   private recordSubscriptionCount(): void {
-    this.telemetry?.setActiveSubscriptions?.(
-      this.coordinator.getActiveSubscriptionCount(),
-    );
+    const metrics = this.coordinator.getActiveSubscriptionMetrics();
+    this.telemetry?.setSubscriptionMetrics?.(metrics);
+    this.telemetry?.setActiveSubscriptions?.(metrics.activeStreams);
+  }
+
+  private getSubscriptionLogMetrics(): ActiveSubscriptionMetrics {
+    return this.coordinator.getActiveSubscriptionMetrics();
   }
 
   assertWithinRateLimit(extra: ToolExtra, methodName: string): void {
@@ -716,7 +724,7 @@ export class CoordinatorAdapter {
       {
         type: "subscription_start",
         groupId,
-        activeSubscriptions: this.coordinator.getActiveSubscriptionCount(),
+        ...this.getSubscriptionLogMetrics(),
         clientPubkey: clientPubkeyLabel,
       },
       "group message subscription started",
@@ -742,7 +750,7 @@ export class CoordinatorAdapter {
           type: "subscription_end",
           groupId,
           reason,
-          activeSubscriptions: this.coordinator.getActiveSubscriptionCount(),
+          ...this.getSubscriptionLogMetrics(),
           clientPubkey: clientPubkeyLabel,
         },
         "group message subscription ended",
@@ -827,7 +835,7 @@ export class CoordinatorAdapter {
         type: "subscription_start",
         groupIds: input.groups.map((group) => group.gid),
         groupCount: input.groups.length,
-        activeSubscriptions: this.coordinator.getActiveSubscriptionCount(),
+        ...this.getSubscriptionLogMetrics(),
         clientPubkey: clientPubkeyLabel,
       },
       "multi-group message subscription started",
@@ -852,7 +860,7 @@ export class CoordinatorAdapter {
           groupIds: input.groups.map((group) => group.gid),
           groupCount: input.groups.length,
           reason,
-          activeSubscriptions: this.coordinator.getActiveSubscriptionCount(),
+          ...this.getSubscriptionLogMetrics(),
           clientPubkey: clientPubkeyLabel,
         },
         "multi-group message subscription ended",

@@ -31,7 +31,6 @@ export class ConfigStore {
   limitError = $state<string | null>(null);
   announce = $state(false);
   maxUsers = $state(DEFAULT_MAX_USERS);
-  activeSubscriptionCount = $state(0);
 
   constructor() {
     this.loadPersistedConfig();
@@ -101,7 +100,7 @@ export class ConfigStore {
   }
 
   setMaxUsers(value: number): boolean {
-    const error = validateMaxUsers(value, this.activeSubscriptionCount);
+    const error = validateMaxUsers(value);
     if (error) {
       this.limitError = error;
       return false;
@@ -113,15 +112,6 @@ export class ConfigStore {
     return true;
   }
 
-  setActiveSubscriptionCount(value: number): void {
-    this.activeSubscriptionCount = Math.max(0, Math.trunc(value));
-    if (this.maxUsers < this.activeSubscriptionCount) {
-      this.maxUsers = this.activeSubscriptionCount;
-      this.persistConfig();
-    }
-    this.limitError = null;
-  }
-
   resetToDefaults(): void {
     clearPersistedConfig();
     this.relays = cloneDefaultRelays();
@@ -130,7 +120,6 @@ export class ConfigStore {
     this.limitError = null;
     this.announce = false;
     this.maxUsers = DEFAULT_MAX_USERS;
-    this.activeSubscriptionCount = 0;
   }
 
   private persistConfig(): void {
@@ -196,7 +185,7 @@ function readPersistedConfig(): PersistedConfig | null {
       .filter((relay): relay is Pick<RelayConfig, "url" | "enabled"> => relay !== null);
 
     const maxUsers = typeof parsed.maxUsers === "number" ? Math.trunc(parsed.maxUsers) : DEFAULT_MAX_USERS;
-    const limitError = validateMaxUsers(maxUsers, 0);
+    const limitError = validateMaxUsers(maxUsers);
 
     return {
       version: CONFIG_STORAGE_VERSION,

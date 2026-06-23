@@ -11,11 +11,18 @@
 <section class="mx-auto grid max-w-3xl gap-4 border-b border-[#16331f] pb-8" data-testid="resource-monitor">
   <h2 class="text-sm uppercase tracking-[0.22em] text-[#d1ffd9]">Telemetry</h2>
 
-  <dl class="grid gap-3 text-sm sm:grid-cols-3">
+  <dl class="grid gap-3 text-sm sm:grid-cols-4">
     <div class="border border-[#16331f] bg-[#050805] p-3">
-      <dt class="text-xs uppercase tracking-[0.16em] text-[#6d746f]">subscriptions</dt>
-      <dd class="mt-2 text-xl text-[#87ff9f]" data-testid="telemetry-subscriptions">
+      <dt class="text-xs uppercase tracking-[0.16em] text-[#6d746f]">client streams</dt>
+      <dd class="mt-2 text-xl text-[#87ff9f]" data-testid="telemetry-client-streams">
         {resourceMonitor.subscriptionCount} <span class="text-xs text-[#6d746f]">(est.)</span>
+      </dd>
+    </div>
+
+    <div class="border border-[#16331f] bg-[#050805] p-3">
+      <dt class="text-xs uppercase tracking-[0.16em] text-[#6d746f]">fan-out legs</dt>
+      <dd class="mt-2 text-xl text-[#87ff9f]" data-testid="telemetry-fanout-legs">
+        {resourceMonitor.groupSubscriptionLegCount} <span class="text-xs text-[#6d746f]">(debug)</span>
       </dd>
     </div>
 

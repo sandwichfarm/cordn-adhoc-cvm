@@ -4,7 +4,7 @@ export type {
   AppendGroupMessageParams,
   CoordinatorStorage,
 } from "./storage/storage";
-export type { CoordinatorOptions } from "./coordinator";
+export type { ActiveSubscriptionMetrics, CoordinatorOptions } from "./coordinator";
 export type {
   FetchGroupMessagesInput,
   GroupMessageRecord,
