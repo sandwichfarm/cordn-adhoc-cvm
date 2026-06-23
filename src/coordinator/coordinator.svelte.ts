@@ -2,6 +2,7 @@ import { configStore } from "../config/config.svelte";
 import { KeyManager } from "../crypto/key-manager";
 import { keyStorage, WrongPassphraseError } from "../crypto/key-storage";
 import { transportFactory, type RunningTransport } from "../lib/transport";
+import { resourceMonitor } from "./resource-monitor.svelte";
 import { isConfigLocked, transitionCoordinator } from "./state-machine";
 import type { CoordinatorLoadState, CoordinatorStatus, RelayConnectionStatus } from "./types";
 
@@ -94,8 +95,10 @@ export class CoordinatorStore {
       );
       this.setEnabledRelayStatuses("connected");
       this.status = transitionCoordinator(this.status, "started");
+      resourceMonitor.start(this.running);
     } catch (error) {
       this.running = null;
+      resourceMonitor.stop();
       this.error = error instanceof Error ? error.message : "Coordinator startup failed";
       this.setEnabledRelayStatuses("error");
       this.status = transitionCoordinator(this.status, "error");
@@ -110,6 +113,7 @@ export class CoordinatorStore {
   }
 
   stopSync(): void {
+    resourceMonitor.stop();
     this.running?.close();
     this.running = null;
   }
@@ -128,6 +132,7 @@ export class CoordinatorStore {
   }
 
   private destroyStateSynchronously(): void {
+    resourceMonitor.stop();
     this.keyManager?.destroy();
     keyStorage.clear();
     this.keyManager = KeyManager.generate();

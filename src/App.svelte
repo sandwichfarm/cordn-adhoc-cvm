@@ -4,6 +4,7 @@
   import PassphrasePrompt from "./components/PassphrasePrompt.svelte";
   import PersistencePanel from "./components/PersistencePanel.svelte";
   import RelayConfigPanel from "./components/RelayConfigPanel.svelte";
+  import ResourceMonitor from "./components/ResourceMonitor.svelte";
   import { configStore } from "./config/config.svelte";
   import { coordinatorStore } from "./coordinator/coordinator.svelte";
 </script>
@@ -22,6 +23,9 @@
       </header>
 
       <LifecyclePanel coordinator={coordinatorStore} />
+      {#if coordinatorStore.status === "running"}
+        <ResourceMonitor />
+      {/if}
       <RelayConfigPanel config={configStore} coordinator={coordinatorStore} />
       <PersistencePanel coordinator={coordinatorStore} />
     </div>

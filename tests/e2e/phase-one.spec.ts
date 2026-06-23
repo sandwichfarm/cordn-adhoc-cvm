@@ -36,9 +36,14 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId(`relay-status-${relay.url}`)).toContainText("connected");
   await expect(page.getByRole("button", { name: "Edit configuration" })).toBeDisabled();
   await expect(page.getByTestId("lock-indicator")).toContainText("locked");
+  await expect(page.getByTestId("resource-monitor")).toBeVisible();
+  await expect(page.getByTestId("telemetry-subscriptions")).toContainText("(est.)");
+  await expect(page.getByTestId("telemetry-message-rate")).toContainText("/min (est.)");
+  await expect(page.getByTestId("telemetry-memory")).toContainText(/unavailable|MB \(est\.\)/);
 
   await page.getByRole("button", { name: "Stop" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
+  await expect(page.getByTestId("resource-monitor")).toBeHidden();
 });
 
 test("rejects invalid relay URLs inline", async ({ page }) => {

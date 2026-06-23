@@ -8,7 +8,7 @@ Cordn Browser is built in three phases: Phase 1 delivers a fully functional coor
 
 - [x] **Phase 1: Core Foundation** - Working browser coordinator with key gen, lifecycle controls, relay config, cypherpunk UI, and CI test gate
 - [x] **Phase 2: Security & Persistence** - Encrypted key persistence, confirmed destroy action, per-relay status, and persistence error handling
-- [ ] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
+- [x] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
 
 ## Phase Details
 
@@ -63,8 +63,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Resource telemetry — ResourceMonitor component; subscription counter; message rate rolling window; performance.memory feature-detect; "(est.)" labels
-- [ ] 03-02: Deployment pipeline — GitHub Actions nsite deploy job gated on CI; nsyte CLI integration; setup-secrets.sh; CICD-06 skip-on-missing-secrets
+- [x] 03-01: Resource telemetry — ResourceMonitor component; subscription counter; message rate rolling window; performance.memory feature-detect; "(est.)" labels
+- [x] 03-02: Deployment pipeline — GitHub Actions nsite deploy job gated on CI; nsyte CLI integration; setup-secrets.sh; CICD-06 skip-on-missing-secrets
 **UI hint**: yes
 
 ## Progress
@@ -73,4 +73,4 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Core Foundation | 5/5 | Complete | 2026-06-23 |
 | 2. Security & Persistence | 3/3 | Complete | 2026-06-23 |
-| 3. Telemetry & Deployment | 0/2 | Not started | - |
+| 3. Telemetry & Deployment | 2/2 | Complete | 2026-06-23 |
