@@ -2,7 +2,7 @@ import { McpServer } from "@contextvm/mcp-sdk/server/mcp";
 import type { JSONRPCMessage } from "@contextvm/mcp-sdk/types";
 import type { RelayHandler } from "@contextvm/sdk/core";
 import { ApplesauceRelayPool } from "@contextvm/sdk/relay";
-import { NostrServerTransport } from "@contextvm/sdk/transport";
+import { NostrServerTransport, type OpenStreamWriter } from "@contextvm/sdk/transport";
 import type { NostrEvent } from "nostr-tools";
 import type { BrowserCoordinatorOptions } from "../config/config.svelte";
 import { createCoordinator, type Coordinator } from "../cordn/coordinator";
@@ -37,7 +37,10 @@ export interface TransportDiagnostics {
 interface InspectableNostrServerTransport {
   processIncomingEvent: (event: NostrEvent) => Promise<void>;
   getInternalStateForTesting: () => {
-    openStreamWriters: Map<string, { isActive: boolean }>;
+    correlationStore?: {
+      getEventRoute: (eventId: string) => { originalRequestId: string | number } | undefined;
+    };
+    openStreamWriters: Map<string, OpenStreamWriter>;
   };
 }
 
@@ -109,10 +112,11 @@ export class TransportFactory {
     };
     transport.addInboundMiddleware(async (message, ctx, forward) => {
       const disabledStreamId = disableUnusedOpenStream(inspectableTransport, message);
+      const cancelledStreamId = await abortCancelledOpenStream(inspectableTransport, message);
       diagnostics?.onInboundMessage?.({
         method: getJsonRpcMethod(message),
         clientPubkey: ctx.clientPubkey,
-        summary: summarizeJsonRpcMessage(message, disabledStreamId),
+        summary: summarizeJsonRpcMessage(message, disabledStreamId, cancelledStreamId),
       });
       await forward(message);
     });
@@ -274,7 +278,11 @@ function disableUnusedOpenStream(
   return requestEventId;
 }
 
-function summarizeJsonRpcMessage(message: JSONRPCMessage, disabledStreamId?: string): string {
+function summarizeJsonRpcMessage(
+  message: JSONRPCMessage,
+  disabledStreamId?: string,
+  cancelledStreamId?: string,
+): string {
   const parts = [`type=${getJsonRpcMessageType(message)}`];
   if ("id" in message) {
     parts.push(`id=${String(message.id)}`);
@@ -328,6 +336,10 @@ function summarizeJsonRpcMessage(message: JSONRPCMessage, disabledStreamId?: str
     parts.push(`disabled_unused_stream=${abbreviateHex(disabledStreamId)}`);
   }
 
+  if (cancelledStreamId) {
+    parts.push(`cancelled_stream=${abbreviateHex(cancelledStreamId)}`);
+  }
+
   return parts.join(" ");
 }
 
@@ -337,6 +349,55 @@ function summarizeObjectKeys(value: object): string {
 
 function getRecord(value: object): Record<string, unknown> {
   return value as Record<string, unknown>;
+}
+
+export async function abortCancelledOpenStream(
+  transport: Pick<InspectableNostrServerTransport, "getInternalStateForTesting">,
+  message: JSONRPCMessage,
+): Promise<string | undefined> {
+  if (!("method" in message) || message.method !== "notifications/cancelled") {
+    return undefined;
+  }
+
+  const params = typeof message.params === "object" && message.params !== null ? getRecord(message.params) : {};
+  const requestId = params.requestId;
+  if (typeof requestId !== "string" && typeof requestId !== "number") {
+    return undefined;
+  }
+
+  const state = transport.getInternalStateForTesting();
+  const requestIdLabel = String(requestId);
+  const eventId = findOpenStreamEventId(state, requestIdLabel);
+  if (!eventId) {
+    return undefined;
+  }
+
+  const writer = state.openStreamWriters.get(eventId);
+  if (!writer?.isActive) {
+    return undefined;
+  }
+
+  const reason = typeof params.reason === "string" && params.reason.length > 0 ? params.reason : "cancelled";
+  await writer.abort(reason);
+  return eventId;
+}
+
+function findOpenStreamEventId(
+  state: ReturnType<InspectableNostrServerTransport["getInternalStateForTesting"]>,
+  requestId: string,
+): string | undefined {
+  if (state.openStreamWriters.has(requestId)) {
+    return requestId;
+  }
+
+  for (const eventId of state.openStreamWriters.keys()) {
+    const route = state.correlationStore?.getEventRoute(eventId);
+    if (route && String(route.originalRequestId) === requestId) {
+      return eventId;
+    }
+  }
+
+  return undefined;
 }
 
 function truncateForLog(value: string): string {

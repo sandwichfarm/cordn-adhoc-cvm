@@ -30,6 +30,32 @@ function createStreamingExtra() {
   } as never;
 }
 
+function createExternallyAbortableStreamingExtra() {
+  const stream = {
+    isActive: true,
+    start: vi.fn().mockResolvedValue(undefined),
+    write: vi.fn(),
+    close: vi.fn().mockImplementation(() => {
+      stream.isActive = false;
+      return Promise.resolve();
+    }),
+    abort: vi.fn().mockImplementation(() => {
+      stream.isActive = false;
+      return Promise.resolve();
+    }),
+  };
+
+  return {
+    extra: {
+      _meta: {
+        clientPubkey: "subscriber-pubkey",
+        stream,
+      },
+    } as never,
+    stream,
+  };
+}
+
 function createPrivateApplicationMessage(groupId: string, epoch: bigint): Uint8Array {
   return encode(mlsMessageEncoder, {
     version: 1,
@@ -141,6 +167,23 @@ describe("browser Cordn server adapter", () => {
     ).rejects.toThrow("stream stopped");
 
     expect(setActiveSubscriptions).toHaveBeenCalledTimes(3);
+    expect(setActiveSubscriptions.mock.calls.map(([count]) => count)).toEqual([0, 1, 0]);
+  });
+
+  test("reports active subscription count after external stream cancellation", async () => {
+    const setActiveSubscriptions = vi.fn();
+    const adapter = new CoordinatorAdapter(new Coordinator());
+    const { extra, stream } = createExternallyAbortableStreamingExtra();
+
+    adapter.setTelemetrySink({ setActiveSubscriptions });
+    const subscription = adapter.subscribeGroupMessages({ gid: "group-telemetry" }, extra);
+    await vi.waitFor(() => {
+      expect(setActiveSubscriptions.mock.calls.map(([count]) => count)).toContain(1);
+    });
+
+    await stream.abort("client cancelled");
+    await subscription;
+
     expect(setActiveSubscriptions.mock.calls.map(([count]) => count)).toEqual([0, 1, 0]);
   });
 
