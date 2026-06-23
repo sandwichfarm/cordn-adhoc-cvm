@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: complete
-stopped_at: Phase 11 subscription-limit truthfulness implemented locally; push and live deploy still remain
-last_updated: "2026-06-23T07:04:00.000Z"
-last_activity: 2026-06-23 - Max-users guard is wired to active subscriptions and labeled accurately
+stopped_at: Phase 12 visual operator shell implemented locally; push and live deploy still remain
+last_updated: "2026-06-23T07:16:00.000Z"
+last_activity: 2026-06-23 - Visual operator shell verified with screenshots and Playwright overflow guard
 progress:
-  total_phases: 11
-  completed_phases: 11
-  total_plans: 18
-  completed_plans: 18
+  total_phases: 12
+  completed_phases: 12
+  total_plans: 19
+  completed_plans: 19
   percent: 100
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 11 of 11 (Subscription Limit Truthfulness)
+Phase: 12 of 12 (Visual Operator Shell)
 Plan: 1 of 1 in current phase
 Status: Complete locally, broader objective incomplete
-Last activity: 2026-06-23 - Max-users guard is wired to active subscriptions and labeled accurately
+Last activity: 2026-06-23 - Visual operator shell verified with screenshots and Playwright overflow guard
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 18
+- Total plans completed: 19
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -70,6 +70,7 @@ Recent decisions affecting current work:
 - Phase 9: CI/deploy branch filters are covered by unit tests so branch readiness is not only documented.
 - Phase 10: `pnpm check:upstream` compares browser Cordn method keys against live upstream `src/server`.
 - Phase 11: The max-users edit floor is wired to active subscriptions and labeled as such, not as authoritative MLS membership.
+- Phase 12: The GUI has a screenshot-verified operator shell and a Playwright no-overflow guard for desktop/mobile viewports.
 
 ### Pending Todos
 

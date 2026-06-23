@@ -54,6 +54,8 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - **Guarded config**: relay URLs and persistence settings are read-only by default; the user must explicitly click "Edit configuration" to unlock the form, preventing accidental relay list wipes while the coordinator is running.
 - **Limit guard source**: the browser currently uses active coordinator subscriptions as the max-users edit floor.
   This is honest browser-visible telemetry, not authoritative MLS group membership.
+- **Visual direction**: the GUI uses a restrained operator shell with signal-grid texture, side rails, and a narrow
+  header accent. Screenshot evidence lives under `/tmp/cordn-browser-visual/`, with verdict state in `.omx/state/`.
 - **Test strategy**: Vitest for pure functions (key derivation, state machine transitions, config validation). Playwright for the rendered app (can't unit-test WebSocket + Nostr relay interactions without a live relay, so Playwright uses a mock relay via `ws` in a fixture).
 
 ## Constraints
@@ -77,6 +79,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | Adapter-backed telemetry | Adapter callbacks track Cordn method and subscription lifecycles directly | Pending |
 | Upstream parity script | Live method-key comparison catches upstream Cordn server drift before release claims | Pending |
 | Subscription-floor max-users guard | The browser can observe active subscriptions today; authoritative MLS membership is not exposed by the current adapter | Pending |
+| Visual operator shell | A shell-level grid/rail treatment gives the minimal GUI a distinctive cypherpunk operator-console direction without adding controls | Pending |
 
 ---
-*Last updated: 2026-06-23 after Phase 11 subscription limit truthfulness*
+*Last updated: 2026-06-23 after Phase 12 visual operator shell*

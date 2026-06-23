@@ -23,10 +23,34 @@ async function configureMockRelay(page: import("@playwright/test").Page): Promis
 test("generates copyable identity on first load", async ({ page }) => {
   await page.goto("/");
 
+  await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy coordinator public key" })).toContainText("npub");
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   await expect(page.getByLabel("Toggle announcement")).not.toBeChecked();
   await expect(page.getByTestId("max-users-input")).toHaveValue("64");
+});
+
+test("operator shell does not overflow common viewports", async ({ page }) => {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+
+    await expect(page.getByTestId("operator-shell")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        })),
+      )
+      .toEqual({
+        clientWidth: viewport.width,
+        scrollWidth: viewport.width,
+      });
+  }
 });
 
 test("starts, locks relay configuration, and stops", async ({ page }) => {

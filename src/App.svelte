@@ -17,12 +17,12 @@
 {#if coordinatorStore.loadState === "prompting"}
   <PassphrasePrompt coordinator={coordinatorStore} />
 {:else}
-  <main class="min-h-screen bg-black px-4 py-5 text-[#87ff9f]">
-    <div class="mx-auto flex max-w-5xl flex-col gap-6">
-      <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <main class="operator-field min-h-screen px-4 py-5 text-[#87ff9f]">
+    <div class="operator-shell mx-auto flex max-w-6xl flex-col gap-6" data-testid="operator-shell">
+      <header class="operator-header flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p class="text-xs uppercase tracking-[0.24em] text-[#617767]">ContextVM relay coordinator</p>
-          <h1 class="mt-2 text-3xl uppercase text-[#d1ffd9] sm:text-5xl">Cordn Browser</h1>
+          <p class="operator-kicker text-xs uppercase tracking-[0.24em] text-[#617767]">ContextVM relay coordinator</p>
+          <h1 class="operator-title mt-2 text-3xl uppercase text-[#d1ffd9] sm:text-5xl">Cordn Browser</h1>
         </div>
         <NpubDisplay identity={coordinatorStore.identity} />
       </header>

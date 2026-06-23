@@ -13,6 +13,7 @@ Phase 8 makes deploy triggers match both common default branches and the current
 Phase 9 adds workflow tests that lock deploy branch readiness against regression.
 Phase 10 adds a live upstream parity check for Cordn `src/server` method names.
 Phase 11 makes the max-users guard truthful by sourcing and labeling its live floor as active subscriptions.
+Phase 12 adds a visual operator shell and screenshot-backed layout guard for the minimal cypherpunk GUI.
 
 ## Phases
 
@@ -27,6 +28,7 @@ Phase 11 makes the max-users guard truthful by sourcing and labeling its live fl
 - [x] **Phase 9: Workflow Guardrails** - Unit tests cover CI/deploy branch filters
 - [x] **Phase 10: Upstream Parity Check** - Script compares browser method keys to live Cordn upstream
 - [x] **Phase 11: Subscription Limit Truthfulness** - Max-users guard is sourced from live active subscriptions and labeled accurately
+- [x] **Phase 12: Visual Operator Shell** - Screenshot-backed shell polish and no-overflow Playwright guard
 
 ## Phase Details
 
@@ -207,6 +209,21 @@ Plans:
 - [x] 11-01: Subscription limit truthfulness - rename guard source, wire telemetry floor, update tests
 **UI hint**: yes
 
+### Phase 12: Visual Operator Shell
+**Goal**: The GUI reads as a distinctive, minimal browser coordinator console without adding nonessential controls
+**Depends on**: Phase 11
+**Requirements**: UI-01, UI-02, UI-03, TEST-06
+**Success Criteria** (what must be TRUE):
+  1. App renders inside an explicit operator shell
+  2. Desktop and mobile screenshots show no incoherent overlap
+  3. Playwright verifies common desktop and mobile viewports have no horizontal overflow
+  4. Visual verdict state is persisted for future iteration
+**Plans**: 1 plan
+
+Plans:
+- [x] 12-01: Visual operator shell - signal-grid shell, header accent, screenshot verdict, overflow test
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -222,3 +239,4 @@ Plans:
 | 9. Workflow Guardrails | 1/1 | Complete | 2026-06-23 |
 | 10. Upstream Parity Check | 1/1 | Complete | 2026-06-23 |
 | 11. Subscription Limit Truthfulness | 1/1 | Complete | 2026-06-23 |
+| 12. Visual Operator Shell | 1/1 | Complete | 2026-06-23 |
