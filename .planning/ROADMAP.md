@@ -2,13 +2,14 @@
 
 ## Overview
 
-Cordn Browser is built in three phases: Phase 1 delivers a fully functional coordinator that starts, stops, and configures relays — the core loop that validates the product. Phase 2 hardens the key lifecycle with encrypted persistence and a confirmed destroy action. Phase 3 adds live resource telemetry and automates deployment via nsite/Blossom on every push to main.
+Cordn Browser is built in four phases: Phase 1 delivers a coordinator shell that starts, stops, and configures relays. Phase 2 hardens the key lifecycle with encrypted persistence and a confirmed destroy action. Phase 3 adds live resource telemetry and automates deployment via nsite/Blossom on every push to main. Phase 4 closes explicit objective gaps around browser limits and guarded runtime options.
 
 ## Phases
 
 - [x] **Phase 1: Core Foundation** - Working browser coordinator with key gen, lifecycle controls, relay config, cypherpunk UI, and CI test gate
 - [x] **Phase 2: Security & Persistence** - Encrypted key persistence, confirmed destroy action, per-relay status, and persistence error handling
 - [x] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
+- [x] **Phase 4: Runtime Limits & Guarded Options** - Announcement option, maximum users browser cap, and active-user guard invariant
 
 ## Phase Details
 
@@ -67,6 +68,22 @@ Plans:
 - [x] 03-02: Deployment pipeline — GitHub Actions nsite deploy job gated on CI; nsyte CLI integration; setup-secrets.sh; CICD-06 skip-on-missing-secrets
 **UI hint**: yes
 
+### Phase 4: Runtime Limits & Guarded Options
+**Goal**: The browser coordinator exposes explicit runtime options from the original objective and guards maximum-users edits against browser and active-user limits
+**Depends on**: Phase 3
+**Requirements**: CONFIG-01, CONFIG-02, LIMIT-01, LIMIT-02, LIMIT-03
+**Success Criteria** (what must be TRUE):
+  1. Announcement is visible as a runtime option and defaults off
+  2. Maximum users is visible as a runtime option with a browser cap
+  3. Runtime options are locked while the coordinator is running
+  4. Maximum users cannot be reduced below active user count
+  5. Transport startup receives the configured announcement setting
+**Plans**: 1 plan
+
+Plans:
+- [x] 04-01: Runtime limits — announcement toggle, max-users input, active-user guard, transport option wiring, tests
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -74,3 +91,4 @@ Plans:
 | 1. Core Foundation | 5/5 | Complete | 2026-06-23 |
 | 2. Security & Persistence | 3/3 | Complete | 2026-06-23 |
 | 3. Telemetry & Deployment | 2/2 | Complete | 2026-06-23 |
+| 4. Runtime Limits & Guarded Options | 1/1 | Complete | 2026-06-23 |

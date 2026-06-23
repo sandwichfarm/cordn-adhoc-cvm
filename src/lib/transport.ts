@@ -1,6 +1,7 @@
 import { McpServer } from "@contextvm/mcp-sdk/server/mcp";
 import { PrivateKeySigner } from "@contextvm/sdk/signer";
 import { NostrServerTransport } from "@contextvm/sdk/transport";
+import type { BrowserCoordinatorOptions } from "../config/config.svelte";
 
 export interface RunningTransport {
   server: McpServer;
@@ -16,7 +17,11 @@ function closeIfPresent(value: unknown): void {
 }
 
 export class TransportFactory {
-  async create(privateKeyHex: string, relayUrls: string[]): Promise<RunningTransport> {
+  async create(
+    privateKeyHex: string,
+    relayUrls: string[],
+    options: BrowserCoordinatorOptions,
+  ): Promise<RunningTransport> {
     if (relayUrls.length === 0) {
       throw new Error("At least one enabled relay is required");
     }
@@ -32,9 +37,9 @@ export class TransportFactory {
       relayHandler: relayUrls,
       serverInfo: {
         name: "cordn-browser",
-        about: "Cordn coordinator running in a browser tab",
+        about: `Cordn coordinator running in a browser tab; max users ${options.maxUsers}`,
       },
-      isAnnouncedServer: false,
+      isAnnouncedServer: options.announce,
       injectClientPubkey: true,
       injectRequestEventId: true,
       oversizedTransfer: { enabled: true },

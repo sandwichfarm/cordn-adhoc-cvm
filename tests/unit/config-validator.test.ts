@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { validateRelayUrl } from "../../src/config/config-validator";
+import {
+  BROWSER_MAX_USERS_CAP,
+  DEFAULT_MAX_USERS,
+  validateMaxUsers,
+  validateRelayUrl,
+} from "../../src/config/config-validator";
 
 describe("validateRelayUrl", () => {
   test.each(["ws://127.0.0.1:8765", "wss://relay.example", "wss://relay.example/path"])(
@@ -16,4 +21,21 @@ describe("validateRelayUrl", () => {
       expect(validateRelayUrl(url)).toEqual(expect.any(String));
     },
   );
+});
+
+describe("validateMaxUsers", () => {
+  test("accepts the default browser limit", () => {
+    expect(validateMaxUsers(DEFAULT_MAX_USERS, 0)).toBeNull();
+  });
+
+  test.each([0, 1.5, Number.NaN, BROWSER_MAX_USERS_CAP + 1])(
+    "rejects invalid max users value %s",
+    (value) => {
+      expect(validateMaxUsers(value, 0)).toEqual(expect.any(String));
+    },
+  );
+
+  test("rejects reducing below the active user count", () => {
+    expect(validateMaxUsers(3, 4)).toBe("Maximum users cannot be below 4 active users");
+  });
 });

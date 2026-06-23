@@ -21,3 +21,27 @@ export function validateRelayUrl(value: string): string | null {
 
   return null;
 }
+
+export const MIN_MAX_USERS = 1;
+export const DEFAULT_MAX_USERS = 64;
+export const BROWSER_MAX_USERS_CAP = 256;
+
+export function validateMaxUsers(value: number, activeUserCount: number): string | null {
+  if (!Number.isSafeInteger(value)) {
+    return "Maximum users must be a whole number";
+  }
+
+  if (value < MIN_MAX_USERS) {
+    return `Maximum users must be at least ${MIN_MAX_USERS}`;
+  }
+
+  if (value > BROWSER_MAX_USERS_CAP) {
+    return `Browser limit is ${BROWSER_MAX_USERS_CAP} users`;
+  }
+
+  if (value < activeUserCount) {
+    return `Maximum users cannot be below ${activeUserCount} active users`;
+  }
+
+  return null;
+}

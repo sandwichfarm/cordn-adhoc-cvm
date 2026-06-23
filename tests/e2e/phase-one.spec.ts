@@ -25,17 +25,25 @@ test("generates copyable identity on first load", async ({ page }) => {
 
   await expect(page.getByRole("button", { name: "Copy coordinator public key" })).toContainText("npub");
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
+  await expect(page.getByLabel("Toggle announcement")).not.toBeChecked();
+  await expect(page.getByTestId("max-users-input")).toHaveValue("64");
 });
 
 test("starts, locks relay configuration, and stops", async ({ page }) => {
   await page.goto("/");
   await configureMockRelay(page);
+  await page.getByLabel("Toggle announcement").check();
+  await page.getByTestId("max-users-input").fill("32");
+  await page.getByTestId("max-users-input").blur();
+  await expect(page.getByTestId("max-users-state")).toContainText("0/32 users");
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");
   await expect(page.getByTestId(`relay-status-${relay.url}`)).toContainText("connected");
   await expect(page.getByRole("button", { name: "Edit configuration" })).toBeDisabled();
   await expect(page.getByTestId("lock-indicator")).toContainText("locked");
+  await expect(page.getByLabel("Toggle announcement")).toBeDisabled();
+  await expect(page.getByTestId("max-users-input")).toBeDisabled();
   await expect(page.getByTestId("resource-monitor")).toBeVisible();
   await expect(page.getByTestId("telemetry-subscriptions")).toContainText("(est.)");
   await expect(page.getByTestId("telemetry-message-rate")).toContainText("/min (est.)");

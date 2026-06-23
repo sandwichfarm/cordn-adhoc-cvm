@@ -92,6 +92,7 @@ export class CoordinatorStore {
       this.running = await transportFactory.create(
         this.requireKeyManager().getSecretKeyHex(),
         configStore.enabledRelayUrls,
+        configStore.coordinatorOptions,
       );
       this.setEnabledRelayStatuses("connected");
       this.status = transitionCoordinator(this.status, "started");

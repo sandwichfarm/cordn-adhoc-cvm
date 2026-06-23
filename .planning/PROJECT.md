@@ -21,6 +21,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - [ ] Relay configuration panel — add/remove/toggle Nostr relay URLs, guarded behind a confirm-to-edit pattern
 - [ ] Coordinator start/stop/destroy lifecycle — destroy wipes key + state from memory and storage
 - [ ] Browser resource limit display — show active subscription count, message rate, memory estimate
+- [ ] Browser runtime limits — announcement default off, maximum users cap, active-user guard for max-users edits
 - [ ] Minimal cypherpunk GUI with Svelte 5 + Vite + Tailwind (dark, monospace, no gradients, no icons except Unicode)
 - [ ] Unit tests (Vitest) covering coordinator state machine and key persistence helpers
 - [ ] Playwright e2e tests covering start, config edit, stop, destroy flows
@@ -38,7 +39,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 
 ## Context
 
-- **ContextVM SDK** (`@contextvm/sdk` v0.6.2) is the transport layer. `NostrServerTransport` wraps a Nostr keypair and relay list to present an MCP server endpoint over the network. It handles encryption, serialization, and relay management internally.
+- **ContextVM SDK** (`@contextvm/sdk`) is the transport layer. `NostrServerTransport` wraps a Nostr keypair and relay list to present an MCP server endpoint over the network. It handles encryption, serialization, and relay management internally.
 - **nsite/nsyte** deploys static builds (Vite output) to Blossom file storage, publishing the root manifest as a Nostr event. The `nsite-action` GitHub Action handles CI deploy; it requires `NSYTE_BUNKER_URL` and `NSYTE_RELAY` secrets plus a Blossom server URL.
 - **Key persistence**: the coordinator nsec must never leave the browser unencrypted. Persistence is opt-in; when enabled, the key is encrypted with a user-supplied passphrase before writing to `localStorage`. The destroy action must zero-fill the in-memory key buffer and call `localStorage.removeItem` atomically.
 - **Guarded config**: relay URLs and persistence settings are read-only by default; the user must explicitly click "Edit configuration" to unlock the form, preventing accidental relay list wipes while the coordinator is running.

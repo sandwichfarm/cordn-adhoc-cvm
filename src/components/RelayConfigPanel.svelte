@@ -56,6 +56,11 @@
       relayInput = "";
     }
   }
+
+  function updateMaxUsers(event: Event): void {
+    const input = event.currentTarget as HTMLInputElement;
+    config.setMaxUsers(input.valueAsNumber);
+  }
 </script>
 
 <section class="mx-auto max-w-3xl py-8">
@@ -140,6 +145,49 @@
       >
         Edit configuration
       </button>
+    {/if}
+  </div>
+
+  <div class="mt-8 border-t border-[#16331f] pt-6">
+    <div class="mb-4 flex items-center justify-between gap-4">
+      <h3 class="text-xs uppercase tracking-[0.18em] text-[#87ff9f]">Runtime options</h3>
+      <span class="border border-[#21482b] px-3 py-1 text-xs uppercase text-[#a7b0aa]" data-testid="max-users-state">
+        {config.activeUserCount}/{config.maxUsers} users
+      </span>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="flex items-center justify-between gap-4 border border-[#16331f] bg-[#050805] p-3 text-sm text-[#d1ffd9]">
+        <span class="uppercase tracking-[0.12em] text-[#6d746f]">announcement</span>
+        <input
+          class="h-4 w-4 accent-[#87ff9f]"
+          type="checkbox"
+          checked={config.announce}
+          disabled={!editingAllowed}
+          aria-label="Toggle announcement"
+          onchange={(event) => config.setAnnouncement(event.currentTarget.checked)}
+        />
+      </label>
+
+      <label class="grid gap-2 border border-[#16331f] bg-[#050805] p-3 text-sm text-[#d1ffd9]">
+        <span class="uppercase tracking-[0.12em] text-[#6d746f]">maximum users</span>
+        <input
+          class="border border-[#21482b] bg-black px-3 py-2 text-[#87ff9f] outline-none focus:border-[#87ff9f] disabled:cursor-not-allowed disabled:text-[#4b554e]"
+          type="number"
+          min="1"
+          max="256"
+          step="1"
+          value={config.maxUsers}
+          disabled={!editingAllowed}
+          aria-label="Maximum users"
+          data-testid="max-users-input"
+          onchange={updateMaxUsers}
+        />
+      </label>
+    </div>
+
+    {#if config.limitError}
+      <p class="mt-3 text-sm text-[#ff8f8f]" data-testid="limit-error">{config.limitError}</p>
     {/if}
   </div>
 </section>

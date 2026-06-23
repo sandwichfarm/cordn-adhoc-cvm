@@ -1,9 +1,14 @@
-import { validateRelayUrl } from "./config-validator";
+import { DEFAULT_MAX_USERS, validateMaxUsers, validateRelayUrl } from "./config-validator";
 
 export interface RelayConfig {
   id: string;
   url: string;
   enabled: boolean;
+}
+
+export interface BrowserCoordinatorOptions {
+  announce: boolean;
+  maxUsers: number;
 }
 
 export class ConfigStore {
@@ -12,19 +17,32 @@ export class ConfigStore {
   ]);
   editMode = $state(false);
   relayError = $state<string | null>(null);
+  limitError = $state<string | null>(null);
+  announce = $state(false);
+  maxUsers = $state(DEFAULT_MAX_USERS);
+  activeUserCount = $state(0);
 
   get enabledRelayUrls(): string[] {
     return this.relays.filter((relay) => relay.enabled).map((relay) => relay.url);
   }
 
+  get coordinatorOptions(): BrowserCoordinatorOptions {
+    return {
+      announce: this.announce,
+      maxUsers: this.maxUsers,
+    };
+  }
+
   enterEdit(): void {
     this.editMode = true;
     this.relayError = null;
+    this.limitError = null;
   }
 
   exitEdit(): void {
     this.editMode = false;
     this.relayError = null;
+    this.limitError = null;
   }
 
   lock(): void {
@@ -57,6 +75,30 @@ export class ConfigStore {
     this.relays = this.relays.map((relay) =>
       relay.id === id ? { ...relay, enabled: !relay.enabled } : relay,
     );
+  }
+
+  setAnnouncement(value: boolean): void {
+    this.announce = value;
+  }
+
+  setMaxUsers(value: number): boolean {
+    const error = validateMaxUsers(value, this.activeUserCount);
+    if (error) {
+      this.limitError = error;
+      return false;
+    }
+
+    this.maxUsers = value;
+    this.limitError = null;
+    return true;
+  }
+
+  setActiveUserCount(value: number): void {
+    this.activeUserCount = Math.max(0, Math.trunc(value));
+    if (this.maxUsers < this.activeUserCount) {
+      this.maxUsers = this.activeUserCount;
+    }
+    this.limitError = null;
   }
 }
 

@@ -32,6 +32,18 @@
 - [ ] **RELAY-06**: Each relay entry shows per-relay connection status (connected / disconnected / error) when coordinator is running
 - [ ] **RELAY-07**: Relay URL input rejects entries that are not valid `ws://` or `wss://` URIs with an inline validation error
 
+### Runtime Configuration (CONFIG)
+
+- [ ] **CONFIG-01**: Announcement is exposed as a runtime option and defaults off
+- [ ] **CONFIG-02**: Runtime configuration options are read-only whenever coordinator state is `starting`, `running`, or `stopping`
+- [ ] **CONFIG-03**: Start uses the current runtime option snapshot when constructing `NostrServerTransport`
+
+### Browser Limits (LIMIT)
+
+- [ ] **LIMIT-01**: Maximum users is exposed as a runtime option with a hard browser cap
+- [ ] **LIMIT-02**: Maximum users cannot be reduced below the active user count
+- [ ] **LIMIT-03**: Invalid maximum-user values show an inline validation error and do not mutate the saved limit
+
 ### Key Persistence (PERSIST)
 
 - [ ] **PERSIST-01**: Key persistence is disabled by default; coordinator works fully without it enabled
@@ -145,6 +157,12 @@
 | RELAY-05 | Phase 1 | Pending |
 | RELAY-06 | Phase 2 | Pending |
 | RELAY-07 | Phase 1 | Pending |
+| CONFIG-01 | Phase 4 | Pending |
+| CONFIG-02 | Phase 4 | Pending |
+| CONFIG-03 | Phase 4 | Pending |
+| LIMIT-01 | Phase 4 | Pending |
+| LIMIT-02 | Phase 4 | Pending |
+| LIMIT-03 | Phase 4 | Pending |
 | PERSIST-01 | Phase 2 | Pending |
 | PERSIST-02 | Phase 2 | Pending |
 | PERSIST-03 | Phase 2 | Pending |

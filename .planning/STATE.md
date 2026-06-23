@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: complete
-stopped_at: Phase 3 implemented and verified locally; push blocked by missing remote
-last_updated: "2026-06-23T04:05:33.000Z"
-last_activity: 2026-06-23 — Phase 3 telemetry and deployment guards implemented and verified with local CI
+stopped_at: Phase 4 runtime limits implemented and verified locally; full Cordn method parity and push still remain
+last_updated: "2026-06-23T04:11:17.000Z"
+last_activity: 2026-06-23 — Runtime limits and guarded announcement option implemented and verified with local CI
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 10
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 11
+  completed_plans: 11
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** A single browser tab acts as a fully functional, self-sovereign Cordn coordinator reachable over Nostr relays — no backend, no account, no installation.
-**Current focus:** v1 implementation complete locally; push blocked by missing remote
+**Current focus:** Objective gap closure — upstream Cordn method parity and remote push remain
 
 ## Current Position
 
-Phase: 3 of 3 (Telemetry & Deployment)
-Plan: 2 of 2 in current phase
-Status: Complete locally
-Last activity: 2026-06-23 — Phase 3 telemetry and deployment guards implemented and verified with local CI
+Phase: 4 of 4 (Runtime Limits & Guarded Options)
+Plan: 1 of 1 in current phase
+Status: Complete locally, broader objective incomplete
+Last activity: 2026-06-23 — Runtime limits and guarded announcement option implemented and verified with local CI
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -62,6 +62,7 @@ Recent decisions affecting current work:
 - Phase 2: PBKDF2 at ≥100,000 iterations (NIST SP 800-132 recommends 600k); single-blob localStorage write for key + config atomicity
 - Phase 2: Destroy clears encrypted localStorage synchronously with key zero-fill, then clears browser caches when available.
 - Phase 3: Telemetry is observational and best-effort. It hooks transport events when the SDK exposes them, labels values as estimates, and resets on stop/destroy.
+- Phase 4: Runtime limits are guarded in config state. `maxUsers` cannot exceed the browser cap or drop below active users, and announcement defaults off.
 
 ### Pending Todos
 
@@ -71,6 +72,7 @@ None yet.
 
 - No Git remote is configured, so pushing the current local implementation is blocked until a remote is added.
 - Production nsite deploy requires repository secrets and a successful GitHub Actions run on `main`.
+- Full upstream Cordn server parity is incomplete: browser transport starts, but coordinator storage and registered methods from upstream `src/server/coordinatorMethods.ts` are not yet implemented locally.
 
 ## Deferred Items
 
