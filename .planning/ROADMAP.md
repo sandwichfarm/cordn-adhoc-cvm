@@ -2,7 +2,7 @@
 
 ## Overview
 
-Cordn Browser is built in four phases: Phase 1 delivers a coordinator shell that starts, stops, and configures relays. Phase 2 hardens the key lifecycle with encrypted persistence and a confirmed destroy action. Phase 3 adds live resource telemetry and automates deployment via nsite/Blossom on every push to main. Phase 4 closes explicit objective gaps around browser limits and guarded runtime options.
+Cordn Browser is built in five phases: Phase 1 delivers a coordinator shell that starts, stops, and configures relays. Phase 2 hardens the key lifecycle with encrypted persistence and a confirmed destroy action. Phase 3 adds live resource telemetry and automates deployment via nsite/Blossom on every push to main. Phase 4 closes explicit objective gaps around browser limits and guarded runtime options. Phase 5 registers the real Cordn coordinator method surface in the browser.
 
 ## Phases
 
@@ -10,6 +10,7 @@ Cordn Browser is built in four phases: Phase 1 delivers a coordinator shell that
 - [x] **Phase 2: Security & Persistence** - Encrypted key persistence, confirmed destroy action, per-relay status, and persistence error handling
 - [x] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
 - [x] **Phase 4: Runtime Limits & Guarded Options** - Announcement option, maximum users browser cap, and active-user guard invariant
+- [x] **Phase 5: Browser Cordn Methods** - Browser-safe Cordn coordinator core and MCP method registration
 
 ## Phase Details
 
@@ -84,6 +85,21 @@ Plans:
 - [x] 04-01: Runtime limits — announcement toggle, max-users input, active-user guard, transport option wiring, tests
 **UI hint**: yes
 
+### Phase 5: Browser Cordn Methods
+**Goal**: The browser ContextVM server registers the upstream Cordn coordinator tool surface and backs it with browser-safe in-memory storage
+**Depends on**: Phase 4
+**Requirements**: CORDN-01, CORDN-02, CORDN-03, CORDN-04
+**Success Criteria** (what must be TRUE):
+  1. Browser server registers every upstream Cordn coordinator method name
+  2. Browser adapter can post and fetch MLS group messages in-memory
+  3. Coordinator start flow remains browser-runnable after method registration
+  4. No Node-only sqlite/runtime modules are bundled into the browser app
+**Plans**: 1 plan
+
+Plans:
+- [x] 05-01: Browser Cordn methods — contracts, in-memory coordinator, adapter, MCP tool registration, MLS message tests
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -92,3 +108,4 @@ Plans:
 | 2. Security & Persistence | 3/3 | Complete | 2026-06-23 |
 | 3. Telemetry & Deployment | 2/2 | Complete | 2026-06-23 |
 | 4. Runtime Limits & Guarded Options | 1/1 | Complete | 2026-06-23 |
+| 5. Browser Cordn Methods | 1/1 | Complete | 2026-06-23 |

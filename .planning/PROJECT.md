@@ -17,6 +17,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 ### Active
 
 - [ ] Browser-resident coordinator using `@contextvm/sdk` `NostrServerTransport`
+- [ ] Browser Cordn coordinator method surface registered on the MCP server
 - [ ] Auto-generated coordinator keypair (nsec stored in memory; optional encrypted localStorage persistence)
 - [ ] Relay configuration panel — add/remove/toggle Nostr relay URLs, guarded behind a confirm-to-edit pattern
 - [ ] Coordinator start/stop/destroy lifecycle — destroy wipes key + state from memory and storage
@@ -42,6 +43,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - **ContextVM SDK** (`@contextvm/sdk`) is the transport layer. `NostrServerTransport` wraps a Nostr keypair and relay list to present an MCP server endpoint over the network. It handles encryption, serialization, and relay management internally.
 - **nsite/nsyte** deploys static builds (Vite output) to Blossom file storage, publishing the root manifest as a Nostr event. The `nsite-action` GitHub Action handles CI deploy; it requires `NSYTE_BUNKER_URL` and `NSYTE_RELAY` secrets plus a Blossom server URL.
 - **Key persistence**: the coordinator nsec must never leave the browser unencrypted. Persistence is opt-in; when enabled, the key is encrypted with a user-supplied passphrase before writing to `localStorage`. The destroy action must zero-fill the in-memory key buffer and call `localStorage.removeItem` atomically.
+- **Coordinator persistence**: Cordn method data is currently in-memory. The original objective still requires sqlite-wasm or worker-relay persistence for coordinator state before final completion.
 - **Guarded config**: relay URLs and persistence settings are read-only by default; the user must explicitly click "Edit configuration" to unlock the form, preventing accidental relay list wipes while the coordinator is running.
 - **Test strategy**: Vitest for pure functions (key derivation, state machine transitions, config validation). Playwright for the rendered app (can't unit-test WebSocket + Nostr relay interactions without a live relay, so Playwright uses a mock relay via `ws` in a fixture).
 

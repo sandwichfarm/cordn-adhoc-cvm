@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       fs: fileURLToPath(new URL("./src/shims/node-fs.ts", import.meta.url)),
       path: fileURLToPath(new URL("./src/shims/node-path.ts", import.meta.url)),
+      crypto: fileURLToPath(new URL("./src/shims/node-crypto.ts", import.meta.url)),
     },
   },
   test: {

@@ -22,6 +22,13 @@
 - [ ] **COORD-05**: State machine rejects invalid transitions (cannot start if running; cannot destroy while starting/stopping)
 - [ ] **COORD-06**: Coordinator state is displayed as a visible status badge that updates reactively on every transition
 
+### Cordn Coordinator Methods (CORDN)
+
+- [ ] **CORDN-01**: Browser MCP server registers the Cordn coordinator method surface from upstream `src/server`
+- [ ] **CORDN-02**: Browser coordinator can post and fetch MLS group messages through `msg_post` and `msg_fetch`
+- [ ] **CORDN-03**: Browser coordinator enforces injected caller identity before handling coordinator methods
+- [ ] **CORDN-04**: Browser coordinator uses browser-safe in-memory storage without bundling Node-only sqlite/runtime files
+
 ### Relay Configuration (RELAY)
 
 - [ ] **RELAY-01**: User can add a relay URL to the relay list via a text input and confirm action
@@ -150,6 +157,10 @@
 | COORD-04 | Phase 1 | Pending |
 | COORD-05 | Phase 1 | Pending |
 | COORD-06 | Phase 1 | Pending |
+| CORDN-01 | Phase 5 | Pending |
+| CORDN-02 | Phase 5 | Pending |
+| CORDN-03 | Phase 5 | Pending |
+| CORDN-04 | Phase 5 | Pending |
 | RELAY-01 | Phase 1 | Pending |
 | RELAY-02 | Phase 1 | Pending |
 | RELAY-03 | Phase 1 | Pending |

@@ -31,6 +31,8 @@ function runningTransport(transport: EventTransport): RunningTransport {
   return {
     server: {} as RunningTransport["server"],
     transport: transport as unknown as RunningTransport["transport"],
+    coordinator: {} as RunningTransport["coordinator"],
+    adapter: {} as RunningTransport["adapter"],
     close: vi.fn(),
   };
 }

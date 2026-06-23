@@ -2,10 +2,19 @@ import { McpServer } from "@contextvm/mcp-sdk/server/mcp";
 import { PrivateKeySigner } from "@contextvm/sdk/signer";
 import { NostrServerTransport } from "@contextvm/sdk/transport";
 import type { BrowserCoordinatorOptions } from "../config/config.svelte";
+import { createCoordinator, type Coordinator } from "../cordn/coordinator";
+import {
+  CoordinatorAdapter,
+  type AbuseProtectionOptions,
+  type ResolveRequestEvent,
+  registerCoordinatorMethods,
+} from "../cordn/server/coordinatorMethods";
 
 export interface RunningTransport {
   server: McpServer;
   transport: NostrServerTransport;
+  coordinator: Coordinator;
+  adapter: CoordinatorAdapter;
   close: () => void;
 }
 
@@ -14,6 +23,22 @@ function closeIfPresent(value: unknown): void {
   if (typeof candidate?.close === "function") {
     candidate.close();
   }
+}
+
+function createBrowserAbuseProtection(options: BrowserCoordinatorOptions): AbuseProtectionOptions {
+  return {
+    rateLimit: {
+      enabled: true,
+      refillPerMinute: 500,
+      burst: 160,
+      idleTtlMs: 3_600_000,
+    },
+    keyPackageQuota: {
+      maxPerIdentity: options.maxUsers,
+      maxLastResortPerIdentity: 1,
+    },
+    logRejections: false,
+  };
 }
 
 export class TransportFactory {
@@ -31,6 +56,7 @@ export class TransportFactory {
       name: "cordn-browser",
       version: "0.1.0",
     });
+    const coordinator = createCoordinator();
 
     const transport = new NostrServerTransport({
       signer,
@@ -45,13 +71,25 @@ export class TransportFactory {
       oversizedTransfer: { enabled: true },
       openStream: { enabled: true },
     });
+    const resolveRequestEvent: ResolveRequestEvent = (requestEventId) =>
+      transport.getNostrRequestEvent(requestEventId) ?? null;
+    const adapter = new CoordinatorAdapter(
+      coordinator,
+      resolveRequestEvent,
+      createBrowserAbuseProtection(options),
+    );
+
+    registerCoordinatorMethods(server, adapter);
 
     await server.connect(transport);
 
     return {
       server,
       transport,
+      coordinator,
+      adapter,
       close: () => {
+        adapter.close();
         closeIfPresent(transport);
         closeIfPresent(server);
       },
