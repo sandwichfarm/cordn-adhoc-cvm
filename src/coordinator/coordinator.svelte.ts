@@ -1,4 +1,5 @@
 import { configStore } from "../config/config.svelte";
+import { clearPersistedCoordinatorState } from "../cordn/coordinator/storage/browserSqliteStorage";
 import { KeyManager } from "../crypto/key-manager";
 import { keyStorage, WrongPassphraseError } from "../crypto/key-storage";
 import { transportFactory, type RunningTransport } from "../lib/transport";
@@ -76,8 +77,9 @@ export class CoordinatorStore {
     return true;
   }
 
-  disablePersistence(): void {
+  async disablePersistence(): Promise<void> {
     keyStorage.clear();
+    await clearPersistedCoordinatorState();
     this.persistenceEnabled = false;
     this.persistenceError = null;
   }
@@ -93,6 +95,7 @@ export class CoordinatorStore {
         this.requireKeyManager().getSecretKeyHex(),
         configStore.enabledRelayUrls,
         configStore.coordinatorOptions,
+        this.persistenceEnabled,
       );
       this.setEnabledRelayStatuses("connected");
       this.status = transitionCoordinator(this.status, "started");
@@ -129,6 +132,7 @@ export class CoordinatorStore {
     }
 
     this.destroyStateSynchronously();
+    await clearPersistedCoordinatorState();
     await this.clearBrowserCaches();
   }
 

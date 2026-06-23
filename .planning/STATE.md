@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: complete
-stopped_at: Phase 5 browser Cordn methods implemented and verified locally; persistent coordinator storage and push still remain
-last_updated: "2026-06-23T04:28:36.000Z"
-last_activity: 2026-06-23 — Browser Cordn coordinator methods registered and verified with local CI
+stopped_at: Phase 6 coordinator persistence implemented and verified locally; push and live deploy still remain
+last_updated: "2026-06-23T04:39:00.000Z"
+last_activity: 2026-06-23 - SQLite-WASM coordinator persistence implemented and verified with local CI
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 13
+  completed_plans: 13
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-23)
 
 **Core value:** A single browser tab acts as a fully functional, self-sovereign Cordn coordinator reachable over Nostr relays — no backend, no account, no installation.
-**Current focus:** Objective gap closure — persistent coordinator storage and remote push remain
+**Current focus:** Objective gap closure - remote push and live deploy remain
 
 ## Current Position
 
-Phase: 5 of 5 (Browser Cordn Methods)
+Phase: 6 of 6 (Coordinator Persistence)
 Plan: 1 of 1 in current phase
 Status: Complete locally, broader objective incomplete
-Last activity: 2026-06-23 — Browser Cordn coordinator methods registered and verified with local CI
+Last activity: 2026-06-23 - SQLite-WASM coordinator persistence implemented and verified with local CI
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -64,6 +64,7 @@ Recent decisions affecting current work:
 - Phase 3: Telemetry is observational and best-effort. It hooks transport events when the SDK exposes them, labels values as estimates, and resets on stop/destroy.
 - Phase 4: Runtime limits are guarded in config state. `maxUsers` cannot exceed the browser cap or drop below active users, and announcement defaults off.
 - Phase 5: Browser server now registers the upstream Cordn coordinator MCP method surface backed by in-memory storage.
+- Phase 6: Persistent coordinator mode hydrates a SQLite-WASM backed snapshot before startup and clears kvvfs/fallback storage on disable or destroy.
 
 ### Pending Todos
 
@@ -73,7 +74,7 @@ None yet.
 
 - No Git remote is configured, so pushing the current local implementation is blocked until a remote is added.
 - Production nsite deploy requires repository secrets and a successful GitHub Actions run on `main`.
-- Persistent coordinator data is not implemented yet; current Cordn coordinator storage is in-memory only.
+- Active user count is not yet derived from real Cordn group membership.
 
 ## Deferred Items
 

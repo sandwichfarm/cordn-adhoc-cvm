@@ -1,10 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 import { encode, mlsMessageEncoder, wireformats } from "ts-mls";
 
-import { encodeBase64 } from "../../src/cordn/server/base64";
+import { decodeBase64, encodeBase64 } from "../../src/cordn/server/base64";
 import { CoordinatorAdapter, registerCoordinatorMethods } from "../../src/cordn/server/coordinatorMethods";
 import { COORDINATOR_METHODS } from "../../src/cordn/contracts";
 import { Coordinator } from "../../src/cordn/coordinator";
+import { InMemoryCoordinatorStorage } from "../../src/cordn/coordinator/storage/inMemoryStorage";
 
 const encoder = new TextEncoder();
 
@@ -65,6 +66,39 @@ describe("browser Cordn server adapter", () => {
         at: posted.structuredContent.at,
       },
     ]);
+  });
+
+  test("round-trips coordinator message state through a persistent snapshot", () => {
+    const firstStorage = new InMemoryCoordinatorStorage();
+    const firstAdapter = new CoordinatorAdapter(new Coordinator({ storage: firstStorage }));
+    const encodedMessage = createPrivateApplicationMessage("group-persisted", 9n);
+
+    firstAdapter.postGroupMessage(
+      { msg_64: encodeBase64(encodedMessage) },
+      createExtra("sender-pubkey"),
+    );
+
+    const secondAdapter = new CoordinatorAdapter(
+      new Coordinator({
+        storage: new InMemoryCoordinatorStorage(firstStorage.toSnapshot()),
+      }),
+    );
+
+    expect(secondAdapter.fetchGroupMessages({ gid: "group-persisted" }).structuredContent.messages).toEqual([
+      {
+        cursor: 1,
+        gid: "group-persisted",
+        msg_64: encodeBase64(encodedMessage),
+        at: expect.any(Number),
+      },
+    ]);
+  });
+
+  test("uses browser base64 APIs without Buffer", () => {
+    const encoded = encodeBase64(Uint8Array.from([1, 2, 3, 254]));
+
+    expect(encoded).toBe("AQID/g==");
+    expect([...decodeBase64(encoded)]).toEqual([1, 2, 3, 254]);
   });
 
   test("enforces injected caller identity before handling methods", () => {

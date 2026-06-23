@@ -3,6 +3,7 @@ import { PrivateKeySigner } from "@contextvm/sdk/signer";
 import { NostrServerTransport } from "@contextvm/sdk/transport";
 import type { BrowserCoordinatorOptions } from "../config/config.svelte";
 import { createCoordinator, type Coordinator } from "../cordn/coordinator";
+import { createBrowserCoordinatorStorage } from "../cordn/coordinator/storage/browserSqliteStorage";
 import {
   CoordinatorAdapter,
   type AbuseProtectionOptions,
@@ -46,6 +47,7 @@ export class TransportFactory {
     privateKeyHex: string,
     relayUrls: string[],
     options: BrowserCoordinatorOptions,
+    persistent: boolean,
   ): Promise<RunningTransport> {
     if (relayUrls.length === 0) {
       throw new Error("At least one enabled relay is required");
@@ -56,7 +58,9 @@ export class TransportFactory {
       name: "cordn-browser",
       version: "0.1.0",
     });
-    const coordinator = createCoordinator();
+    const coordinator = createCoordinator({
+      storage: await createBrowserCoordinatorStorage(persistent),
+    });
 
     const transport = new NostrServerTransport({
       signer,

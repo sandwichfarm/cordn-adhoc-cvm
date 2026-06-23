@@ -33,7 +33,7 @@
     <button
       class="mt-4 border border-[#ff8f8f] px-4 py-2 text-sm uppercase text-[#ff8f8f] hover:bg-[#ff8f8f] hover:text-black"
       type="button"
-      onclick={() => coordinator.disablePersistence()}
+      onclick={() => void coordinator.disablePersistence()}
     >
       Remove saved key
     </button>

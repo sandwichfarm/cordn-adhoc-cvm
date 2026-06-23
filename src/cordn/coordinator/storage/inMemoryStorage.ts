@@ -14,11 +14,55 @@ import {
   type CoordinatorStorage,
   MAX_PENDING_JOIN_REQUESTS_PER_GROUP,
 } from "./storage";
+import { decodeBase64, encodeBase64 } from "../../server/base64";
+import {
+  decodeKeyPackage,
+  decodeWelcome,
+  encodeKeyPackage,
+  encodeWelcome,
+} from "../../mlsCodec";
 
 interface GroupLog {
   nextCursor: number;
   routing: GroupRoutingRecord;
   messages: GroupMessageRecord[];
+}
+
+export interface CoordinatorStorageSnapshot {
+  version: 1;
+  keyPackages: Array<{
+    stablePubkey: string;
+    keyPackageRef: string;
+    isLastResort: boolean;
+    publishedAt: number;
+    publicationEvent: PublishedKeyPackageRecord["publicationEvent"];
+    keyPackage64: string;
+  }>;
+  welcomes: Array<{
+    targetStablePubkey: string;
+    keyPackageReference: string;
+    welcome64: string;
+    createdAt: number;
+    readAt: number | null;
+  }>;
+  joinRequests: JoinRequestRecord[];
+  groups: Array<{
+    groupId: string;
+    nextCursor: number;
+    routing: {
+      groupId: string;
+      latestHandshakeEpoch: string;
+      lastMessageCursor: number;
+    };
+    messages: Array<{
+      cursor: number;
+      groupId: string;
+      epoch: string;
+      ephemeralSenderPubkey: string;
+      opaqueMessage64: string;
+      createdAt: number;
+    }>;
+  }>;
 }
 
 function createGroupLog(groupId: string, epoch: bigint): GroupLog {
@@ -42,6 +86,58 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   private readonly joinRequestsByGroup = new Map<string, JoinRequestRecord[]>();
   private readonly groups = new Map<string, GroupLog>();
 
+  constructor(
+    snapshot?: CoordinatorStorageSnapshot | null,
+    private readonly onChange?: (snapshot: CoordinatorStorageSnapshot) => void,
+  ) {
+    if (snapshot) {
+      this.restoreSnapshot(snapshot);
+    }
+  }
+
+  toSnapshot(): CoordinatorStorageSnapshot {
+    return {
+      version: 1,
+      keyPackages: this.listAllKeyPackages().map((record) => ({
+        stablePubkey: record.stablePubkey,
+        keyPackageRef: record.keyPackageRef,
+        isLastResort: record.isLastResort,
+        publishedAt: record.publishedAt,
+        publicationEvent: record.publicationEvent,
+        keyPackage64: encodeBase64(encodeKeyPackage(record.keyPackage)),
+      })),
+      welcomes: [...this.welcomesByIdentity.values()].flatMap((records) =>
+        records.map((record) => ({
+          targetStablePubkey: record.targetStablePubkey,
+          keyPackageReference: record.keyPackageReference,
+          welcome64: encodeBase64(encodeWelcome(record.welcome)),
+          createdAt: record.createdAt,
+          readAt: record.readAt,
+        })),
+      ),
+      joinRequests: [...this.joinRequestsByGroup.values()].flatMap((records) =>
+        records.map((record) => ({ ...record })),
+      ),
+      groups: [...this.groups.values()].map((group) => ({
+        groupId: group.routing.groupId,
+        nextCursor: group.nextCursor,
+        routing: {
+          groupId: group.routing.groupId,
+          latestHandshakeEpoch: group.routing.latestHandshakeEpoch.toString(),
+          lastMessageCursor: group.routing.lastMessageCursor,
+        },
+        messages: group.messages.map((record) => ({
+          cursor: record.cursor,
+          groupId: record.groupId,
+          epoch: record.epoch.toString(),
+          ephemeralSenderPubkey: record.ephemeralSenderPubkey,
+          opaqueMessage64: encodeBase64(record.opaqueMessage),
+          createdAt: record.createdAt,
+        })),
+      })),
+    };
+  }
+
   publishKeyPackage(
     record: PublishedKeyPackageRecord,
   ): PublishedKeyPackageRecord {
@@ -49,6 +145,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     records.push(record);
     this.keyPackagesByIdentity.set(record.stablePubkey, records);
 
+    this.persist();
     return record;
   }
 
@@ -91,6 +188,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
       this.keyPackagesByIdentity.delete(stablePubkey);
     }
 
+    this.persist();
     return removed ?? null;
   }
 
@@ -110,6 +208,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     existing.push(stored);
     this.welcomesByIdentity.set(stored.targetStablePubkey, existing);
 
+    this.persist();
     return stored;
   }
 
@@ -118,10 +217,15 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     now: number,
   ): WelcomeQueueRecord[] {
     const records = this.welcomesByIdentity.get(targetStablePubkey) ?? [];
+    let changed = false;
     for (const record of records) {
       if (record.readAt === null) {
         record.readAt = now;
+        changed = true;
       }
+    }
+    if (changed) {
+      this.persist();
     }
     return records;
   }
@@ -147,6 +251,9 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
       }
     }
 
+    if (deleted > 0) {
+      this.persist();
+    }
     return deleted;
   }
 
@@ -171,15 +278,21 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     existing.push(stored);
     this.joinRequestsByGroup.set(record.groupId, existing);
 
+    this.persist();
     return stored;
   }
 
   fetchPendingJoinRequests(groupId: string, now: number): JoinRequestRecord[] {
     const records = this.joinRequestsByGroup.get(groupId) ?? [];
+    let changed = false;
     for (const record of records) {
       if (record.readAt === null) {
         record.readAt = now;
+        changed = true;
       }
+    }
+    if (changed) {
+      this.persist();
     }
     return records;
   }
@@ -214,6 +327,9 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
       }
     }
 
+    if (deleted > 0) {
+      this.persist();
+    }
     return deleted;
   }
 
@@ -238,6 +354,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
 
     this.groups.set(params.groupId, group);
 
+    this.persist();
     return record;
   }
 
@@ -323,5 +440,67 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     }
 
     return undefined;
+  }
+
+  private restoreSnapshot(snapshot: CoordinatorStorageSnapshot): void {
+    if (snapshot.version !== 1) {
+      throw new Error("Unsupported coordinator storage snapshot");
+    }
+
+    for (const record of snapshot.keyPackages) {
+      const keyPackageRecords =
+        this.keyPackagesByIdentity.get(record.stablePubkey) ?? [];
+      keyPackageRecords.push({
+        stablePubkey: record.stablePubkey,
+        keyPackageRef: record.keyPackageRef,
+        keyPackage: decodeKeyPackage(decodeBase64(record.keyPackage64)),
+        isLastResort: record.isLastResort,
+        publishedAt: record.publishedAt,
+        publicationEvent: record.publicationEvent,
+      });
+      this.keyPackagesByIdentity.set(record.stablePubkey, keyPackageRecords);
+    }
+
+    for (const record of snapshot.welcomes) {
+      const records =
+        this.welcomesByIdentity.get(record.targetStablePubkey) ?? [];
+      records.push({
+        targetStablePubkey: record.targetStablePubkey,
+        keyPackageReference: record.keyPackageReference,
+        welcome: decodeWelcome(decodeBase64(record.welcome64)),
+        createdAt: record.createdAt,
+        readAt: record.readAt,
+      });
+      this.welcomesByIdentity.set(record.targetStablePubkey, records);
+    }
+
+    for (const record of snapshot.joinRequests) {
+      const records = this.joinRequestsByGroup.get(record.groupId) ?? [];
+      records.push({ ...record });
+      this.joinRequestsByGroup.set(record.groupId, records);
+    }
+
+    for (const group of snapshot.groups) {
+      this.groups.set(group.groupId, {
+        nextCursor: group.nextCursor,
+        routing: {
+          groupId: group.routing.groupId,
+          latestHandshakeEpoch: BigInt(group.routing.latestHandshakeEpoch),
+          lastMessageCursor: group.routing.lastMessageCursor,
+        },
+        messages: group.messages.map((record) => ({
+          cursor: record.cursor,
+          groupId: record.groupId,
+          epoch: BigInt(record.epoch),
+          ephemeralSenderPubkey: record.ephemeralSenderPubkey,
+          opaqueMessage: decodeBase64(record.opaqueMessage64),
+          createdAt: record.createdAt,
+        })),
+      });
+    }
+  }
+
+  private persist(): void {
+    this.onChange?.(this.toSnapshot());
   }
 }

@@ -2,7 +2,12 @@
 
 ## Overview
 
-Cordn Browser is built in five phases: Phase 1 delivers a coordinator shell that starts, stops, and configures relays. Phase 2 hardens the key lifecycle with encrypted persistence and a confirmed destroy action. Phase 3 adds live resource telemetry and automates deployment via nsite/Blossom on every push to main. Phase 4 closes explicit objective gaps around browser limits and guarded runtime options. Phase 5 registers the real Cordn coordinator method surface in the browser.
+Cordn Browser is built in six phases: Phase 1 delivers a coordinator shell that starts, stops, and configures relays.
+Phase 2 hardens the key lifecycle with encrypted persistence and a confirmed destroy action.
+Phase 3 adds live resource telemetry and automates deployment via nsite/Blossom on every push to main.
+Phase 4 closes explicit objective gaps around browser limits and guarded runtime options.
+Phase 5 registers the real Cordn coordinator method surface in the browser.
+Phase 6 persists Cordn coordinator method data in browser SQLite-WASM storage.
 
 ## Phases
 
@@ -11,6 +16,7 @@ Cordn Browser is built in five phases: Phase 1 delivers a coordinator shell that
 - [x] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
 - [x] **Phase 4: Runtime Limits & Guarded Options** - Announcement option, maximum users browser cap, and active-user guard invariant
 - [x] **Phase 5: Browser Cordn Methods** - Browser-safe Cordn coordinator core and MCP method registration
+- [x] **Phase 6: Coordinator Persistence** - SQLite-WASM snapshot persistence for Cordn coordinator method data
 
 ## Phase Details
 
@@ -100,6 +106,22 @@ Plans:
 - [x] 05-01: Browser Cordn methods — contracts, in-memory coordinator, adapter, MCP tool registration, MLS message tests
 **UI hint**: no
 
+### Phase 6: Coordinator Persistence
+**Goal**: Cordn method data survives browser reloads when persistence is enabled and is cleared by disable/destroy actions
+**Depends on**: Phase 5
+**Requirements**: COORD-DATA-01, COORD-DATA-02, COORD-DATA-03
+**Success Criteria** (what must be TRUE):
+  1. Persistent coordinator startup hydrates Cordn storage before registering methods
+  2. Cordn group message state round-trips through a persisted browser snapshot
+  3. Disabling persistence or destroying the coordinator removes SQLite-WASM kvvfs data and fallback localStorage state
+  4. Browser runtime remains free of Node `Buffer` dependencies
+  5. Full local CI passes
+**Plans**: 1 plan
+
+Plans:
+- [x] 06-01: SQLite-WASM coordinator storage - snapshot persistence, startup hydration, destroy cleanup, browser base64, tests
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -109,3 +131,4 @@ Plans:
 | 3. Telemetry & Deployment | 2/2 | Complete | 2026-06-23 |
 | 4. Runtime Limits & Guarded Options | 1/1 | Complete | 2026-06-23 |
 | 5. Browser Cordn Methods | 1/1 | Complete | 2026-06-23 |
+| 6. Coordinator Persistence | 1/1 | Complete | 2026-06-23 |

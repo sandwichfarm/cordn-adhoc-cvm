@@ -60,6 +60,12 @@
 - [ ] **PERSIST-05**: Passphrase is never stored in localStorage, sessionStorage, or any other persistent browser storage
 - [ ] **PERSIST-06**: Destroy action calls `localStorage.removeItem` for the encrypted key entry
 
+### Coordinator Data Persistence (COORD-DATA)
+
+- [ ] **COORD-DATA-01**: When persistence is enabled, Cordn coordinator method data is stored in browser SQLite-WASM backed storage
+- [ ] **COORD-DATA-02**: Coordinator startup hydrates persisted Cordn state before registering browser MCP methods
+- [ ] **COORD-DATA-03**: Disabling persistence or destroying the coordinator clears SQLite-WASM kvvfs records and fallback localStorage state
+
 ### Security (SEC)
 
 - [ ] **SEC-01**: Destroy action calls `Uint8Array.fill(0)` on the in-memory key buffer before dereferencing it
@@ -161,6 +167,9 @@
 | CORDN-02 | Phase 5 | Pending |
 | CORDN-03 | Phase 5 | Pending |
 | CORDN-04 | Phase 5 | Pending |
+| COORD-DATA-01 | Phase 6 | Pending |
+| COORD-DATA-02 | Phase 6 | Pending |
+| COORD-DATA-03 | Phase 6 | Pending |
 | RELAY-01 | Phase 1 | Pending |
 | RELAY-02 | Phase 1 | Pending |
 | RELAY-03 | Phase 1 | Pending |
@@ -215,8 +224,8 @@
 | CICD-06 | Phase 3 | Pending |
 
 **Coverage:**
-- v1 requirements: 52 total
-- Mapped to phases: 52
+- v1 requirements: 55 total
+- Mapped to phases: 55
 - Unmapped: 0 ✓
 
 ---

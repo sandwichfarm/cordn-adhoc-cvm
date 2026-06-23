@@ -19,6 +19,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - [ ] Browser-resident coordinator using `@contextvm/sdk` `NostrServerTransport`
 - [ ] Browser Cordn coordinator method surface registered on the MCP server
 - [ ] Auto-generated coordinator keypair (nsec stored in memory; optional encrypted localStorage persistence)
+- [ ] Optional SQLite-WASM coordinator data persistence for Cordn method state
 - [ ] Relay configuration panel — add/remove/toggle Nostr relay URLs, guarded behind a confirm-to-edit pattern
 - [ ] Coordinator start/stop/destroy lifecycle — destroy wipes key + state from memory and storage
 - [ ] Browser resource limit display — show active subscription count, message rate, memory estimate
@@ -43,7 +44,8 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - **ContextVM SDK** (`@contextvm/sdk`) is the transport layer. `NostrServerTransport` wraps a Nostr keypair and relay list to present an MCP server endpoint over the network. It handles encryption, serialization, and relay management internally.
 - **nsite/nsyte** deploys static builds (Vite output) to Blossom file storage, publishing the root manifest as a Nostr event. The `nsite-action` GitHub Action handles CI deploy; it requires `NSYTE_BUNKER_URL` and `NSYTE_RELAY` secrets plus a Blossom server URL.
 - **Key persistence**: the coordinator nsec must never leave the browser unencrypted. Persistence is opt-in; when enabled, the key is encrypted with a user-supplied passphrase before writing to `localStorage`. The destroy action must zero-fill the in-memory key buffer and call `localStorage.removeItem` atomically.
-- **Coordinator persistence**: Cordn method data is currently in-memory. The original objective still requires sqlite-wasm or worker-relay persistence for coordinator state before final completion.
+- **Coordinator persistence**: Cordn method data persists through a SQLite-WASM snapshot when persistence is enabled.
+  The runtime hydrates this snapshot before startup and clears kvvfs/fallback state on disable or destroy.
 - **Guarded config**: relay URLs and persistence settings are read-only by default; the user must explicitly click "Edit configuration" to unlock the form, preventing accidental relay list wipes while the coordinator is running.
 - **Test strategy**: Vitest for pure functions (key derivation, state machine transitions, config validation). Playwright for the rendered app (can't unit-test WebSocket + Nostr relay interactions without a live relay, so Playwright uses a mock relay via `ws` in a fixture).
 
@@ -64,6 +66,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | Vitest + Playwright, no Storybook | Storybook adds build complexity for a single-screen app; Playwright covers visual regression well enough for this scope | — Pending |
 | nsyte for deploy, not Vercel/Netlify | Project ethos is decentralized hosting; nsite/Blossom aligns with the Nostr-native stack | — Pending |
 | Destroy zeroes key in memory | Browser GC timing is non-deterministic; explicit zeroing reduces the window for key extraction from heap snapshots | — Pending |
+| SQLite-WASM snapshot persistence for coordinator data | Hydration must happen before startup; snapshotting keeps the upstream storage contract intact | Pending |
 
 ---
-*Last updated: 2026-06-23 after initial project definition*
+*Last updated: 2026-06-23 after Phase 6 coordinator persistence*
