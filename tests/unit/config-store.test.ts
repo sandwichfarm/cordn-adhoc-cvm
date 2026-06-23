@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ConfigStore } from "../../src/config/config.svelte";
 import { DEFAULT_MAX_USERS } from "../../src/config/config-validator";
+import { DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT } from "../../src/cordn/coordinator/storage/inMemoryStorage";
 
 describe("ConfigStore runtime limits", () => {
   beforeEach(() => {
@@ -15,6 +16,8 @@ describe("ConfigStore runtime limits", () => {
     expect(store.coordinatorOptions).toEqual({
       announce: false,
       maxUsers: DEFAULT_MAX_USERS,
+      storageBackend: "memory",
+      messageBufferLimit: DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT,
     });
 
     store.setAnnouncement(true);
@@ -49,6 +52,8 @@ describe("ConfigStore runtime limits", () => {
     first.toggleRelay(first.relays[0].id);
     first.setAnnouncement(true);
     expect(first.setMaxUsers(12)).toBe(true);
+    expect(first.setStorageBackend("indexeddb")).toBe(true);
+    expect(first.setMessageBufferLimit(123)).toBe(true);
 
     const second = new ConfigStore();
 
@@ -61,6 +66,8 @@ describe("ConfigStore runtime limits", () => {
     ]);
     expect(second.announce).toBe(true);
     expect(second.maxUsers).toBe(12);
+    expect(second.storageBackend).toBe("indexeddb");
+    expect(second.messageBufferLimit).toBe(123);
   });
 
   test("ignores invalid persisted config entries", () => {
@@ -74,6 +81,8 @@ describe("ConfigStore runtime limits", () => {
         ],
         announce: true,
         maxUsers: 999,
+        storageBackend: "bad",
+        messageBufferLimit: 100_000,
       }),
     );
 
@@ -82,6 +91,8 @@ describe("ConfigStore runtime limits", () => {
     expect(store.relays.map((relay) => relay.url)).toEqual(["wss://relay.valid.example"]);
     expect(store.announce).toBe(true);
     expect(store.maxUsers).toBe(DEFAULT_MAX_USERS);
+    expect(store.storageBackend).toBe("memory");
+    expect(store.messageBufferLimit).toBe(DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT);
   });
 
   test("reset clears persisted config and restores defaults", () => {
@@ -95,5 +106,7 @@ describe("ConfigStore runtime limits", () => {
 
     expect(reloaded.relays.map((relay) => relay.url)).toEqual(["wss://relay.contextvm.org"]);
     expect(reloaded.announce).toBe(false);
+    expect(reloaded.storageBackend).toBe("memory");
+    expect(reloaded.messageBufferLimit).toBe(DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT);
   });
 });

@@ -1,4 +1,13 @@
-import { DEFAULT_MAX_USERS, validateMaxUsers, validateRelayUrl } from "./config-validator";
+import {
+  DEFAULT_MAX_USERS,
+  DEFAULT_STORAGE_BACKEND,
+  validateMaxUsers,
+  validateMessageBufferLimit,
+  validateRelayUrl,
+  validateStorageBackend,
+} from "./config-validator";
+import type { BrowserCoordinatorStorageBackend } from "../cordn/coordinator/storage/browserCoordinatorStorage";
+import { DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT } from "../cordn/coordinator/storage/inMemoryStorage";
 
 const CONFIG_STORAGE_KEY = "cordn:v1:config";
 const CONFIG_STORAGE_VERSION = 1;
@@ -15,6 +24,8 @@ export interface RelayConfig {
 export interface BrowserCoordinatorOptions {
   announce: boolean;
   maxUsers: number;
+  storageBackend: BrowserCoordinatorStorageBackend;
+  messageBufferLimit: number;
 }
 
 interface PersistedConfig {
@@ -22,6 +33,8 @@ interface PersistedConfig {
   relays: Array<Pick<RelayConfig, "url" | "enabled">>;
   announce: boolean;
   maxUsers: number;
+  storageBackend?: BrowserCoordinatorStorageBackend;
+  messageBufferLimit?: number;
 }
 
 export class ConfigStore {
@@ -31,6 +44,8 @@ export class ConfigStore {
   limitError = $state<string | null>(null);
   announce = $state(false);
   maxUsers = $state(DEFAULT_MAX_USERS);
+  storageBackend = $state<BrowserCoordinatorStorageBackend>(DEFAULT_STORAGE_BACKEND);
+  messageBufferLimit = $state(DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT);
 
   constructor() {
     this.loadPersistedConfig();
@@ -44,6 +59,8 @@ export class ConfigStore {
     return {
       announce: this.announce,
       maxUsers: this.maxUsers,
+      storageBackend: this.storageBackend,
+      messageBufferLimit: this.messageBufferLimit,
     };
   }
 
@@ -112,6 +129,31 @@ export class ConfigStore {
     return true;
   }
 
+  setStorageBackend(value: string): boolean {
+    if (!validateStorageBackend(value)) {
+      this.limitError = "Storage backend must be memory or IndexedDB";
+      return false;
+    }
+
+    this.storageBackend = value;
+    this.limitError = null;
+    this.persistConfig();
+    return true;
+  }
+
+  setMessageBufferLimit(value: number): boolean {
+    const error = validateMessageBufferLimit(value);
+    if (error) {
+      this.limitError = error;
+      return false;
+    }
+
+    this.messageBufferLimit = value;
+    this.limitError = null;
+    this.persistConfig();
+    return true;
+  }
+
   resetToDefaults(): void {
     clearPersistedConfig();
     this.relays = cloneDefaultRelays();
@@ -120,6 +162,8 @@ export class ConfigStore {
     this.limitError = null;
     this.announce = false;
     this.maxUsers = DEFAULT_MAX_USERS;
+    this.storageBackend = DEFAULT_STORAGE_BACKEND;
+    this.messageBufferLimit = DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT;
   }
 
   private persistConfig(): void {
@@ -132,6 +176,8 @@ export class ConfigStore {
       relays: this.relays.map((relay) => ({ url: relay.url, enabled: relay.enabled })),
       announce: this.announce,
       maxUsers: this.maxUsers,
+      storageBackend: this.storageBackend,
+      messageBufferLimit: this.messageBufferLimit,
     };
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
   }
@@ -149,6 +195,8 @@ export class ConfigStore {
     }));
     this.announce = persisted.announce;
     this.maxUsers = persisted.maxUsers;
+    this.storageBackend = persisted.storageBackend ?? DEFAULT_STORAGE_BACKEND;
+    this.messageBufferLimit = persisted.messageBufferLimit ?? DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT;
   }
 }
 
@@ -186,12 +234,24 @@ function readPersistedConfig(): PersistedConfig | null {
 
     const maxUsers = typeof parsed.maxUsers === "number" ? Math.trunc(parsed.maxUsers) : DEFAULT_MAX_USERS;
     const limitError = validateMaxUsers(maxUsers);
+    const storageBackend =
+      typeof parsed.storageBackend === "string" && validateStorageBackend(parsed.storageBackend)
+        ? parsed.storageBackend
+        : DEFAULT_STORAGE_BACKEND;
+    const messageBufferLimit =
+      typeof parsed.messageBufferLimit === "number"
+        ? Math.trunc(parsed.messageBufferLimit)
+        : DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT;
 
     return {
       version: CONFIG_STORAGE_VERSION,
       relays,
       announce: parsed.announce === true,
       maxUsers: limitError ? DEFAULT_MAX_USERS : maxUsers,
+      storageBackend,
+      messageBufferLimit: validateMessageBufferLimit(messageBufferLimit)
+        ? DEFAULT_MEMORY_MESSAGE_BUFFER_LIMIT
+        : messageBufferLimit,
     };
   } catch {
     return null;

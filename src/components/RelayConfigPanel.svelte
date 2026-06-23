@@ -61,6 +61,16 @@
     const input = event.currentTarget as HTMLInputElement;
     config.setMaxUsers(input.valueAsNumber);
   }
+
+  function updateStorageBackend(event: Event): void {
+    const input = event.currentTarget as HTMLSelectElement;
+    config.setStorageBackend(input.value);
+  }
+
+  function updateMessageBufferLimit(event: Event): void {
+    const input = event.currentTarget as HTMLInputElement;
+    config.setMessageBufferLimit(input.valueAsNumber);
+  }
 </script>
 
 <section class="mx-auto max-w-3xl py-8">
@@ -152,7 +162,7 @@
     <div class="mb-4 flex items-center justify-between gap-4">
       <h3 class="text-xs uppercase tracking-[0.18em] text-[#87ff9f]">Runtime options</h3>
       <span class="border border-[#21482b] px-3 py-1 text-xs uppercase text-[#a7b0aa]" data-testid="max-users-state">
-        {config.maxUsers} key packages / identity
+        {config.storageBackend} storage · {config.messageBufferLimit} buffered · {config.maxUsers} key packages / identity
       </span>
     </div>
 
@@ -182,6 +192,37 @@
           aria-label="Key-package quota"
           data-testid="max-users-input"
           onchange={updateMaxUsers}
+        />
+      </label>
+
+      <label class="grid gap-2 border border-[#16331f] bg-[#050805] p-3 text-sm text-[#d1ffd9]">
+        <span class="uppercase tracking-[0.12em] text-[#6d746f]">storage</span>
+        <select
+          class="border border-[#21482b] bg-black px-3 py-2 text-[#87ff9f] outline-none focus:border-[#87ff9f] disabled:cursor-not-allowed disabled:text-[#4b554e]"
+          value={config.storageBackend}
+          disabled={!editingAllowed}
+          aria-label="Storage backend"
+          data-testid="storage-backend-select"
+          onchange={updateStorageBackend}
+        >
+          <option value="memory">memory</option>
+          <option value="indexeddb">IndexedDB</option>
+        </select>
+      </label>
+
+      <label class="grid gap-2 border border-[#16331f] bg-[#050805] p-3 text-sm text-[#d1ffd9]">
+        <span class="uppercase tracking-[0.12em] text-[#6d746f]">message buffer</span>
+        <input
+          class="border border-[#21482b] bg-black px-3 py-2 text-[#87ff9f] outline-none focus:border-[#87ff9f] disabled:cursor-not-allowed disabled:text-[#4b554e]"
+          type="number"
+          min="1"
+          max="50000"
+          step="1"
+          value={config.messageBufferLimit}
+          disabled={!editingAllowed}
+          aria-label="Message buffer"
+          data-testid="message-buffer-input"
+          onchange={updateMessageBufferLimit}
         />
       </label>
     </div>
