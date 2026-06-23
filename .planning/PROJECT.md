@@ -28,8 +28,8 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - [ ] Minimal cypherpunk GUI with Svelte 5 + Vite + Tailwind (dark, monospace, no gradients, no icons except Unicode)
 - [ ] Unit tests (Vitest) covering coordinator state machine and key persistence helpers
 - [ ] Playwright e2e tests covering start, config edit, stop, destroy flows
-- [ ] GitHub Actions CI workflow: lint → unit → Playwright
-- [ ] GitHub Actions nsite deploy workflow via `nsyte` to Blossom + Nostr on push to `main`
+- [ ] GitHub Actions CI workflow: lint → unit → Playwright on `main` and `master`
+- [ ] GitHub Actions nsite deploy workflow via `nsyte` to Blossom + Nostr on successful `main` or `master` CI
 - [ ] Helper script (`scripts/setup-secrets.sh`) to guide user through adding GitHub secrets for nsite deploy
 
 ### Out of Scope

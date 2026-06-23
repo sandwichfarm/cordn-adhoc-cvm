@@ -9,6 +9,7 @@ Phase 4 closes explicit objective gaps around browser limits and guarded runtime
 Phase 5 registers the real Cordn coordinator method surface in the browser.
 Phase 6 persists Cordn coordinator method data in browser SQLite-WASM storage.
 Phase 7 wires browser telemetry to real Cordn adapter activity.
+Phase 8 makes deploy triggers match both common default branches and the current local branch.
 
 ## Phases
 
@@ -19,6 +20,7 @@ Phase 7 wires browser telemetry to real Cordn adapter activity.
 - [x] **Phase 5: Browser Cordn Methods** - Browser-safe Cordn coordinator core and MCP method registration
 - [x] **Phase 6: Coordinator Persistence** - SQLite-WASM snapshot persistence for Cordn coordinator method data
 - [x] **Phase 7: Adapter-Backed Telemetry** - Resource monitor updates from Cordn method activity and live subscriptions
+- [x] **Phase 8: Deploy Branch Readiness** - CI and nsite deploy trigger on `main` and current `master`
 
 ## Phase Details
 
@@ -139,6 +141,21 @@ Plans:
 - [x] 07-01: Adapter telemetry sink - operation callback, subscription count callback, monitor binding, tests
 **UI hint**: no
 
+### Phase 8: Deploy Branch Readiness
+**Goal**: GitHub workflows are ready for either `main` or this repository's current `master` branch
+**Depends on**: Phase 7
+**Requirements**: CICD-01, CICD-03
+**Success Criteria** (what must be TRUE):
+  1. Pull request CI targets both `main` and `master`
+  2. nsite deploy workflow runs after successful CI on both `main` and `master`
+  3. Existing secret guard behavior remains unchanged
+  4. Workflow syntax validates locally
+**Plans**: 1 plan
+
+Plans:
+- [x] 08-01: Branch-ready workflows - add `master` to CI/deploy branch filters and validate workflow YAML
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -150,3 +167,4 @@ Plans:
 | 5. Browser Cordn Methods | 1/1 | Complete | 2026-06-23 |
 | 6. Coordinator Persistence | 1/1 | Complete | 2026-06-23 |
 | 7. Adapter-Backed Telemetry | 1/1 | Complete | 2026-06-23 |
+| 8. Deploy Branch Readiness | 1/1 | Complete | 2026-06-23 |

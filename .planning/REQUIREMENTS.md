@@ -111,9 +111,9 @@
 
 ### CI/CD & Deployment (CICD)
 
-- [ ] **CICD-01**: GitHub Actions workflow runs `lint → vitest → playwright` on every push and on every pull request targeting `main`
+- [ ] **CICD-01**: GitHub Actions workflow runs `lint → vitest → playwright` on every push and on pull requests targeting `main` or `master`
 - [ ] **CICD-02**: Total CI workflow wall-clock time stays under 4 minutes on a standard GitHub-hosted runner
-- [ ] **CICD-03**: GitHub Actions nsite deploy workflow triggers on push to `main` only after all CI checks pass
+- [ ] **CICD-03**: GitHub Actions nsite deploy workflow triggers on successful CI for `main` or `master`
 - [ ] **CICD-04**: nsite deploy uses `nsyte` CLI (via `nsite-action`) to publish the `vite build` output to Blossom + Nostr using `NSYTE_BUNKER_URL` and `NSYTE_RELAY` secrets
 - [ ] **CICD-05**: `scripts/setup-secrets.sh` is executable and guides the user through setting `NSYTE_BUNKER_URL`, `NSYTE_RELAY`, and Blossom server URL as GitHub repository secrets
 - [ ] **CICD-06**: Deploy workflow step is skipped (not failed) if secrets are absent, with a clear skip message

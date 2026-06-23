@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: complete
-stopped_at: Phase 7 adapter-backed telemetry implemented and verified locally; push and live deploy still remain
-last_updated: "2026-06-23T04:45:00.000Z"
-last_activity: 2026-06-23 - Adapter-backed telemetry implemented with focused unit coverage
+stopped_at: Phase 8 deploy branch readiness implemented and verified locally; push and live deploy still remain
+last_updated: "2026-06-23T04:53:00.000Z"
+last_activity: 2026-06-23 - CI and nsite deploy triggers now support main and master
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 14
-  completed_plans: 14
+  total_phases: 8
+  completed_phases: 8
+  total_plans: 15
+  completed_plans: 15
   percent: 100
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 7 of 7 (Adapter-Backed Telemetry)
+Phase: 8 of 8 (Deploy Branch Readiness)
 Plan: 1 of 1 in current phase
 Status: Complete locally, broader objective incomplete
-Last activity: 2026-06-23 - Adapter-backed telemetry implemented with focused unit coverage
+Last activity: 2026-06-23 - CI and nsite deploy triggers now support main and master
 
 Progress: [██████████] 100%
 
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 14
+- Total plans completed: 15
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -66,6 +66,7 @@ Recent decisions affecting current work:
 - Phase 5: Browser server now registers the upstream Cordn coordinator MCP method surface backed by in-memory storage.
 - Phase 6: Persistent coordinator mode hydrates a SQLite-WASM backed snapshot before startup and clears kvvfs/fallback storage on disable or destroy.
 - Phase 7: Resource telemetry now binds to Cordn adapter operations and coordinator subscription counts in addition to SDK transport events.
+- Phase 8: CI and nsite deploy workflows now target both `main` and the current local `master` branch.
 
 ### Pending Todos
 
@@ -74,7 +75,7 @@ None yet.
 ### Blockers/Concerns
 
 - No Git remote is configured, so pushing the current local implementation is blocked until a remote is added.
-- Production nsite deploy requires repository secrets and a successful GitHub Actions run on `main`.
+- Production nsite deploy requires repository secrets and a successful GitHub Actions run on `main` or `master`.
 - Active user count is not yet derived from real Cordn group membership.
 
 ## Deferred Items
