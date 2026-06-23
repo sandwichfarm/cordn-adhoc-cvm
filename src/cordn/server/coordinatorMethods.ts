@@ -67,6 +67,11 @@ export interface AbuseProtectionOptions {
   logRejections: boolean;
 }
 
+export interface CoordinatorTelemetrySink {
+  recordOperation?: (methodName: string) => void;
+  setActiveSubscriptions?: (count: number) => void;
+}
+
 function decodeKeyPackageBase64(kp_64: string): KeyPackage {
   try {
     return decodeExact(
@@ -224,6 +229,7 @@ export class CoordinatorAdapter {
   private readonly rateLimiter: TokenBucketRateLimiter;
   private readonly abuseProtection: AbuseProtectionOptions;
   private readonly logger: ServerLogger;
+  private telemetry?: CoordinatorTelemetrySink;
   private readonly metrics = new Map<string, number>();
 
   constructor(
@@ -231,6 +237,7 @@ export class CoordinatorAdapter {
     resolveRequestEvent?: ResolveRequestEvent,
     abuseProtection?: AbuseProtectionOptions,
     logger: ServerLogger = consoleServerLogger,
+    telemetry?: CoordinatorTelemetrySink,
   ) {
     this.coordinator = coordinator;
     this.resolveRequestEvent = resolveRequestEvent;
@@ -251,10 +258,16 @@ export class CoordinatorAdapter {
       this.abuseProtection.rateLimit,
     );
     this.logger = logger;
+    this.telemetry = telemetry;
   }
 
   close(): void {
     this.coordinator.close();
+  }
+
+  setTelemetrySink(telemetry?: CoordinatorTelemetrySink): void {
+    this.telemetry = telemetry;
+    this.recordSubscriptionCount();
   }
 
   private recordOperation(methodName: string): void {
@@ -263,6 +276,13 @@ export class CoordinatorAdapter {
     this.logger.info(
       { type: "operation", method: methodName, count },
       "cordn operation",
+    );
+    this.telemetry?.recordOperation?.(methodName);
+  }
+
+  private recordSubscriptionCount(): void {
+    this.telemetry?.setActiveSubscriptions?.(
+      this.coordinator.getActiveSubscriptionCount(),
     );
   }
 
@@ -701,6 +721,7 @@ export class CoordinatorAdapter {
       },
       "group message subscription started",
     );
+    this.recordSubscriptionCount();
 
     const cleanupSubscription = (reason: string): void => {
       if (cleanedUp) {
@@ -709,6 +730,7 @@ export class CoordinatorAdapter {
 
       cleanedUp = true;
       subscription.unsubscribe();
+      this.recordSubscriptionCount();
 
       if (endLogged) {
         return;
@@ -810,11 +832,13 @@ export class CoordinatorAdapter {
       },
       "multi-group message subscription started",
     );
+    this.recordSubscriptionCount();
 
     const cleanupSubscriptions = (reason: string): void => {
       if (!cleanedUp) {
         cleanedUp = true;
         subscription.unsubscribe();
+        this.recordSubscriptionCount();
       }
 
       if (endLogged) {

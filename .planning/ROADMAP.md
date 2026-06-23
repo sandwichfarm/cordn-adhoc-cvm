@@ -8,6 +8,7 @@ Phase 3 adds live resource telemetry and automates deployment via nsite/Blossom 
 Phase 4 closes explicit objective gaps around browser limits and guarded runtime options.
 Phase 5 registers the real Cordn coordinator method surface in the browser.
 Phase 6 persists Cordn coordinator method data in browser SQLite-WASM storage.
+Phase 7 wires browser telemetry to real Cordn adapter activity.
 
 ## Phases
 
@@ -17,6 +18,7 @@ Phase 6 persists Cordn coordinator method data in browser SQLite-WASM storage.
 - [x] **Phase 4: Runtime Limits & Guarded Options** - Announcement option, maximum users browser cap, and active-user guard invariant
 - [x] **Phase 5: Browser Cordn Methods** - Browser-safe Cordn coordinator core and MCP method registration
 - [x] **Phase 6: Coordinator Persistence** - SQLite-WASM snapshot persistence for Cordn coordinator method data
+- [x] **Phase 7: Adapter-Backed Telemetry** - Resource monitor updates from Cordn method activity and live subscriptions
 
 ## Phase Details
 
@@ -122,6 +124,21 @@ Plans:
 - [x] 06-01: SQLite-WASM coordinator storage - snapshot persistence, startup hydration, destroy cleanup, browser base64, tests
 **UI hint**: no
 
+### Phase 7: Adapter-Backed Telemetry
+**Goal**: Browser telemetry reflects real Cordn adapter operations and coordinator subscription counts
+**Depends on**: Phase 6
+**Requirements**: TELEMETRY-01, TELEMETRY-02
+**Success Criteria** (what must be TRUE):
+  1. Cordn method activity increments the browser message-rate window
+  2. Group subscription start/end updates the displayed subscription count from the coordinator
+  3. Existing SDK transport event telemetry remains as a fallback
+  4. Unit tests cover operation and subscription telemetry callbacks
+**Plans**: 1 plan
+
+Plans:
+- [x] 07-01: Adapter telemetry sink - operation callback, subscription count callback, monitor binding, tests
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -132,3 +149,4 @@ Plans:
 | 4. Runtime Limits & Guarded Options | 1/1 | Complete | 2026-06-23 |
 | 5. Browser Cordn Methods | 1/1 | Complete | 2026-06-23 |
 | 6. Coordinator Persistence | 1/1 | Complete | 2026-06-23 |
+| 7. Adapter-Backed Telemetry | 1/1 | Complete | 2026-06-23 |

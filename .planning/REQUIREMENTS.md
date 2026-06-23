@@ -89,6 +89,7 @@
 - [ ] **TELEMETRY-03**: When coordinator is running on Chrome, UI shows a JS heap memory estimate from `performance.memory`; on other browsers the field reads "unavailable"
 - [ ] **TELEMETRY-04**: Telemetry panel values reset to zero or hidden when coordinator is not in `running` state
 - [ ] **TELEMETRY-05**: All telemetry values are labeled with "(est.)" or equivalent to indicate they are estimates
+- [ ] **TELEMETRY-06**: Cordn adapter method activity and subscription lifecycle events feed the browser resource monitor
 
 ### Error Handling (ERR)
 
@@ -204,6 +205,7 @@
 | TELEMETRY-03 | Phase 3 | Pending |
 | TELEMETRY-04 | Phase 3 | Pending |
 | TELEMETRY-05 | Phase 3 | Pending |
+| TELEMETRY-06 | Phase 7 | Pending |
 | ERR-01 | Phase 1 | Pending |
 | ERR-02 | Phase 2 | Pending |
 | ERR-03 | Phase 2 | Pending |
@@ -224,8 +226,8 @@
 | CICD-06 | Phase 3 | Pending |
 
 **Coverage:**
-- v1 requirements: 55 total
-- Mapped to phases: 55
+- v1 requirements: 56 total
+- Mapped to phases: 56
 - Unmapped: 0 ✓
 
 ---

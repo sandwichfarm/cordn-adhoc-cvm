@@ -23,6 +23,7 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - [ ] Relay configuration panel — add/remove/toggle Nostr relay URLs, guarded behind a confirm-to-edit pattern
 - [ ] Coordinator start/stop/destroy lifecycle — destroy wipes key + state from memory and storage
 - [ ] Browser resource limit display — show active subscription count, message rate, memory estimate
+- [ ] Adapter-backed telemetry source for Cordn method activity and live subscriptions
 - [ ] Browser runtime limits — announcement default off, maximum users cap, active-user guard for max-users edits
 - [ ] Minimal cypherpunk GUI with Svelte 5 + Vite + Tailwind (dark, monospace, no gradients, no icons except Unicode)
 - [ ] Unit tests (Vitest) covering coordinator state machine and key persistence helpers
@@ -46,6 +47,8 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 - **Key persistence**: the coordinator nsec must never leave the browser unencrypted. Persistence is opt-in; when enabled, the key is encrypted with a user-supplied passphrase before writing to `localStorage`. The destroy action must zero-fill the in-memory key buffer and call `localStorage.removeItem` atomically.
 - **Coordinator persistence**: Cordn method data persists through a SQLite-WASM snapshot when persistence is enabled.
   The runtime hydrates this snapshot before startup and clears kvvfs/fallback state on disable or destroy.
+- **Telemetry source**: the resource monitor binds both SDK transport events and Cordn adapter events.
+  Cordn operations feed the message-rate window, and group subscriptions publish the coordinator's active subscription count.
 - **Guarded config**: relay URLs and persistence settings are read-only by default; the user must explicitly click "Edit configuration" to unlock the form, preventing accidental relay list wipes while the coordinator is running.
 - **Test strategy**: Vitest for pure functions (key derivation, state machine transitions, config validation). Playwright for the rendered app (can't unit-test WebSocket + Nostr relay interactions without a live relay, so Playwright uses a mock relay via `ws` in a fixture).
 
@@ -66,7 +69,8 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | Vitest + Playwright, no Storybook | Storybook adds build complexity for a single-screen app; Playwright covers visual regression well enough for this scope | — Pending |
 | nsyte for deploy, not Vercel/Netlify | Project ethos is decentralized hosting; nsite/Blossom aligns with the Nostr-native stack | — Pending |
 | Destroy zeroes key in memory | Browser GC timing is non-deterministic; explicit zeroing reduces the window for key extraction from heap snapshots | — Pending |
-| SQLite-WASM snapshot persistence for coordinator data | Hydration must happen before startup; snapshotting keeps the upstream storage contract intact | Pending |
+| SQLite-WASM snapshot persistence for coordinator data | Hydration happens before startup; snapshots preserve the storage contract | Pending |
+| Adapter-backed telemetry | Adapter callbacks track Cordn method and subscription lifecycles directly | Pending |
 
 ---
 *Last updated: 2026-06-23 after Phase 6 coordinator persistence*

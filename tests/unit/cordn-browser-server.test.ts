@@ -15,6 +15,21 @@ function createExtra(clientPubkey = "client-pubkey") {
   } as never;
 }
 
+function createStreamingExtra() {
+  return {
+    _meta: {
+      clientPubkey: "subscriber-pubkey",
+      stream: {
+        isActive: true,
+        start: vi.fn().mockRejectedValue(new Error("stream stopped")),
+        write: vi.fn(),
+        close: vi.fn(),
+        abort: vi.fn(),
+      },
+    },
+  } as never;
+}
+
 function createPrivateApplicationMessage(groupId: string, epoch: bigint): Uint8Array {
   return encode(mlsMessageEncoder, {
     version: 1,
@@ -99,6 +114,34 @@ describe("browser Cordn server adapter", () => {
 
     expect(encoded).toBe("AQID/g==");
     expect([...decodeBase64(encoded)]).toEqual([1, 2, 3, 254]);
+  });
+
+  test("reports Cordn method activity to browser telemetry", () => {
+    const recordOperation = vi.fn();
+    const adapter = new CoordinatorAdapter(new Coordinator());
+    const encodedMessage = createPrivateApplicationMessage("group-telemetry", 3n);
+
+    adapter.setTelemetrySink({ recordOperation });
+    adapter.postGroupMessage(
+      { msg_64: encodeBase64(encodedMessage) },
+      createExtra("sender-pubkey"),
+    );
+
+    expect(recordOperation).toHaveBeenCalledWith("postGroupMessage");
+  });
+
+  test("reports active subscription count to browser telemetry", async () => {
+    const setActiveSubscriptions = vi.fn();
+    const adapter = new CoordinatorAdapter(new Coordinator());
+
+    adapter.setTelemetrySink({ setActiveSubscriptions });
+
+    await expect(
+      adapter.subscribeGroupMessages({ gid: "group-telemetry" }, createStreamingExtra()),
+    ).rejects.toThrow("stream stopped");
+
+    expect(setActiveSubscriptions).toHaveBeenCalledTimes(3);
+    expect(setActiveSubscriptions.mock.calls.map(([count]) => count)).toEqual([0, 1, 0]);
   });
 
   test("enforces injected caller identity before handling methods", () => {

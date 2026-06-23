@@ -24,6 +24,15 @@ export class ResourceMonitor {
   start(transport: RunningTransport): void {
     this.stop();
     this.bindTransportEvents(transport.transport as TransportEventSource);
+    if (typeof transport.adapter.setTelemetrySink === "function") {
+      transport.adapter.setTelemetrySink({
+        recordOperation: () => this.recordMessage(),
+        setActiveSubscriptions: (count) => {
+          this.subscriptionCount = count;
+        },
+      });
+      this.cleanupHandlers.push(() => transport.adapter.setTelemetrySink());
+    }
     this.readMemory();
     this.updateRate();
     this.rateTimer = setInterval(() => {
