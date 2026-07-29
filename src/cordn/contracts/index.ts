@@ -81,6 +81,7 @@ export const pendingWelcomeSchema = z.object({
   kp_ref: z.string(),
   welcome_64: z.string(),
   at: z.number(),
+  after: z.number().int().positive().optional(),
 });
 
 export const fetchPendingWelcomesInputSchema = emptyInputSchema;
@@ -93,6 +94,9 @@ export const storeWelcomeInputSchema = z.object({
   target_pk: z.string().min(1),
   kp_ref: z.string().min(1),
   welcome_64: z.string().min(1),
+  // Cursor of the Commit that made this Welcome. An invitee's MLS state
+  // already contains that Commit, so replay must start after it.
+  after: z.number().int().positive().optional(),
 });
 
 export const storeWelcomeOutputSchema = z.object({

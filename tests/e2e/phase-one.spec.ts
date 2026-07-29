@@ -97,6 +97,59 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
 });
 
+test("Feature: invite-only chat — Scenario: a guest link opens only the private chat join flow", async ({ page, browser }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+
+  await page.getByTestId("invite-panel").getByPlaceholder("Friday plans").fill("BDD room");
+  await page.getByTestId("invite-panel").getByRole("button", { name: "Create invite" }).click();
+  const inviteLink = await page.getByTestId("invite-panel").locator("code").textContent();
+  expect(inviteLink).toContain("/chat/");
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(inviteLink!);
+
+  await expect(guest.getByTestId("chat-route")).toBeVisible();
+  await expect(guest.getByTestId("operator-shell")).toHaveCount(0);
+  await expect(guest.getByRole("heading", { name: "BDD room" })).toBeVisible();
+  await expect(guest.getByText("Choose a name, then join privately.")).toBeVisible();
+  await expect(guest.getByRole("button", { name: "Join chat" })).toBeVisible();
+  await guestContext.close();
+});
+
+test("Feature: invite-only chat — Scenario: a guest is admitted and messages survive coordinator delivery", async ({ page, browser }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await page.getByTestId("invite-panel").getByPlaceholder("Friday plans").fill("Working room");
+  await page.getByTestId("invite-panel").getByRole("button", { name: "Create invite" }).click();
+  const inviteLink = await page.getByTestId("invite-panel").locator("code").textContent();
+
+  // Given a host has the room's local MLS state open, it automatically admits
+  // the key package submitted by the guest invite flow.
+  const host = await page.context().newPage();
+  await host.goto(inviteLink!);
+  await expect(host.getByRole("heading", { name: "Working room" })).toBeVisible();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(inviteLink!);
+  await guest.getByPlaceholder("e.g. River").fill("River");
+  await guest.getByRole("button", { name: "Join chat" }).click();
+  await expect(guest.getByText("Your encrypted join request is with the host.")).toBeVisible();
+
+  await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
+  await guest.getByPlaceholder("Message").fill("Hello from BDD");
+  await guest.getByRole("button", { name: "Send" }).click();
+  await expect(host.getByText("Hello from BDD")).toBeVisible({ timeout: 15_000 });
+  await guestContext.close();
+  await host.close();
+});
+
 test("persists relay and runtime configuration across reloads", async ({ page }) => {
   await page.goto("/");
   await configureMockRelay(page);

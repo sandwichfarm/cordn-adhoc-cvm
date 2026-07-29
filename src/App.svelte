@@ -6,6 +6,7 @@
   import PersistencePanel from "./components/PersistencePanel.svelte";
   import RelayConfigPanel from "./components/RelayConfigPanel.svelte";
   import ResourceMonitor from "./components/ResourceMonitor.svelte";
+  import InvitePanel from "./components/InvitePanel.svelte";
   import { configStore } from "./config/config.svelte";
   import { coordinatorStore } from "./coordinator/coordinator.svelte";
 </script>
@@ -34,6 +35,10 @@
       <LifecyclePanel coordinator={coordinatorStore} />
       {#if coordinatorStore.status === "running"}
         <ResourceMonitor />
+        <InvitePanel
+          coordinatorPubkey={coordinatorStore.identity.publicKeyHex}
+          relayUrls={configStore.enabledRelayUrls}
+        />
       {/if}
       <RelayConfigPanel config={configStore} coordinator={coordinatorStore} />
       <PersistencePanel coordinator={coordinatorStore} />

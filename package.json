@@ -23,6 +23,8 @@
     "@noble/ciphers": "2.2.0",
     "@noble/secp256k1": "3.1.0",
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
+    "applesauce-signers": "^6.2.2",
+    "lean-qr": "^2.7.2",
     "nostr-tools": "2.23.5",
     "svelte": "5.56.3",
     "ts-mls": "2.0.0-rc.12",

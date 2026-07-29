@@ -514,6 +514,7 @@ export class CoordinatorAdapter {
           kp_ref: record.keyPackageReference,
           welcome_64: encodeWelcomeBase64(record.welcome),
           at: record.createdAt,
+          ...(record.afterCursor ? { after: record.afterCursor } : {}),
         })),
       },
     };
@@ -525,6 +526,7 @@ export class CoordinatorAdapter {
       targetStablePubkey: input.target_pk,
       keyPackageReference: input.kp_ref,
       welcome: decodeWelcomeBase64(input.welcome_64),
+      afterCursor: input.after,
     });
 
     this.recordOperation("storeWelcome");
