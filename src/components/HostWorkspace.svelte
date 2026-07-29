@@ -30,6 +30,7 @@
   let autoApprove = $state(true);
   let room = $state<StoredRoom | null>(null);
   let session = $state<ChatRoomSession | null>(null);
+  let hostedRooms = $state<Array<{ room: StoredRoom; session: ChatRoomSession; inviteUrl: string; qrUrl: string }>>([]);
   let composer = $state("");
   let revision = $state(0);
   let soundsEnabled = $state(true);
@@ -63,7 +64,6 @@
   function openHostChat(nextRoom: StoredRoom) {
     const signer = signerForStoredRoom(nextRoom);
     if (!signer) throw new Error("The host chat signer is unavailable");
-    session?.stop();
     knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
     room = nextRoom;
     session = new ChatRoomSession(nextRoom, signer);
@@ -102,9 +102,13 @@
     void enableSounds();
     try {
       const created = await createHostedRoom({ title, coordinatorPubkey, relayUrls, autoApprove });
-      inviteUrl = createInviteUrl(window.location.origin, { groupId: created.id, coordinatorPubkey, relayUrls, title: created.title });
-      qrUrl = toSvgDataURL(generate(inviteUrl), { on: "#c8ffdc", off: "#101614", pad: 2, scale: 4 });
+      const createdInviteUrl = createInviteUrl(window.location.origin, { groupId: created.id, coordinatorPubkey, relayUrls, title: created.title });
+      const createdQrUrl = toSvgDataURL(generate(createdInviteUrl), { on: "#c8ffdc", off: "#101614", pad: 2, scale: 4 });
       openHostChat(created);
+      hostedRooms = [...hostedRooms, { room: created, session: session!, inviteUrl: createdInviteUrl, qrUrl: createdQrUrl }];
+      inviteUrl = createdInviteUrl;
+      qrUrl = createdQrUrl;
+      title = "";
     } catch (cause) {
       error = cause instanceof Error ? cause.message : "Could not create invite";
     } finally {
@@ -119,6 +123,15 @@
   async function setAutoApprove(enabled: boolean) {
     autoApprove = enabled;
     await session?.setAutoApprove(enabled);
+  }
+
+  function selectRoom(entry: (typeof hostedRooms)[number]) {
+    room = entry.room;
+    session = entry.session;
+    inviteUrl = entry.inviteUrl;
+    qrUrl = entry.qrUrl;
+    knownMessageIds = new Set(entry.room.messages.map((message) => message.id));
+    update();
   }
 
   async function approveWaitingInvitees() {
@@ -198,12 +211,14 @@
         {:else if !room}
           <div class="flex min-h-full flex-col justify-between gap-6">
             <div><p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#7cf59d]">Open a room</p><h2 class="mt-2 text-xl font-semibold text-white">Invite a small group.</h2><p class="mt-2 text-sm leading-5 text-[#91a59a]">Guests join an encrypted MLS room through a single link or QR code.</p></div>
+            {#if hostedRooms.length > 0}<div class="space-y-2"><p class="text-[10px] uppercase tracking-[0.16em] text-[#82958a]">Existing rooms</p>{#each hostedRooms as entry (entry.room.id)}<button class="host-room-row" type="button" onclick={() => selectRoom(entry)}><span class="truncate">{entry.room.title}</span><span class="text-[10px] text-[#7cf59d]">Open</span></button>{/each}</div>{/if}
             <div class="space-y-3"><label class="block text-sm text-[#cfe2d4]">Room name<input bind:value={title} class="host-input mt-2" placeholder="Friday plans" /></label><label class="flex cursor-pointer items-start gap-3 border border-[#293832] bg-[#0b0e0d] p-3 text-sm text-[#b9cbbf]"><input type="checkbox" checked={autoApprove} onchange={(event) => void setAutoApprove((event.currentTarget as HTMLInputElement).checked)} aria-label="Auto-approve invitees" class="mt-0.5 h-4 w-4 accent-[#7cf59d]" /><span><strong class="block font-medium text-[#e8f5eb]">Auto-approve invitees</strong><span class="mt-1 block text-xs text-[#82958a]">Enabled by default. Turn off to admit guests manually.</span></span></label><button class="host-primary w-full" disabled={busy || relayUrls.length === 0} onclick={createInvite}>{busy ? "Creating…" : "Create invite"}</button>{#if relayUrls.length === 0}<p class="text-xs text-[#ffaaa3]">Add an enabled relay before starting a room.</p>{/if}</div>
             <ResourceMonitor compact />
           </div>
         {:else}
           <div class="flex min-h-full flex-col gap-4">
             <div class="flex items-start justify-between gap-3"><div><p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#7cf59d]">Room live</p><h2 class="mt-1 break-words text-xl font-semibold text-white">{room.title}</h2></div><button class="sound-button" aria-label={soundsEnabled ? "Mute notification sounds" : "Enable notification sounds"} onclick={() => void toggleSounds()}>{soundsEnabled ? "Sound on" : "Sound off"}</button></div>
+            <div class="flex items-center justify-between gap-2"><div class="flex min-w-0 gap-1 overflow-x-auto">{#each hostedRooms as entry (entry.room.id)}<button class:active={entry.room.id === room.id} class="host-room-tab" type="button" onclick={() => selectRoom(entry)}>{entry.room.title}</button>{/each}</div><button class="host-secondary shrink-0" type="button" onclick={() => { room = null; session = null; title = ""; }}>New room</button></div>
             <div class="border-y border-[#293832] py-4"><div class="grid grid-cols-[auto_1fr] gap-3"><a href={inviteUrl} aria-label="Open chat invite" class="bg-[#dfffe7] p-1"><img src={qrUrl} alt="QR code for chat invite" class="h-24 w-24" /></a><div class="min-w-0"><p class="text-sm text-[#dfffe7]">Share the invite</p><p class="mt-1 text-xs leading-5 text-[#82958a]">The link includes this coordinator and its relay hints.</p><button class="host-secondary mt-3" onclick={copy}>Copy link</button></div></div><code class="mt-3 block truncate border border-[#293832] bg-[#090d0b] px-2 py-1 text-[10px] text-[#9bf6b3]" data-testid="invite-link">{inviteUrl}</code></div>
             <label class="flex cursor-pointer items-start gap-3 border border-[#293832] bg-[#0b0e0d] p-3 text-sm text-[#b9cbbf]"><input type="checkbox" checked={autoApprove} onchange={(event) => void setAutoApprove((event.currentTarget as HTMLInputElement).checked)} aria-label="Auto-approve invitees" class="mt-0.5 h-4 w-4 accent-[#7cf59d]" /><span><strong class="block font-medium text-[#e8f5eb]">Auto-approve invitees</strong><span class="mt-1 block text-xs text-[#82958a]">Guests are admitted automatically.</span></span></label>
             {#if !autoApprove}<button class="host-secondary w-full" onclick={approveWaitingInvitees}>Approve waiting invitees</button>{/if}
@@ -263,6 +278,10 @@
   .host-primary:disabled { cursor: not-allowed; opacity: .45; }
   .host-secondary { border: 1px solid #496451; padding: .55rem .7rem; color: #c6eccc; font-size: .75rem; }
   .host-secondary:hover { border-color: #7cf59d; }
+  .host-room-row, .host-room-tab { border: 1px solid #293832; color: #b9cbbf; }
+  .host-room-row { display: flex; width: 100%; justify-content: space-between; gap: .75rem; padding: .65rem .7rem; text-align: left; font-size: .75rem; }
+  .host-room-row:hover, .host-room-tab:hover, .host-room-tab.active { border-color: #7cf59d; color: #dfffe7; }
+  .host-room-tab { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .45rem .6rem; font-size: .7rem; }
   .sound-button { border: 1px solid #34433b; padding: .35rem .5rem; color: #b9cbbf; font-size: .7rem; }
   .sound-button:hover { border-color: #7cf59d; color: #dfffe7; }
   .status { border: 1px solid #2e553b; background: #112219; color: #9bf6b3; padding: .3rem .5rem; font-size: .7rem; font-weight: 650; }
