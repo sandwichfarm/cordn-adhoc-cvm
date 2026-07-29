@@ -1,13 +1,13 @@
 import { McpServer } from "@contextvm/mcp-sdk/server/mcp";
 import type { JSONRPCMessage } from "@contextvm/mcp-sdk/types";
 import type { RelayHandler } from "@contextvm/sdk/core";
-import { ApplesauceRelayPool } from "@contextvm/sdk/relay";
 import { NostrServerTransport, type OpenStreamWriter } from "@contextvm/sdk/transport";
 import type { NostrEvent } from "nostr-tools";
 import type { BrowserCoordinatorOptions } from "../config/config.svelte";
 import { createCoordinator, type Coordinator } from "../cordn/coordinator";
 import { createBrowserCoordinatorStorage } from "../cordn/coordinator/storage/browserSqliteStorage";
 import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
+import { createRequiredRelayPool, withRequiredLocalRelay } from "./relay-pool";
 import {
   CoordinatorAdapter,
   type AbuseProtectionOptions,
@@ -75,7 +75,8 @@ export class TransportFactory {
     persistent: boolean,
     diagnostics?: TransportDiagnostics,
   ): Promise<RunningTransport> {
-    if (relayUrls.length === 0) {
+    const websocketPool = withRequiredLocalRelay(relayUrls);
+    if (websocketPool.length === 0) {
       throw new Error("At least one enabled relay is required");
     }
 
@@ -88,7 +89,7 @@ export class TransportFactory {
       storage: await createBrowserCoordinatorStorage(persistent),
     });
 
-    const relayHandler = createInstrumentedRelayHandler(relayUrls, diagnostics);
+    const relayHandler = createInstrumentedRelayHandler(websocketPool, diagnostics);
     const transport = new NostrServerTransport({
       signer,
       relayHandler,
@@ -150,7 +151,7 @@ export class TransportFactory {
     await server.connect(transport);
     diagnostics?.onStarted?.({
       publicKeyHex: await signer.getPublicKey(),
-      relayUrls,
+      relayUrls: websocketPool,
     });
 
     return {
@@ -171,7 +172,7 @@ function createInstrumentedRelayHandler(
   relayUrls: string[],
   diagnostics?: TransportDiagnostics,
 ): RelayHandler {
-  const relayPool = new ApplesauceRelayPool(relayUrls);
+  const relayPool = createRequiredRelayPool(relayUrls);
 
   return {
     connect: () => relayPool.connect(),

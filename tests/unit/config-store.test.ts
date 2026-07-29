@@ -22,6 +22,16 @@ describe("ConfigStore runtime limits", () => {
     expect(store.coordinatorOptions.announce).toBe(true);
   });
 
+  test("always includes the local WebSocket relay in the active pool", () => {
+    const store = new ConfigStore();
+    store.removeRelay(store.relays[0].id);
+
+    expect(store.enabledRelayUrls).toEqual(["ws://localhost:4870"]);
+
+    store.addRelay("wss://relay.example");
+    expect(store.enabledRelayUrls).toEqual(["wss://relay.example", "ws://localhost:4870"]);
+  });
+
   test("validates key-package quota without subscription telemetry coupling", () => {
     const store = new ConfigStore();
 

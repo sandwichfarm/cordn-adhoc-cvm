@@ -1,6 +1,7 @@
 import { Client } from "@contextvm/mcp-sdk/client";
 import { NostrClientTransport } from "@contextvm/sdk/transport";
 import type { NostrSigner } from "@contextvm/sdk/core";
+import { createRequiredRelayPool, withRequiredLocalRelay } from "../lib/relay-pool";
 
 export interface CoordinatorTarget {
   coordinatorPubkey: string;
@@ -34,11 +35,11 @@ export class ChatCoordinatorClient {
   private connected: Promise<void> | null = null;
 
   constructor(private readonly target: CoordinatorTarget, signer: NostrSigner) {
-    if (target.relayUrls.length === 0) throw new Error("Invite has no relay hints");
+    const websocketPool = withRequiredLocalRelay(target.relayUrls);
     this.transport = new NostrClientTransport({
       signer,
       serverPubkey: target.coordinatorPubkey,
-      relayHandler: target.relayUrls,
+      relayHandler: createRequiredRelayPool(websocketPool),
       logLevel: "error",
       openStream: { enabled: true },
     });
