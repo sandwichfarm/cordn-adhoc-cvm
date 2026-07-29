@@ -228,7 +228,6 @@
       </section>
     </div>
 
-    {#if coordinator.status === "running"}
     <details class="host-log-drawer" data-testid="debug-panel">
       <summary class="flex cursor-pointer items-center justify-between gap-4 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-[#b9cbbf] hover:text-[#dfffe7]">
         <span>Logs</span>
@@ -247,14 +246,12 @@
         <button class="mt-3 text-[10px] uppercase tracking-[0.12em] text-[#82958a] hover:text-[#dfffe7]" type="button" onclick={() => coordinator.clearDebugLog()}>Clear logs</button>
       </div>
     </details>
-    {/if}
   </div>
 </main>
 
 <style>
   .host-workspace { border-inline: 1px solid rgb(33 53 42 / .9); background: rgb(7 12 9 / .8); box-shadow: inset 0 0 0 1px rgb(124 245 157 / .025); }
-  .host-log-drawer { position: absolute; left: .75rem; bottom: .75rem; z-index: 20; width: min(28rem, calc(100% - 1.5rem)); border: 1px solid #293832; background: rgb(9 13 11 / .94); box-shadow: 0 12px 32px rgb(0 0 0 / .35); backdrop-filter: blur(10px); pointer-events: none; }
-  .host-log-drawer > summary, .host-log-drawer[open] > div { pointer-events: auto; }
+  .host-log-drawer { position: absolute; left: .75rem; bottom: .75rem; z-index: 30; display: block; width: min(28rem, calc(100% - 1.5rem)); border: 1px solid #496451; background: rgb(9 13 11 / .97); color: #b9cbbf; box-shadow: 0 12px 32px rgb(0 0 0 / .45); backdrop-filter: blur(10px); }
   .host-log-drawer[open] { max-height: min(18rem, 42dvh); }
   .host-log-drawer[open] > div { max-height: calc(min(18rem, 42dvh) - 2.5rem); overflow-y: auto; }
   .host-topbar { border-bottom: 1px solid #21352a; background: rgb(10 16 12 / .94); }
