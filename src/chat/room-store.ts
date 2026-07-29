@@ -45,6 +45,7 @@ export interface StoredRoom {
   lastCursor: number;
   messages: StoredMessage[];
   pending: PendingMessage[];
+  autoApprove?: boolean;
   joinRequestSent?: boolean;
 }
 
@@ -100,6 +101,18 @@ export class ChatRoomSession {
     await this.sync();
   }
 
+  async setAutoApprove(enabled: boolean): Promise<void> {
+    this.room.autoApprove = enabled;
+    this.persist();
+    await this.sync();
+  }
+
+  async approveJoinRequests(): Promise<void> {
+    const client = this.getClient();
+    await this.acceptJoinRequests(client);
+    await this.sync();
+  }
+
   async sync(): Promise<void> {
     if (this.syncing) return;
     this.syncing = true;
@@ -107,7 +120,7 @@ export class ChatRoomSession {
     this.emit();
     try {
       const client = this.getClient();
-      if (this.room.isHost) await this.acceptJoinRequests(client);
+      if (this.room.isHost && this.room.autoApprove !== false) await this.acceptJoinRequests(client);
       if (!this.room.isHost && this.room.joinRequestSent) await this.acceptWelcome(client);
       if (!this.room.isHost && this.room.joinRequestSent) {
         this.status = { connection: "connected", detail: "Waiting for the host to admit you" };
@@ -200,7 +213,7 @@ export class ChatRoomSession {
   }
 }
 
-export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[] }): Promise<StoredRoom> {
+export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; autoApprove?: boolean }): Promise<StoredRoom> {
   const secret = generateSecretKey();
   const signer = new BrowserNostrSigner(secret);
   const stablePubkey = await signer.getPublicKey();
@@ -221,6 +234,7 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
     lastCursor: 0,
     messages: [],
     pending: [],
+    autoApprove: input.autoApprove ?? true,
   };
   saveRoom(room);
   return room;

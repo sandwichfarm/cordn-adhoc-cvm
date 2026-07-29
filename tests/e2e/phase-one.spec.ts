@@ -102,9 +102,11 @@ test("Feature: invite-only chat — Scenario: a guest link opens only the privat
   await configureMockRelay(page);
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByLabel("Auto-approve invitees")).toBeChecked();
 
   await page.getByTestId("invite-panel").getByPlaceholder("Friday plans").fill("BDD room");
   await page.getByTestId("invite-panel").getByRole("button", { name: "Create invite" }).click();
+  await expect(page.getByTestId("host-chat")).toBeVisible();
   const inviteLink = await page.getByTestId("invite-panel").locator("code").textContent();
   expect(inviteLink).toContain("/chat/");
 
@@ -128,12 +130,7 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   await page.getByTestId("invite-panel").getByPlaceholder("Friday plans").fill("Working room");
   await page.getByTestId("invite-panel").getByRole("button", { name: "Create invite" }).click();
   const inviteLink = await page.getByTestId("invite-panel").locator("code").textContent();
-
-  // Given a host has the room's local MLS state open, it automatically admits
-  // the key package submitted by the guest invite flow.
-  const host = await page.context().newPage();
-  await host.goto(inviteLink!);
-  await expect(host.getByRole("heading", { name: "Working room" })).toBeVisible();
+  await expect(page.getByTestId("host-chat")).toBeVisible();
 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
@@ -145,9 +142,8 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
   await guest.getByPlaceholder("Message").fill("Hello from BDD");
   await guest.getByRole("button", { name: "Send" }).click();
-  await expect(host.getByText("Hello from BDD")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("host-chat").getByText("Hello from BDD")).toBeVisible({ timeout: 15_000 });
   await guestContext.close();
-  await host.close();
 });
 
 test("persists relay and runtime configuration across reloads", async ({ page }) => {
