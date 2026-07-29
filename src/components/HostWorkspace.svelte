@@ -171,7 +171,7 @@
 </script>
 
 <main class="operator-field h-[100dvh] max-h-[100dvh] overflow-x-hidden overflow-y-hidden text-[#dfffe7]">
-  <div class="host-workspace mx-auto grid h-full min-w-0 max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]" data-testid="operator-shell">
+  <div class="host-workspace relative mx-auto grid h-full min-w-0 max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]" data-testid="operator-shell">
     <header class="host-topbar flex shrink-0 items-center justify-between gap-3 px-3 py-3 sm:px-5">
       <div class="min-w-0"><p class="text-[10px] uppercase tracking-[0.2em] text-[#77917f]">Cordn / coordinator workspace</p><div class="flex items-center gap-3"><h1 class="truncate text-lg font-semibold tracking-tight text-[#effff2] sm:text-xl">Ad-hoc MLS</h1><a class="text-[10px] uppercase tracking-[0.16em] text-[#7cf59d] hover:text-[#dfffe7]" href="https://github.com/sandwichfarm/cordn-adhoc-cvm/" rel="noreferrer" target="_blank">git</a></div></div>
       <div class="flex items-center gap-2"><div class="hidden sm:block"><NpubDisplay {identity} /></div><LifecyclePanel {coordinator} compact /></div>
@@ -189,7 +189,8 @@
 
             <section class="space-y-3 border-t border-[#293832] pt-5"><div class="flex items-center justify-between"><h3 class="text-xs uppercase tracking-[0.16em] text-[#cfe2d4]">Persistent identity</h3><span class="text-[10px] text-[#82958a]" data-testid="persistence-state">{coordinator.persistenceEnabled ? "encrypted" : "off"}</span></div>{#if coordinator.persistenceEnabled}<p class="text-xs leading-5 text-[#91a59a]">Your coordinator identity is encrypted in browser storage.</p><button class="host-secondary" type="button" onclick={() => void coordinator.disablePersistence()}>Remove saved key</button>{:else if enablingPersistence}<form class="grid gap-2" onsubmit={(event) => { event.preventDefault(); void savePersistence(); }}><input class="host-input" type="password" autocomplete="new-password" placeholder="passphrase" bind:value={passphrase} /><input class="host-input" type="password" autocomplete="new-password" placeholder="confirm passphrase" bind:value={confirmPassphrase} />{#if coordinator.persistenceError}<p class="text-xs text-[#ffaaa3]" data-testid="persistence-error">{coordinator.persistenceError}</p>{/if}<div class="flex gap-2"><button class="host-secondary" type="button" onclick={() => { enablingPersistence = false; passphrase = ""; confirmPassphrase = ""; }}>Cancel</button><button class="host-primary" type="submit">Save</button></div></form>{:else}<p class="text-xs leading-5 text-[#91a59a]">Keep this coordinator identity across reloads.</p><button class="host-secondary" type="button" onclick={() => enablingPersistence = true}>Enable persistence</button>{/if}</section>
 
-            <section class="border-t border-[#293832] pt-5" data-testid="debug-panel"><div class="flex items-center justify-between"><h3 class="text-xs uppercase tracking-[0.16em] text-[#cfe2d4]">Activity</h3><button class="text-xs text-[#82958a] hover:text-[#dfffe7]" type="button" onclick={() => coordinator.clearDebugLog()}>Clear</button></div><div class="mt-3 max-h-32 overflow-y-auto text-[11px]" role="log" aria-label="Cordn debug log">{#if coordinator.debugLog.length === 0}<p class="text-[#82958a]" data-testid="debug-log-empty">No debug events yet</p>{:else}<ol class="space-y-1" data-testid="debug-log-entries">{#each coordinator.debugLog as entry (entry.id)}<li class="text-[#b9cbbf]"><span class="text-[#7cf59d]">{entry.level}</span> {entry.message}</li>{/each}</ol>{/if}</div></section>
+            <section class="space-y-3 border-t border-[#293832] pt-5" data-testid="debug-panel"><div class="flex items-center justify-between"><h3 class="text-xs uppercase tracking-[0.16em] text-[#cfe2d4]">Activity</h3><button class="text-xs text-[#82958a] hover:text-[#dfffe7]" type="button" onclick={() => coordinator.clearDebugLog()}>Clear</button></div><div class="max-h-32 overflow-y-auto text-[11px]" role="log" aria-label="Cordn debug log">{#if coordinator.debugLog.length === 0}<p class="text-[#82958a]" data-testid="debug-log-empty">No debug events yet</p>{:else}<ol class="space-y-1" data-testid="debug-log-entries">{#each coordinator.debugLog as entry (entry.id)}<li class="text-[#b9cbbf]"><span class="text-[#7cf59d]">{entry.level}</span> {entry.message}</li>{/each}</ol>{/if}</div></section>
+
           </div>
         {:else if !room}
           <div class="flex min-h-full flex-col justify-between gap-6">
@@ -223,11 +224,36 @@
         {/if}
       </section>
     </div>
+
+    {#if coordinator.status === "running"}
+    <details class="host-log-drawer" data-testid="debug-panel">
+      <summary class="flex cursor-pointer items-center justify-between gap-4 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-[#b9cbbf] hover:text-[#dfffe7]">
+        <span>Logs</span>
+        <span class="text-[#7cf59d]">{coordinator.debugLog.length}</span>
+      </summary>
+      <div class="border-t border-[#293832] bg-[#090d0b]/95 p-3" role="log" aria-label="Cordn debug log">
+        {#if coordinator.debugLog.length === 0}
+          <p class="text-[11px] text-[#82958a]" data-testid="debug-log-empty">No debug events yet</p>
+        {:else}
+          <ol class="space-y-1" data-testid="debug-log-entries">
+            {#each coordinator.debugLog as entry (entry.id)}
+              <li class="break-words text-[11px] text-[#b9cbbf]"><span class="text-[#7cf59d]">{entry.level}</span> {entry.message}</li>
+            {/each}
+          </ol>
+        {/if}
+        <button class="mt-3 text-[10px] uppercase tracking-[0.12em] text-[#82958a] hover:text-[#dfffe7]" type="button" onclick={() => coordinator.clearDebugLog()}>Clear logs</button>
+      </div>
+    </details>
+    {/if}
   </div>
 </main>
 
 <style>
   .host-workspace { border-inline: 1px solid rgb(33 53 42 / .9); background: rgb(7 12 9 / .8); box-shadow: inset 0 0 0 1px rgb(124 245 157 / .025); }
+  .host-log-drawer { position: absolute; left: .75rem; bottom: .75rem; z-index: 20; width: min(28rem, calc(100% - 1.5rem)); border: 1px solid #293832; background: rgb(9 13 11 / .94); box-shadow: 0 12px 32px rgb(0 0 0 / .35); backdrop-filter: blur(10px); pointer-events: none; }
+  .host-log-drawer > summary, .host-log-drawer[open] > div { pointer-events: auto; }
+  .host-log-drawer[open] { max-height: min(18rem, 42dvh); }
+  .host-log-drawer[open] > div { max-height: calc(min(18rem, 42dvh) - 2.5rem); overflow-y: auto; }
   .host-topbar { border-bottom: 1px solid #21352a; background: rgb(10 16 12 / .94); }
   .host-rail { background: #0d1310; }
   .host-input { width: 100%; border: 1px solid #34433b; background: #090d0b; padding: .7rem .8rem; color: #effff2; outline: none; }
