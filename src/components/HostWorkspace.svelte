@@ -170,15 +170,15 @@
   onDestroy(() => session?.stop());
 </script>
 
-<main class="operator-field h-[100dvh] max-h-[100dvh] overflow-hidden text-[#dfffe7]">
-  <div class="host-workspace mx-auto grid h-full max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]" data-testid="operator-shell">
+<main class="operator-field h-[100dvh] max-h-[100dvh] overflow-x-hidden overflow-y-hidden text-[#dfffe7]">
+  <div class="host-workspace mx-auto grid h-full min-w-0 max-w-[1600px] grid-rows-[auto_minmax(0,1fr)]" data-testid="operator-shell">
     <header class="host-topbar flex shrink-0 items-center justify-between gap-3 px-3 py-3 sm:px-5">
       <div class="min-w-0"><p class="text-[10px] uppercase tracking-[0.2em] text-[#77917f]">Cordn / coordinator workspace</p><div class="flex items-center gap-3"><h1 class="truncate text-lg font-semibold tracking-tight text-[#effff2] sm:text-xl">Ad-hoc MLS</h1><a class="text-[10px] uppercase tracking-[0.16em] text-[#7cf59d] hover:text-[#dfffe7]" href="https://github.com/sandwichfarm/cordn-adhoc-cvm/" rel="noreferrer" target="_blank">git</a></div></div>
       <div class="flex items-center gap-2"><div class="hidden sm:block"><NpubDisplay {identity} /></div><LifecyclePanel {coordinator} compact /></div>
     </header>
 
-    <div class="host-layout grid min-h-0 grid-rows-[minmax(0,42dvh)_minmax(0,1fr)] lg:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)] lg:grid-rows-1">
-      <aside class="host-rail min-h-0 overflow-y-auto border-b border-[#21352a] p-3 sm:p-4 lg:border-r lg:border-b-0" data-testid="invite-panel">
+    <div class="host-layout grid min-h-0 min-w-0 grid-rows-[minmax(0,42dvh)_minmax(0,1fr)] lg:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)] lg:grid-rows-1">
+      <aside class="host-rail min-h-0 min-w-0 overflow-y-auto border-b border-[#21352a] p-3 sm:p-4 lg:border-r lg:border-b-0" data-testid="invite-panel">
         {#if coordinator.status !== "running"}
           <div class="space-y-6">
             <div><p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#7cf59d]">Coordinator setup</p><h2 class="mt-2 text-xl font-semibold text-white">Ready to host a private room.</h2><p class="mt-2 text-sm leading-5 text-[#91a59a]">Configure the relay and identity once, then use the same workspace for your live room.</p></div>
@@ -209,7 +209,7 @@
         {/if}
       </aside>
 
-      <section class="host-chat min-h-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
+      <section class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
         {#if room && session}
           {@const current = session}
           <div class="flex h-full min-h-0 flex-col"><header class="flex shrink-0 items-center justify-between gap-3 border-b border-[#293832] px-4 py-3 sm:px-6"><div><p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#7cf59d]">Host chat</p><p class="mt-1 text-sm text-[#91a59a]">Keep this page open while guests join.</p></div><span class:offline={current.status.connection === "offline"} class="status">{current.status.connection === "connected" ? "Synced" : current.status.connection === "offline" ? "Offline" : "Syncing"}</span></header>{#if current.status.detail}<p class="shrink-0 border-b border-[#293832] px-4 py-2 text-xs text-[#91a59a]">{current.status.detail}</p>{/if}
