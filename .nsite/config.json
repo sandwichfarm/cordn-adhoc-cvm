@@ -16,5 +16,7 @@
   ],
   "id": "cordnadhoc",
   "title": "CORDN AD-HOC CVM",
-  "description": "An ad-hoc cordn contextvm that runs in the browser"
+  "description": "An ad-hoc cordn contextvm that runs in the browser",
+  "fallback": "index.html"
+
 }
