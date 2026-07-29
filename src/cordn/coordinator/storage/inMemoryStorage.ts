@@ -44,6 +44,7 @@ export interface CoordinatorStorageSnapshot {
     welcome64: string;
     createdAt: number;
     readAt: number | null;
+    afterCursor?: number;
   }>;
   joinRequests: JoinRequestRecord[];
   groups: Array<{
@@ -113,6 +114,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
           welcome64: encodeBase64(encodeWelcome(record.welcome)),
           createdAt: record.createdAt,
           readAt: record.readAt,
+          afterCursor: record.afterCursor,
         })),
       ),
       joinRequests: [...this.joinRequestsByGroup.values()].flatMap((records) =>
@@ -470,6 +472,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
         welcome: decodeWelcome(decodeBase64(record.welcome64)),
         createdAt: record.createdAt,
         readAt: record.readAt,
+        afterCursor: record.afterCursor,
       });
       this.welcomesByIdentity.set(record.targetStablePubkey, records);
     }

@@ -51,6 +51,7 @@ test("operator shell does not overflow common viewports", async ({ page }) => {
     await page.goto("/");
 
     await expect(page.getByTestId("operator-shell")).toBeVisible();
+    await expect.poll(() => page.getByTestId("operator-shell").evaluate((element) => element.clientHeight)).toBe(viewport.height);
     await expect
       .poll(() =>
         page.evaluate(() => ({
@@ -75,11 +76,9 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");
-  await expect(page.getByTestId(`relay-status-${relay.url}`)).toContainText("connected");
-  await expect(page.getByRole("button", { name: "Edit configuration" })).toBeDisabled();
-  await expect(page.getByTestId("lock-indicator")).toContainText("locked");
-  await expect(page.getByLabel("Toggle announcement")).toBeDisabled();
-  await expect(page.getByTestId("max-users-input")).toBeDisabled();
+  await expect(page.getByTestId("host-chat")).toBeVisible();
+  await expect(page.getByText("Create a room to start hosting.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit configuration" })).toHaveCount(0);
   await expect(page.getByTestId("resource-monitor")).toBeVisible();
   await expect(page.getByTestId("telemetry-client-streams")).toContainText("(est.)");
   await expect(page.getByTestId("telemetry-fanout-legs")).toContainText("(debug)");
@@ -92,9 +91,89 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");
-  await expect(page.getByTestId("debug-log-entries")).toContainText("single instance guard acquired");
+  await expect(page.getByTestId("host-chat")).toBeVisible();
   await page.getByRole("button", { name: "Stop" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
+});
+
+test("uses the full viewport for the live host workspace on desktop and mobile", async ({ page }) => {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await configureMockRelay(page);
+    await page.getByRole("button", { name: "Start" }).click();
+    await expect(page.getByTestId("host-chat")).toBeVisible();
+    await expect.poll(() => page.getByTestId("operator-shell").evaluate((element) => element.clientHeight)).toBe(viewport.height);
+    await expect
+      .poll(() => page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth })))
+      .toEqual({ clientWidth: viewport.width, scrollWidth: viewport.width });
+    await page.getByRole("button", { name: "Stop" }).click();
+    await expect(page.getByTestId("status-badge")).toHaveText("idle");
+  }
+});
+
+test("Feature: invite-only chat — Scenario: a guest link opens only the private chat join flow", async ({ page, browser }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByLabel("Auto-approve invitees")).toBeChecked();
+
+  await page.getByTestId("invite-panel").getByPlaceholder("Friday plans").fill("BDD room");
+  await page.getByTestId("invite-panel").getByRole("button", { name: "Create invite" }).click();
+  await expect(page.getByTestId("host-chat")).toBeVisible();
+  const inviteLink = await page.getByTestId("invite-link").textContent();
+  expect(inviteLink).toContain("/chat/");
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(inviteLink!);
+
+  await expect(guest.getByTestId("chat-route")).toBeVisible();
+  await expect(guest.getByTestId("operator-shell")).toHaveCount(0);
+  await expect(guest.getByRole("heading", { name: "BDD room" })).toBeVisible();
+  await expect(guest.getByText("Choose a name, then join the encrypted room.")).toBeVisible();
+  await expect(guest.getByRole("button", { name: "Join chat" })).toBeVisible();
+  await expect(guest.getByTestId("chat-route")).toHaveCSS("background-color", "rgb(11, 14, 13)");
+  expect(await guest.getByTestId("chat-route").evaluate((element) => element.clientHeight)).toBe(await guest.evaluate(() => window.innerHeight));
+  await guestContext.close();
+});
+
+test("Feature: invite-only chat — Scenario: a guest is admitted and messages survive coordinator delivery", async ({ page, browser }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await page.getByTestId("invite-panel").getByPlaceholder("Friday plans").fill("Working room");
+  await page.getByTestId("invite-panel").getByRole("button", { name: "Create invite" }).click();
+  const inviteLink = await page.getByTestId("invite-link").textContent();
+  await expect(page.getByTestId("host-chat")).toBeVisible();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(inviteLink!);
+  await guest.getByPlaceholder("e.g. River").fill("River");
+  await guest.getByRole("button", { name: "Join chat" }).click();
+  await expect(guest.getByText("Your encrypted join request is with the host.")).toBeVisible();
+
+  await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
+  await expect(guest.getByLabel("Add 👍")).toBeVisible();
+  await expect(guest.getByLabel("Mute notification sounds")).toBeVisible();
+  await guest.getByPlaceholder("Message").fill("Hello from BDD");
+  await guest.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByTestId("host-chat").getByText("Hello from BDD")).toBeVisible({ timeout: 15_000 });
+
+  await guest.setViewportSize({ width: 390, height: 350 });
+  for (let index = 1; index <= 10; index += 1) {
+    await page.getByPlaceholder("Message as host").fill(`Host note ${index}`);
+    await page.getByPlaceholder("Message as host").press("Enter");
+  }
+  await expect(guest.getByText("Host note 10")).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)).toBeLessThanOrEqual(2);
+  await guestContext.close();
 });
 
 test("persists relay and runtime configuration across reloads", async ({ page }) => {
@@ -121,7 +200,7 @@ test("blocks a second running coordinator for the same public key", async ({ pag
   await configureMockRelay(page);
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("running");
-  await expect(page.getByTestId("debug-log-entries")).toContainText("single instance guard acquired");
+  await expect(page.getByTestId("host-chat")).toBeVisible();
 
   const secondPage = await page.context().newPage();
   await secondPage.goto("/");

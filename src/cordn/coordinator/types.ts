@@ -16,6 +16,7 @@ export interface WelcomeQueueRecord {
   welcome: Welcome;
   createdAt: number;
   readAt: number | null;
+  afterCursor?: number;
 }
 
 export interface JoinRequestRecord {
@@ -52,6 +53,7 @@ export interface StoreWelcomeInput {
   targetStablePubkey: string;
   keyPackageReference: string;
   welcome: Welcome;
+  afterCursor?: number;
 }
 
 export interface StoreJoinRequestInput {

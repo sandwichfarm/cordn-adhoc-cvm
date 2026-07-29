@@ -1,4 +1,5 @@
 import { DEFAULT_MAX_USERS, validateMaxUsers, validateRelayUrl } from "./config-validator";
+import { withRequiredLocalRelay } from "../lib/relay-pool";
 
 const CONFIG_STORAGE_KEY = "cordn:v1:config";
 const CONFIG_STORAGE_VERSION = 1;
@@ -37,7 +38,7 @@ export class ConfigStore {
   }
 
   get enabledRelayUrls(): string[] {
-    return this.relays.filter((relay) => relay.enabled).map((relay) => relay.url);
+    return withRequiredLocalRelay(this.relays.filter((relay) => relay.enabled).map((relay) => relay.url));
   }
 
   get coordinatorOptions(): BrowserCoordinatorOptions {
