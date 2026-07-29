@@ -23,6 +23,7 @@ interface PersistedConfig {
   relays: Array<Pick<RelayConfig, "url" | "enabled">>;
   announce: boolean;
   maxUsers: number;
+  autostart: boolean;
 }
 
 export class ConfigStore {
@@ -32,6 +33,7 @@ export class ConfigStore {
   limitError = $state<string | null>(null);
   announce = $state(false);
   maxUsers = $state(DEFAULT_MAX_USERS);
+  autostart = $state(false);
 
   constructor() {
     this.loadPersistedConfig();
@@ -100,6 +102,11 @@ export class ConfigStore {
     this.persistConfig();
   }
 
+  setAutostart(value: boolean): void {
+    this.autostart = value;
+    this.persistConfig();
+  }
+
   setMaxUsers(value: number): boolean {
     const error = validateMaxUsers(value);
     if (error) {
@@ -121,6 +128,7 @@ export class ConfigStore {
     this.limitError = null;
     this.announce = false;
     this.maxUsers = DEFAULT_MAX_USERS;
+    this.autostart = false;
   }
 
   private persistConfig(): void {
@@ -133,6 +141,7 @@ export class ConfigStore {
       relays: this.relays.map((relay) => ({ url: relay.url, enabled: relay.enabled })),
       announce: this.announce,
       maxUsers: this.maxUsers,
+      autostart: this.autostart,
     };
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
   }
@@ -150,6 +159,7 @@ export class ConfigStore {
     }));
     this.announce = persisted.announce;
     this.maxUsers = persisted.maxUsers;
+    this.autostart = persisted.autostart;
   }
 }
 
@@ -193,6 +203,7 @@ function readPersistedConfig(): PersistedConfig | null {
       relays,
       announce: parsed.announce === true,
       maxUsers: limitError ? DEFAULT_MAX_USERS : maxUsers,
+      autostart: parsed.autostart === true,
     };
   } catch {
     return null;

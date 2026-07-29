@@ -115,6 +115,17 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
   }
 });
 
+test("persists and honors the autostart coordinator setting", async ({ page }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByLabel("Toggle autostart").check();
+  await page.reload();
+
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("idle");
+});
+
 test("Feature: invite-only chat — Scenario: a guest link opens only the private chat join flow", async ({ page, browser }) => {
   await page.goto("/");
   await configureMockRelay(page);
