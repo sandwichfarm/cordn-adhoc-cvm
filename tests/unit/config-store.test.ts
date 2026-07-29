@@ -12,6 +12,7 @@ describe("ConfigStore runtime limits", () => {
   test("defaults announcement off and exposes coordinator options", () => {
     const store = new ConfigStore();
 
+    expect(store.autostart).toBe(false);
     expect(store.coordinatorOptions).toEqual({
       announce: false,
       maxUsers: DEFAULT_MAX_USERS,
@@ -20,6 +21,13 @@ describe("ConfigStore runtime limits", () => {
     store.setAnnouncement(true);
 
     expect(store.coordinatorOptions.announce).toBe(true);
+  });
+
+  test("persists the autostart preference", () => {
+    const store = new ConfigStore();
+    store.setAutostart(true);
+
+    expect(new ConfigStore().autostart).toBe(true);
   });
 
   test("always includes the local WebSocket relay in the active pool", () => {
