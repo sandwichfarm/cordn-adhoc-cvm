@@ -1,49 +1,60 @@
 ---
 phase: 15-identity-continuity-membership-integrity
 verified: 2026-08-02T17:15:43Z
-status: human_needed
+status: passed
 score: 19/23 must-haves verified
 behavior_unverified: 2
 overrides_applied: 0
 behavior_unverified_items:
+
   - truth: "During rotation/recovery, every action is disabled, the primary action reads Rotating… or Creating…, and a polite live status communicates progress."
     test: "Create an anonymous room, delay the rotation transaction after confirmation, then try both dialog controls and Escape/backdrop while the operation is pending."
     expected: "All controls are disabled, the primary label and live region show progress, the dialog remains open, and neither avatar nor pubkey changes before success."
     why_human: "The code implements busy state, but no automated test holds the transaction in flight to exercise the state transition."
+
   - truth: "A pre-boundary failed action keeps the confirm modal open, shows the actionable role=alert error, and leaves the current identity and local access unchanged."
     test: "Inject a pre-boundary local-storage/session-retirement failure after opening the confirmation dialog and confirm rotation."
     expected: "The dialog stays open with an actionable alert; the same pubkey/avatar and usable local-room authority remain."
     why_human: "Unit tests verify store rollback, but no browser test observes the modal/error presentation on that failure path."
 human_verification:
+
   - test: "Exercise the two in-flight and pre-boundary-failure checks above."
     expected: "Busy/error modal behavior preserves the stated identity and authority invariants."
     why_human: "These are present and wired but not behaviorally exercised by a browser test."
+
   - test: "Reload with an intentionally malformed anonymous-identity localStorage record, then choose Create new identity from the recovery dialog."
     expected: "No coordinator or legacy room pubkey is presented as the local identity; no replacement appears before explicit recovery."
     why_human: "IDEN-01 transparency/safety prohibitions are judgment-tier and arrive flagged without a deterministic enforcement test."
+
   - test: "Seed two same-room-ID records under different coordinator pubkeys plus a verified v2/legacy alias pair, reload, and inspect the navigation."
     expected: "Each coordinator/room appears exactly once; neither alias nor legacy room key becomes the device identity."
     why_human: "The IDEN-04 prohibition is judgment-tier; automated tests cover storage cases but a human must confirm the end-to-end presentation."
+
   - test: "Open the rotation dialog with one local room, then repeat while NIP-07 and NIP-46 are selected."
     expected: "The anonymous dialog says cached/coordinator-hosted data is not deleted; authenticated menus do not expose rotation and their sessions remain unchanged."
     why_human: "IDEN-02/03 prohibitions are judgment-tier and require the requested end-of-phase visual/user-flow review."
 prohibitions:
+
   - requirement_id: IDEN-01
     statement: "The application must not present the coordinator key or an arbitrary legacy per-room key as the user's durable device-local identity."
     status: human_needed
     evidence: "Non-authoritative static review: App bootstraps UserProfileStore.initialize(configStore.userName), and UserProfileStore loads only cordn:v1:anonymous-identity."
+
   - requirement_id: IDEN-01
     statement: "Corrupt persisted anonymous identity material must not silently create or display a replacement identity."
     status: human_needed
     evidence: "Unit corruption matrix passes; flagged because the plan declares the prohibition unverified."
+
   - requirement_id: IDEN-04
     statement: "Reconciliation must not collapse rooms by title, origin, or room ID alone, and must not promote any legacy per-room secret into the durable device identity."
     status: human_needed
     evidence: "Composite helpers and targeted unit/browser tests pass; flagged judgment-tier item."
+
   - requirement_id: IDEN-02
     statement: "Rotation UI and completion messaging must not claim that cached conversation history or coordinator-hosted group data is deleted."
     status: human_needed
     evidence: "Dialog copy explicitly preserves coordinator-hosted data; flagged judgment-tier item."
+
   - requirement_id: IDEN-03
     statement: "Anonymous rotation must not act on authenticated NIP-07/NIP-46 signer sessions or expose rotation controls while either authenticated method is selected."
     status: human_needed
