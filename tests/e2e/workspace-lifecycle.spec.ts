@@ -2048,6 +2048,61 @@ test("startup uses exactly three masked ASCII reveals", async ({ page }) => {
   await expect(page.getByTestId("local-coordinator-menu-status")).toHaveAttribute("data-state", "connecting");
 });
 
+test("startup reduced motion stays static and readable", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await configureMockRelay(page);
+
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  const startup = page.getByTestId("startup-progress-panel");
+  const field = page.getByTestId("startup-ascii-field");
+  await expect(startup).toBeVisible();
+  await expect(field).toHaveAttribute("data-motion-preference", "reduced");
+  await expectStartupFillsHostPane(page);
+  await expectStartupMasks(page);
+  await expectShellControlsUsable(page);
+  await expect(startup.getByRole("progressbar")).toBeVisible();
+  await expect(startup.getByRole("status")).toBeVisible();
+
+  const before = await field.evaluate((element) => ({
+    transform: getComputedStyle(element.querySelector(".ring-plane")!).transform,
+    target: (element as HTMLElement).dataset.forwardTarget,
+    state: (element as HTMLElement).dataset.motionState,
+  }));
+  await page.waitForTimeout(650);
+  await expect.poll(() => field.evaluate((element) => ({
+    transform: getComputedStyle(element.querySelector(".ring-plane")!).transform,
+    target: (element as HTMLElement).dataset.forwardTarget,
+    state: (element as HTMLElement).dataset.motionState,
+  }))).toEqual(before);
+});
+
+test("startup motion cleans up across repeated recovery cycles", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await configureMockRelay(page);
+
+  for (let cycle = 0; cycle < 2; cycle += 1) {
+    await page.getByRole("button", { name: "Start", exact: true }).click();
+    await expect(page.getByTestId("status-badge")).toHaveText("running");
+    await expect(page.getByTestId("startup-ascii-field")).toHaveCount(0);
+    await expectShellControlsUsable(page);
+
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect(page.getByTestId("status-badge")).toHaveText("idle");
+    const field = page.getByTestId("startup-ascii-field");
+    await expect(field).toHaveCount(1);
+    await expect(field).toHaveAttribute("data-motion-preference", "normal");
+    await expect(field.locator(".ascii-bed")).toHaveCount(1);
+    await expect(field.locator(".ascii-ring")).toHaveCount(3);
+    await expectShellControlsUsable(page);
+    await expect(page.getByTestId("operator-shell")).toBeVisible();
+  }
+
+  expect(errors).toEqual([]);
+});
+
 test("startup covers every supported content pane", async ({ page }) => {
   const createdRoomTitle = "Content pane recovery room";
   const longRoomTitle = `Long <room> ${"recovery label ".repeat(18)}`;
