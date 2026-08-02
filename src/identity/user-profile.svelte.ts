@@ -4,6 +4,11 @@ import type { NostrSigner } from "@contextvm/sdk/core";
 import { SimplePool, type Event as NostrEvent, type Filter } from "nostr-tools";
 import { Observable } from "rxjs";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
+import {
+  createAnonymousIdentity,
+  loadAnonymousIdentity,
+} from "./anonymous-identity";
+import type { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
 
 export const PROFILE_RELAYS = ["wss://purplepag.es", "wss://relay.damus.io"] as const;
 export const NIP46_CONNECT_RELAYS = ["wss://bucket.coracle.social"] as const;
@@ -33,7 +38,10 @@ export class UserProfileStore {
   status = $state<UserProfileStatus>("idle");
   error = $state("");
   initialized = $state(false);
+  recoveryRequired = $state(false);
+  rotationInProgress = $state(false);
   private signer: NostrSigner | null = null;
+  private anonymousSigner: BrowserNostrSigner | null = null;
   private remoteSigner: NostrConnectSigner | null = null;
   private remotePool: NostrConnectPool | null = null;
   private initialization: Promise<void> | null = null;
@@ -60,23 +68,34 @@ export class UserProfileStore {
   }
 
   get activeSigner(): NostrSigner | null {
-    return this.signer;
+    return this.method === "anonymous" ? this.anonymousSigner : this.signer;
   }
 
   get hasIdentity(): boolean {
     return this.pubkey.trim().length > 0;
   }
 
-  initialize(anonymousPubkey: string, anonymousName = ""): Promise<void> {
-    if (this.initialization) this.setAnonymous(anonymousPubkey, anonymousName);
-    this.initialization ??= this.bootstrap(anonymousPubkey, anonymousName);
+  initialize(anonymousName = ""): Promise<void> {
+    if (this.initialization) {
+      if (this.initialized) this.setAnonymousName(anonymousName);
+      return this.initialization;
+    }
+    this.initialization ??= this.bootstrap(anonymousName);
     return this.initialization;
   }
 
-  setAnonymous(pubkey: string, name = ""): void {
-    if (this.method !== "anonymous") return;
-    this.pubkey = pubkey;
+  setAnonymousName(name = ""): void {
     this.anonymousName = name;
+  }
+
+  setAnonymous(_legacyPubkey: string, name = ""): void {
+    this.setAnonymousName(name);
+  }
+
+  private async showAnonymousIdentity(): Promise<void> {
+    if (!this.anonymousSigner) return;
+    this.pubkey = await this.anonymousSigner.getPublicKey();
+    this.profile = null;
     this.status = "ready";
   }
 
@@ -175,7 +194,7 @@ export class UserProfileStore {
     this.method = "anonymous";
     this.profile = null;
     this.error = "";
-    this.status = "ready";
+    await this.showAnonymousIdentity();
   }
 
   async refreshProfile(): Promise<void> {
@@ -211,9 +230,20 @@ export class UserProfileStore {
     await this.refreshProfile();
   }
 
-  private async bootstrap(anonymousPubkey: string, anonymousName: string): Promise<void> {
-    this.setAnonymous(anonymousPubkey, anonymousName);
-    await this.restoreNip07Session();
+  private async bootstrap(anonymousName: string): Promise<void> {
+    this.setAnonymousName(anonymousName);
+    const loaded = await loadAnonymousIdentity();
+    const identity = loaded.state === "absent" ? await createAnonymousIdentity() : loaded;
+    if (identity.state !== "ready") {
+      this.recoveryRequired = true;
+      this.status = "error";
+      this.error = "Local identity needs recovery";
+      return;
+    }
+
+    this.anonymousSigner = identity.signer;
+    if (this.method === "anonymous") await this.showAnonymousIdentity();
+    if (this.method === "anonymous") await this.restoreNip07Session();
     this.initialized = true;
   }
 }

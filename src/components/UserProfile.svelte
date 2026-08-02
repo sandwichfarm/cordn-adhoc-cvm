@@ -10,7 +10,6 @@
   } from "../identity/user-profile.svelte";
 
   interface Props {
-    anonymousPubkey: string;
     anonymousName?: string;
     onAnonymousNameChange?: (name: string) => void;
     showHostIdentity?: boolean;
@@ -23,7 +22,6 @@
   const badgeEmojis = ["🛡️", "👑", "⚡", "🌿", "🛰️", "🫡", "🔐", "🧭", "🦉", "🦊", "🐙", "✨", "💚", "🏠", "🎛️", "☕"];
 
   let {
-    anonymousPubkey,
     anonymousName = "",
     onAnonymousNameChange,
     showHostIdentity = false,
@@ -46,11 +44,11 @@
   );
 
   $effect(() => {
-    userProfileStore.setAnonymous(anonymousPubkey, anonymousName);
+    userProfileStore.setAnonymousName(anonymousName);
   });
 
   function updateAnonymousName(value: string): void {
-    userProfileStore.setAnonymous(anonymousPubkey, value);
+    userProfileStore.setAnonymousName(value);
     onAnonymousNameChange?.(value);
   }
 
@@ -114,11 +112,11 @@
 
   async function disconnect(): Promise<void> {
     await userProfileStore.logout();
-    userProfileStore.setAnonymous(anonymousPubkey, anonymousName);
+    userProfileStore.setAnonymousName(anonymousName);
   }
 
   function avatarFallback(event: Event): void {
-    (event.currentTarget as HTMLImageElement).src = createPubkeyAvatar(userProfileStore.pubkey || anonymousPubkey);
+    (event.currentTarget as HTMLImageElement).src = createPubkeyAvatar(userProfileStore.pubkey);
   }
 
   onMount(() => {

@@ -901,7 +901,6 @@
           <InviteInbox {onNavigate} />
           <NotificationCenter />
           <UserProfile
-            anonymousPubkey={identity.publicKeyHex}
             anonymousName={config.userName}
             onAnonymousNameChange={(name) => config.setUserName(name)}
             showHostIdentity

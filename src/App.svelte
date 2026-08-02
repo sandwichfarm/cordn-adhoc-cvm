@@ -24,7 +24,7 @@
   canonicalize(initialIntent);
 
   $effect(() => {
-    void userProfileStore.initialize(homeCoordinatorPubkey ?? "", configStore.userName);
+    void userProfileStore.initialize(configStore.userName);
   });
 
   function canonicalize(intent: string | null): void {
