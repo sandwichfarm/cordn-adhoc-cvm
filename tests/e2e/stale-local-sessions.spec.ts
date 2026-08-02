@@ -299,9 +299,31 @@ test("keeps a stale remote room readable without granting a mismatched signer se
   await expect(roomActions.getByRole("menuitem", { name: `Delete room ${title}` })).toHaveCount(0);
 });
 
-test("keeps a boundary-crossed local identity non-dismissably recovered after reload", async ({ page }) => {
+test("keeps a marker-persisted identity in recovery after a pre-retirement reload", async ({ page }) => {
   await page.addInitScript(() => {
+    const coordinatorPubkey = "a".repeat(64);
+    localStorage.setItem("cordn:v1:anonymous-identity", JSON.stringify({
+      version: 1,
+      secretKeyHex: `${"0".repeat(63)}1`,
+    }));
     localStorage.setItem("cordn:v1:anonymous-identity-recovery", JSON.stringify({ version: 1 }));
+    localStorage.setItem(`cordn-adhoc-chat-room:v2:${coordinatorPubkey}:pre-boundary-room`, JSON.stringify({
+      version: 1,
+      id: "pre-boundary-room",
+      title: "Pre-boundary room",
+      coordinatorPubkey,
+      relayUrls: ["wss://relay.example"],
+      name: "River",
+      stablePubkey: "b".repeat(64),
+      identityOwner: "anonymous",
+      isHost: false,
+      stateBase64: "still-private-before-retirement",
+      keyPackage: { reference: "private-reference", publicBase64: "public", privateBase64: "private" },
+      lastCursor: 0,
+      messages: [],
+      pending: [],
+      inviteToken: "private-invite",
+    }));
   });
   await page.goto("/");
 
@@ -311,4 +333,8 @@ test("keeps a boundary-crossed local identity non-dismissably recovered after re
   await page.keyboard.press("Escape");
   await expect(recovery).toBeVisible();
   await expect(page.getByTestId("user-profile").locator(".user-trigger")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    const room = JSON.parse(localStorage.getItem(`cordn-adhoc-chat-room:v2:${"a".repeat(64)}:pre-boundary-room`) ?? "null") as { stateBase64?: string; inviteToken?: string } | null;
+    return room?.stateBase64 === "still-private-before-retirement" && room.inviteToken === "private-invite";
+  })).toBe(true);
 });

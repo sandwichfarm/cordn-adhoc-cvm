@@ -27,6 +27,7 @@ vi.mock("nostr-tools", async (importOriginal) => ({
 }));
 
 import {
+  ANONYMOUS_IDENTITY_RECOVERY_STORAGE_KEY,
   createPubkeyAvatar,
   NIP46_CONNECT_RELAYS,
   parseKindZero,
@@ -386,6 +387,30 @@ describe("user profile helpers", () => {
     expect(room?.stateBase64).toBe("");
     expect(room?.keyPackage.privateBase64).toBe("");
     expect(store.pubkey).not.toBe(oldPubkey);
+  });
+
+  test("writes the durable recovery marker before retiring room authority", async () => {
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    saveRoom(anonymousRoom(store.pubkey));
+
+    const writes: Array<{ key: string; value: string }> = [];
+    const originalSetItem = localStorage.setItem.bind(localStorage);
+    const setItemSpy = vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
+      writes.push({ key, value });
+      originalSetItem(key, value);
+    });
+
+    try {
+      await store.rotateAnonymousIdentity();
+    } finally {
+      setItemSpy.mockRestore();
+    }
+
+    const markerWrite = writes.findIndex(({ key }) => key === ANONYMOUS_IDENTITY_RECOVERY_STORAGE_KEY);
+    const retirementWrite = writes.findIndex(({ value }) => value.includes('"membershipStatus":"retired"'));
+    expect(markerWrite).toBeGreaterThanOrEqual(0);
+    expect(retirementWrite).toBeGreaterThan(markerWrite);
   });
 
   test("rolls back session and room retirement when a lifecycle fails before the durable boundary", async () => {

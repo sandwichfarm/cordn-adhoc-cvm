@@ -119,16 +119,21 @@ export class UserProfileStore {
     let journal: MembershipRetirementJournal | null = null;
     const retiredSessions: AnonymousSessionLifecycle[] = [];
     let crossedBoundary = false;
+    let wroteRecoveryMarker = false;
     try {
       candidate = await prepareAnonymousIdentityReplacement();
       const stablePubkey = await oldSigner.getPublicKey();
+      if (!writeRecoveryMarker()) throw new Error("Unable to set the local recovery boundary");
+      wroteRecoveryMarker = true;
+
+      // Once this marker is persisted, a process crash must take the conservative
+      // recovery path instead of silently resuming a partially retired identity.
       for (const lifecycle of this.anonymousSessions) {
         if (lifecycle.stablePubkey !== stablePubkey) continue;
         await lifecycle.retire();
         retiredSessions.push(lifecycle);
       }
       journal = await retireAnonymousMemberships(stablePubkey);
-      if (!writeRecoveryMarker()) throw new Error("Unable to set the local recovery boundary");
       crossedBoundary = true;
 
       this.anonymousSigner = null;
@@ -146,10 +151,18 @@ export class UserProfileStore {
     } catch (cause) {
       candidate?.abort();
       if (!crossedBoundary) {
-        journal?.rollback();
-        for (const lifecycle of retiredSessions.reverse()) await lifecycle.restore();
-        this.anonymousSigner = oldSigner;
-        throw new Error("Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.", { cause });
+        let rollbackSucceeded = false;
+        try {
+          journal?.rollback();
+          for (const lifecycle of retiredSessions.reverse()) await lifecycle.restore();
+          this.anonymousSigner = oldSigner;
+          rollbackSucceeded = !wroteRecoveryMarker || clearRecoveryMarker();
+        } catch {
+          // A failed rollback must retain the marker so a reload stays conservative.
+        }
+        if (rollbackSucceeded) {
+          throw new Error("Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.", { cause });
+        }
       }
       this.enterRecovery("Identity replacement was interrupted. Create a new identity to continue.");
       throw cause;
@@ -165,12 +178,16 @@ export class UserProfileStore {
     const candidate = await prepareAnonymousIdentityReplacement();
     let journal: MembershipRetirementJournal | null = null;
     let crossedBoundary = false;
+    let wroteRecoveryMarker = false;
     try {
       // Recovery is an explicit consent boundary: the corrupt identity cannot
       // prove ownership of pre-provenance rooms, so retire their local authority
       // before any replacement signer is published.
+      if (!hasRecoveryMarker()) {
+        if (!writeRecoveryMarker()) throw new Error("Unable to set the local recovery boundary");
+        wroteRecoveryMarker = true;
+      }
       journal = await retireAnonymousMemberships();
-      if (!hasRecoveryMarker() && !writeRecoveryMarker()) throw new Error("Unable to set the local recovery boundary");
       crossedBoundary = true;
       if (!candidate.commit()) throw new Error("Unable to write the new local identity");
       journal.commit();
@@ -184,7 +201,14 @@ export class UserProfileStore {
       if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
     } catch {
       candidate.abort();
-      if (!crossedBoundary) journal?.rollback();
+      if (!crossedBoundary) {
+        try {
+          journal?.rollback();
+          if (wroteRecoveryMarker && !clearRecoveryMarker()) throw new Error("Unable to clear the local recovery boundary");
+        } catch {
+          // A failed rollback or marker clear must preserve recovery on reload.
+        }
+      }
       this.enterRecovery("Unable to create a new local identity. No identity is active. Try again.");
       throw new Error(this.error);
     } finally {
