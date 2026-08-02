@@ -14,7 +14,8 @@ vi.mock("applesauce-signers/signers", () => ({
   NostrConnectSigner: class {},
 }));
 
-vi.mock("nostr-tools", () => ({
+vi.mock("nostr-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("nostr-tools")>()),
   SimplePool: class {
     async querySync(): Promise<[]> {
       return [];
@@ -31,10 +32,10 @@ import {
   PROFILE_RELAYS,
   UserProfileStore,
 } from "../../src/identity/user-profile.svelte";
+import { ANONYMOUS_IDENTITY_STORAGE_KEY } from "../../src/identity/anonymous-identity";
 
 const NIP07_SESSION_STORAGE_KEY = "cordn:v1:nip07-session";
 const NIP07_PUBKEY = "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0";
-const ANONYMOUS_PUBKEY = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const NIP46_PUBKEY = "4646464646464646464646464646464646464646464646464646464646464646";
 
 describe("user profile helpers", () => {
@@ -80,33 +81,40 @@ describe("user profile helpers", () => {
     expect(first.startsWith("data:image/svg+xml,")).toBe(true);
   });
 
-  test("initializes an established anonymous identity when no stored signer is selected", async () => {
+  test("creates and reloads one durable anonymous identity while keeping the display name separate", async () => {
     const store = new UserProfileStore();
     expect(store.initialized).toBe(false);
     expect(store.hasIdentity).toBe(false);
 
-    const initialization = store.initialize(ANONYMOUS_PUBKEY, "River");
-    expect(store.pubkey).toBe(ANONYMOUS_PUBKEY);
-    expect(store.displayName).toBe("River");
-    expect(store.hasIdentity).toBe(true);
-
-    await initialization;
+    await store.initialize("River");
     expect(store.initialized).toBe(true);
     expect(store.method).toBe("anonymous");
     expect(store.status).toBe("ready");
+    expect(store.activeSigner).not.toBeNull();
+
+    const firstPubkey = store.pubkey;
+    const firstAvatar = store.avatarUrl;
+    const record = JSON.parse(localStorage.getItem(ANONYMOUS_IDENTITY_STORAGE_KEY) ?? "null") as Record<string, unknown>;
+    expect(record).toEqual({ version: 1, secretKeyHex: expect.any(String) });
+    expect(record).not.toHaveProperty("name");
+
+    const reloaded = new UserProfileStore();
+    await reloaded.initialize("River");
+    expect(reloaded.pubkey).toBe(firstPubkey);
+    expect(reloaded.avatarUrl).toBe(firstAvatar);
+    expect(reloaded.displayName).toBe("River");
   });
 
-  test("adopts a later anonymous identity after bootstrap begins without a coordinator key", async () => {
+  test("memoizes anonymous initialization without coordinator identity input", async () => {
     const store = new UserProfileStore();
 
-    const initial = store.initialize("", "");
-    const afterUnlock = store.initialize(ANONYMOUS_PUBKEY, "River");
+    const initial = store.initialize("River");
+    const afterUnlock = store.initialize("Other");
 
     expect(afterUnlock).toBe(initial);
     await initial;
     expect(store.initialized).toBe(true);
     expect(store.method).toBe("anonymous");
-    expect(store.pubkey).toBe(ANONYMOUS_PUBKEY);
     expect(store.displayName).toBe("River");
     expect(store.hasIdentity).toBe(true);
   });
@@ -115,8 +123,8 @@ describe("user profile helpers", () => {
     localStorage.setItem(NIP07_SESSION_STORAGE_KEY, JSON.stringify({ version: 1, method: "nip07" }));
     const store = new UserProfileStore();
 
-    const first = store.initialize(ANONYMOUS_PUBKEY, "River");
-    const second = store.initialize("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "Other");
+    const first = store.initialize("River");
+    const second = store.initialize("Other");
     expect(second).toBe(first);
 
     await Promise.all([first, second]);
@@ -131,12 +139,12 @@ describe("user profile helpers", () => {
     signerMocks.getPublicKey.mockRejectedValueOnce(new Error("Extension denied access"));
     const store = new UserProfileStore();
 
-    await store.initialize(ANONYMOUS_PUBKEY, "River");
+    await store.initialize("River");
 
     expect(store.initialized).toBe(true);
     expect(store.hasIdentity).toBe(true);
     expect(store.method).toBe("anonymous");
-    expect(store.pubkey).toBe(ANONYMOUS_PUBKEY);
+    expect(store.activeSigner).not.toBeNull();
     expect(store.displayName).toBe("River");
     expect(store.status).toBe("ready");
     expect(store.error).toBe("");
@@ -148,7 +156,7 @@ describe("user profile helpers", () => {
     expect(localStorage.getItem(NIP07_SESSION_STORAGE_KEY)).toBe(JSON.stringify({ version: 1, method: "nip07" }));
 
     const reloaded = new UserProfileStore();
-    await reloaded.initialize(ANONYMOUS_PUBKEY, "River");
+    await reloaded.initialize("River");
     expect(reloaded.initialized).toBe(true);
     expect(reloaded.method).toBe("nip07");
     expect(reloaded.pubkey).toBe(NIP07_PUBKEY);
@@ -156,23 +164,21 @@ describe("user profile helpers", () => {
 
   test("keeps the initialized anonymous identity without a prior NIP-07 selection", async () => {
     const reloaded = new UserProfileStore();
-    await reloaded.initialize(ANONYMOUS_PUBKEY, "River");
+    await reloaded.initialize("River");
     expect(reloaded.initialized).toBe(true);
     expect(reloaded.hasIdentity).toBe(true);
     expect(reloaded.method).toBe("anonymous");
-    expect(reloaded.pubkey).toBe(ANONYMOUS_PUBKEY);
-    expect(reloaded.activeSigner).toBeNull();
+    expect(reloaded.activeSigner).not.toBeNull();
   });
 
   test("ignores a malformed NIP-07 session marker", async () => {
     localStorage.setItem(NIP07_SESSION_STORAGE_KEY, JSON.stringify({ version: 2, method: "nip07" }));
     const reloaded = new UserProfileStore();
-    await reloaded.initialize(ANONYMOUS_PUBKEY, "River");
+    await reloaded.initialize("River");
     expect(reloaded.initialized).toBe(true);
     expect(reloaded.hasIdentity).toBe(true);
     expect(reloaded.method).toBe("anonymous");
-    expect(reloaded.pubkey).toBe(ANONYMOUS_PUBKEY);
-    expect(reloaded.activeSigner).toBeNull();
+    expect(reloaded.activeSigner).not.toBeNull();
   });
 
   test("does not replace an active NIP-46 identity during initialization", async () => {
@@ -182,7 +188,7 @@ describe("user profile helpers", () => {
     const store = new UserProfileStore();
     await store.adoptNip46(remoteSigner);
 
-    await store.initialize(ANONYMOUS_PUBKEY, "River");
+    await store.initialize("River");
 
     expect(store.initialized).toBe(true);
     expect(store.method).toBe("nip46");

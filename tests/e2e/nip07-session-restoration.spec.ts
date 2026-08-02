@@ -224,6 +224,24 @@ function autojoinInvitePath(): string {
 
 test("keeps the unified root shell while an established anonymous identity opens a legacy invite", async ({ page }) => {
   await page.goto("/");
+  const initialIdentity = await page.evaluate(() => {
+    const profile = document.querySelector('[data-testid="user-profile"]');
+    return {
+      key: localStorage.getItem("cordn:v1:anonymous-identity"),
+      avatar: profile?.querySelector("img")?.getAttribute("src"),
+    };
+  });
+  expect(initialIdentity.key).toBeTruthy();
+  expect(initialIdentity.avatar).toBeTruthy();
+  await page.reload();
+  const restoredIdentity = await page.evaluate(() => {
+    const profile = document.querySelector('[data-testid="user-profile"]');
+    return {
+      key: localStorage.getItem("cordn:v1:anonymous-identity"),
+      avatar: profile?.querySelector("img")?.getAttribute("src"),
+    };
+  });
+  expect(restoredIdentity).toEqual(initialIdentity);
   await observeIdentityChooser(page);
 
   await navigateWithinShell(page, autojoinInvitePath());
