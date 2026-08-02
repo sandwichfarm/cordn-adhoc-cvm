@@ -890,6 +890,9 @@
     const targetIndex = orderedRooms.findIndex((candidate) => sameRoomIdentity(candidate, target));
     if (targetIndex < 0) return false;
     const fallback = targetIndex > 0 ? orderedRooms[targetIndex - 1] : orderedRooms[targetIndex + 1];
+    const removesLastSelectedExternalRoom = selectedServerPubkey === target.coordinatorPubkey
+      && target.coordinatorPubkey !== coordinatorPubkey
+      && orderedRooms.length === 1;
     try {
       const latest = loadRoom(target.id, target.coordinatorPubkey);
       if (!latest || !sameRoomIdentity(latest, target) || removalModeFor(latest) !== frozenMode) return false;
@@ -927,10 +930,12 @@
         roomConnection = "connecting";
         roomConnectionDetail = undefined;
       }
-      if (deletingActiveHostRoom || deletingActiveEmbeddedRoom) {
+      if (deletingActiveHostRoom || deletingActiveEmbeddedRoom || removesLastSelectedExternalRoom) {
         const availableFallback = fallback ? loadRoom(fallback.id, fallback.coordinatorPubkey) : null;
         if (availableFallback && sameRoomIdentity(availableFallback, fallback)) {
           await openCoordinatorRoom(availableFallback);
+        } else if (target.coordinatorPubkey !== coordinatorPubkey) {
+          selectCoordinator(coordinatorPubkey);
         } else {
           showCoordinatorEmpty(target.coordinatorPubkey);
         }
@@ -1353,9 +1358,12 @@
               {#if selectedServerRoomCount === 0}
                 <div class="channel-empty-state" data-testid="coordinator-empty-state">
                   <strong>No rooms for this coordinator</strong>
-                  <span>Create a room or open a current invite to add one here.</span>
                   {#if selectedServerIsHome}
+                    <span>Create a room or open a current invite to add one here.</span>
                     <button type="button" aria-label="Create room from coordinator sidebar" disabled={coordinator.status !== "running"} onclick={() => void openCreateDialog()}>Create room</button>
+                  {:else}
+                    <span>You no longer have any saved rooms on this coordinator.</span>
+                    <button type="button" onclick={() => selectCoordinator(coordinatorPubkey)}>Back to my coordinator</button>
                   {/if}
                 </div>
               {:else if selectedServerIsHome}
@@ -1467,9 +1475,14 @@
           <div class="coordinator-empty-content" data-testid="coordinator-empty-content">
             <span aria-hidden="true">#</span>
             <p>No rooms for this coordinator</p>
-            <small>Create a room or open a current invite to add one here.</small>
-            {#if selectedServerIsHome && coordinator.status === "running"}
-              <button class="host-primary" type="button" onclick={() => void openCreateDialog()}>Create room</button>
+            {#if selectedServerIsHome}
+              <small>Create a room or open a current invite to add one here.</small>
+              {#if coordinator.status === "running"}
+                <button class="host-primary" type="button" onclick={() => void openCreateDialog()}>Create room</button>
+              {/if}
+            {:else}
+              <small>You no longer have any saved rooms on this coordinator.</small>
+              <button class="host-primary" type="button" onclick={() => selectCoordinator(coordinatorPubkey)}>Back to my coordinator</button>
             {/if}
           </div>
         {:else if localRoomReady}

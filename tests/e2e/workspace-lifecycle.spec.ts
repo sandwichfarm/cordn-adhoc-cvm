@@ -6,6 +6,8 @@ import { bytesToHex } from "nostr-tools/utils";
 
 import { startMockRelay, type MockRelay } from "./mock-relay";
 
+// User-visible workspace, coordinator, room, and invite behavior.
+
 let relay: MockRelay;
 
 function createStoredRoomPrivateFixture(): {
@@ -1431,6 +1433,42 @@ test("same-id sidebar removal leaves only the captured remote record", async ({ 
   await expect(dialog.getByRole("heading", { name: "Leave #Sidebar remote?" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
+});
+
+test("leaving the last remote room returns to the home coordinator", async ({ page }) => {
+  await page.goto("/");
+  const remoteCoordinatorPubkey = "f".repeat(64);
+  await seedJoinedRoom(page, "Last remote room", remoteCoordinatorPubkey);
+  await page.reload();
+
+  await page.locator(".channel-context-button").click();
+  const coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
+  const homeCoordinatorPubkey = await coordinatorMenu
+    .getByTestId("local-coordinator-menu-status")
+    .getAttribute("data-coordinator-pubkey");
+  expect(homeCoordinatorPubkey).toBeTruthy();
+  await coordinatorMenu.getByRole("menuitem", { name: /Coordinator ffffff/ }).click();
+  await expect(page.getByTestId("selected-coordinator-status"))
+    .toHaveAttribute("data-coordinator-pubkey", remoteCoordinatorPubkey);
+
+  const targetRow = page.locator(".channel-row").filter({ hasText: "Last remote room" });
+  await targetRow.getByRole("button", { name: "More actions for # Last remote room" }).click();
+  await page.getByRole("menu", { name: "Room actions for Last remote room" })
+    .getByRole("menuitem", { name: "Leave room Last remote room" })
+    .click();
+  await page.getByTestId("confirm-leave-room").click();
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("selected-coordinator-status"))
+    .toHaveAttribute("data-coordinator-pubkey", homeCoordinatorPubkey!);
+  await expect(page.getByTestId("coordinator-empty-state"))
+    .toContainText("Create a room or open a current invite to add one here.");
+  await expect(page.getByRole("button", { name: "Create room from coordinator sidebar" })).toBeVisible();
+
+  await page.locator(".channel-context-button").click();
+  await expect(page.getByRole("menu", { name: "Choose coordinator" })
+    .getByRole("menuitem", { name: /Coordinator ffffff/ }))
+    .toHaveCount(0);
 });
 
 test("switches local Delete to remote Leave without crossing same-id room identities", async ({ page }) => {
