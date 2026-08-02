@@ -4,15 +4,15 @@ milestone: v1.1
 milestone_name: Quality of Life & Polish
 current_phase: 17
 current_phase_name: Full-Viewport Startup Motion
-status: ready_to_plan
-stopped_at: Phase 16 verified and complete
-last_updated: "2026-08-02T21:03:30Z"
+status: executing
+stopped_at: Phase 17 UI-SPEC approved
+last_updated: "2026-08-02T22:07:40.544Z"
 last_activity: 2026-08-02
 last_activity_desc: Phase 16 verified and complete, transitioned to Phase 17
 progress:
-  total_phases: 6
+  total_phases: 3
   completed_phases: 2
-  total_plans: 9
+  total_plans: 11
   completed_plans: 9
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 
 Phase: 17 — Full-Viewport Startup Motion
 Plan: 0 of TBD
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-02 — Phase 16 verified and complete, transitioned to Phase 17
 
 Progress: [███████░░░░░░░░░░░░░] 2/6 phases (33%)
@@ -109,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T21:03:30Z
-Stopped at: Phase 16 verified and complete
-Resume file: None
+Last session: 2026-08-02T21:19:56.857Z
+Stopped at: Phase 17 UI-SPEC approved
+Resume file: .planning/phases/17-full-viewport-startup-motion/17-UI-SPEC.md
