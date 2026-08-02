@@ -6,7 +6,7 @@
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
   import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
-  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, saveRoom, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, ROOMS_CHANGED_EVENT, saveRoom, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import MessageAuthor from "./MessageAuthor.svelte";
@@ -381,6 +381,23 @@
 
   onMount(() => {
     disposed = false;
+    const handleRoomsChanged = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail as { action?: string; roomId?: string; coordinatorPubkey?: string } : undefined;
+      if (detail?.action !== "removed" || !room || detail.roomId !== room.id || detail.coordinatorPubkey !== room.coordinatorPubkey) return;
+      unsubscribeSession?.();
+      unsubscribeSession = null;
+      unregisterAnonymousSession?.();
+      unregisterAnonymousSession = null;
+      session?.discard();
+      session = null;
+      room = null;
+      connection = "cached";
+      connectionDetail = undefined;
+      onContextChange?.(null);
+      navigate("/");
+    };
+    window.addEventListener(ROOMS_CHANGED_EVENT, handleRoomsChanged);
+    return () => window.removeEventListener(ROOMS_CHANGED_EVENT, handleRoomsChanged);
   });
   onDestroy(() => {
     disposed = true;

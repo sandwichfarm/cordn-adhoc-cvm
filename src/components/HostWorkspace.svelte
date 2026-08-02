@@ -97,6 +97,7 @@
   let mobileToolsOpen = $state(false);
   let refreshState = $state<"idle" | "refreshing" | "refreshed">("idle");
   let roomRemovalTarget = $state<StoredRoom | null>(null);
+  let roomRemovalMode = $state<"delete" | "leave">("delete");
   let roomRemovalOrigin = $state<HTMLButtonElement | null>(null);
   let reactionPickerMessageId = $state<string | null>(null);
   let reactionError = $state("");
@@ -787,18 +788,22 @@
     await enableSounds();
   }
 
-  async function deleteCurrentHostedRoom(): Promise<void> {
+  function removalModeFor(target: StoredRoom): "delete" | "leave" {
+    return target.isHost && target.membershipStatus !== "retired" && target.coordinatorPubkey === coordinatorPubkey ? "delete" : "leave";
+  }
+
+  async function removeCurrentStoredRoom(): Promise<void> {
     const target = roomRemovalTarget;
-    if (!target?.isHost) return;
+    if (!target) return;
     const latest = loadRoom(target.id, target.coordinatorPubkey);
-    if (!latest || !sameRoomIdentity(latest, target) || latest.coordinatorPubkey !== coordinatorPubkey) {
-      throw new Error(`Unable to delete # ${target.title}. Please try again.`);
+    if (!latest || !sameRoomIdentity(latest, target)) {
+      throw new Error(`Unable to ${roomRemovalMode} # ${target.title}. Please try again.`);
     }
 
-    await coordinator.deleteHostedRoom({
-      id: latest.id,
-      coordinatorPubkey: latest.coordinatorPubkey,
-    });
+    if (roomRemovalMode === "delete") {
+      if (removalModeFor(latest) !== "delete") throw new Error(`Unable to delete # ${target.title}. Please try again.`);
+      await coordinator.deleteHostedRoom({ id: latest.id, coordinatorPubkey: latest.coordinatorPubkey });
+    }
     const deletingActiveRoom = room?.id === target.id && room.coordinatorPubkey === target.coordinatorPubkey;
     if (deletingActiveRoom) {
       unsubscribeSession?.();
@@ -811,6 +816,9 @@
     removeStoredRoom(target);
     const remainingRooms = hostedRooms.filter((entry) => !sameRoomIdentity(entry.room, target));
     hostedRooms = remainingRooms;
+    homeJoinedRooms = homeJoinedRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
+    remoteRooms = remoteRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
+    previousLocalRooms = previousLocalRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
 
     if (deletingActiveRoom) {
       room = null;
@@ -824,11 +832,11 @@
     }
   }
 
-  function requestSidebarHostedRoomRemoval(target: StoredRoom, origin: HTMLButtonElement | undefined): void {
-    if (!target.isHost || target.coordinatorPubkey !== coordinatorPubkey) return;
+  function requestSidebarRoomRemoval(target: StoredRoom, origin: HTMLButtonElement | undefined): void {
     const latest = loadRoom(target.id, target.coordinatorPubkey);
     if (!latest || !sameRoomIdentity(latest, target)) return;
     roomRemovalTarget = latest;
+    roomRemovalMode = removalModeFor(latest);
     roomRemovalOrigin = origin ?? null;
   }
 
@@ -836,6 +844,7 @@
     roomRemovalTarget = null;
     const origin = roomRemovalOrigin;
     roomRemovalOrigin = null;
+    roomRemovalMode = "delete";
     if (origin) void tick().then(() => origin.focus());
   }
 
@@ -1221,22 +1230,19 @@
                         <span class="truncate" title={entry.room.title}>{entry.room.title}</span>
                         <RoomHostBadge host={hostIdentityForRoom(entry.room)} compact />
                       </button>
-                      <RoomActionsMenu sidebar roomTitle={entry.room.title} {soundsEnabled} removalMode="delete" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarHostedRoomRemoval(entry.room, origin)} />
+                      <RoomActionsMenu sidebar roomTitle={entry.room.title} {soundsEnabled} removalMode="delete" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(entry.room, origin)} />
                     </div>
                   {/each}
                   {#each homeJoinedRooms as joinedRoom (`${joinedRoom.coordinatorPubkey}:${joinedRoom.id}`)}
-                    <button
-                      class:active={embeddedChatActive && activeIntentInvite?.groupId === joinedRoom.id && activeIntentInvite?.coordinatorPubkey === joinedRoom.coordinatorPubkey}
-                      class="channel-row"
-                      type="button"
-                      aria-label={`Open joined room ${joinedRoom.title}, hosted by ${hostIdentityForRoom(joinedRoom).name}`}
-                        onclick={() => openStoredRoomFromRail(joinedRoom)}
-                    >
+                    <div class:active={embeddedChatActive && activeIntentInvite?.groupId === joinedRoom.id && activeIntentInvite?.coordinatorPubkey === joinedRoom.coordinatorPubkey} class="channel-row">
+                    <button class="channel-row-primary" type="button" aria-label={`Open joined room ${joinedRoom.title}, hosted by ${hostIdentityForRoom(joinedRoom).name}`} onclick={() => openStoredRoomFromRail(joinedRoom)}>
                       <span class="channel-active-mark" aria-hidden="true"></span>
                       <span class="channel-hash" aria-hidden="true">#</span>
                       <span class="truncate">{joinedRoom.title}</span>
                       <RoomHostBadge host={hostIdentityForRoom(joinedRoom)} compact />
                     </button>
+                    <RoomActionsMenu sidebar roomTitle={joinedRoom.title} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(joinedRoom, origin)} />
+                    </div>
                   {/each}
                   {#if hostedRooms.length + homeJoinedRooms.length === 0}
                     <button class="channel-empty" type="button" disabled={coordinator.status !== "running"} onclick={() => void openCreateDialog()}>
@@ -1250,10 +1256,8 @@
                     <p class="channel-previous-guidance">This session belongs to a previous local coordinator key. Open it to leave its saved copy; the current coordinator cannot delete it.</p>
                   {/if}
                   {#each selectedExternalServer.rooms as remoteRoom (`${remoteRoom.coordinatorPubkey}:${remoteRoom.id}`)}
-                      <button
-                        class:active={embeddedChatActive && activeIntentInvite?.groupId === remoteRoom.id && activeIntentInvite?.coordinatorPubkey === remoteRoom.coordinatorPubkey}
-                        class="channel-row"
-                        type="button"
+                      <div class:active={embeddedChatActive && activeIntentInvite?.groupId === remoteRoom.id && activeIntentInvite?.coordinatorPubkey === remoteRoom.coordinatorPubkey} class="channel-row">
+                      <button class="channel-row-primary" type="button"
                         aria-label={selectedServerIsPreviousLocal
                           ? `Open previous local session ${remoteRoom.title}, hosted by ${hostIdentityForRoom(remoteRoom).name}`
                           : `Open room ${remoteRoom.title}, hosted by ${hostIdentityForRoom(remoteRoom).name}, on ${serverHost(selectedExternalServer.origin)}`}
@@ -1264,6 +1268,8 @@
                         <span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>
                         <RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact />
                       </button>
+                      <RoomActionsMenu sidebar roomTitle={remoteRoom.title} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(remoteRoom, origin)} />
+                      </div>
                   {/each}
                 </div>
               {:else if activeIntentInvite && activeIntentInvite.coordinatorPubkey === selectedServerPubkey}
@@ -1559,11 +1565,11 @@
 
     {#if roomRemovalTarget}
       <RoomRemovalDialog
-        mode="delete"
+        mode={roomRemovalMode}
         roomTitle={roomRemovalTarget.title}
         messageCount={roomRemovalTarget.messages.length}
         pendingInviteCount={pendingJoinRequests.length}
-        onConfirm={deleteCurrentHostedRoom}
+        onConfirm={removeCurrentStoredRoom}
         onClose={closeRoomRemovalDialog}
       />
     {/if}
