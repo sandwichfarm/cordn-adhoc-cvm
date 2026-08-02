@@ -1019,6 +1019,32 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   await guestContext.close();
 });
 
+test("sidebar room actions do not open the row before deleting its exact host room", async ({ page }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await createRoom(page, "Sidebar keep");
+  await createRoom(page, "Sidebar delete");
+
+  const activeBefore = await page.locator(".channel-row.active").textContent();
+  const targetRow = page.locator(".channel-row").filter({ hasText: "Sidebar delete" });
+  const trigger = targetRow.getByRole("button", { name: "More actions for # Sidebar delete" });
+  await expect(trigger).toBeVisible();
+  await trigger.focus();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(page.locator(".channel-row.active")).toHaveText(activeBefore ?? "");
+
+  const menu = page.getByRole("menu", { name: "Room actions for Sidebar delete" });
+  await expect(menu.getByRole("menuitem", { name: "Delete room Sidebar delete" })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Delete room Sidebar delete" }).click();
+  const dialog = page.getByTestId("room-removal-dialog");
+  await expect(dialog.getByRole("heading", { name: "Delete #Sidebar delete?" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+});
+
 test("switches local Delete to remote Leave without crossing same-id room identities", async ({ page }) => {
   test.setTimeout(75_000);
   await page.goto("/");
