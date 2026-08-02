@@ -1045,6 +1045,26 @@ test("sidebar room actions do not open the row before deleting its exact host ro
   await expect(trigger).toBeFocused();
 });
 
+test("same-id sidebar removal leaves only the captured remote record", async ({ page }) => {
+  await page.goto("/");
+  await seedJoinedRoom(page, "Sidebar remote", "f".repeat(64));
+  await page.reload();
+  await page.locator(".channel-context-button").click();
+  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem", { name: /Coordinator ffffff/ }).click();
+
+  const targetRow = page.locator(".channel-row").filter({ hasText: "Sidebar remote" });
+  const trigger = targetRow.getByRole("button", { name: "More actions for # Sidebar remote" });
+  await trigger.click();
+  const menu = page.getByRole("menu", { name: "Room actions for Sidebar remote" });
+  await expect(menu.getByRole("menuitem", { name: "Leave room Sidebar remote" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Delete room Sidebar remote" })).toHaveCount(0);
+  await menu.getByRole("menuitem", { name: "Leave room Sidebar remote" }).click();
+  const dialog = page.getByTestId("room-removal-dialog");
+  await expect(dialog.getByRole("heading", { name: "Leave #Sidebar remote?" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+});
+
 test("switches local Delete to remote Leave without crossing same-id room identities", async ({ page }) => {
   test.setTimeout(75_000);
   await page.goto("/");
