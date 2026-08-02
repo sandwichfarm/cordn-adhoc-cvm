@@ -78,7 +78,7 @@ async function pageExitIsGuarded(page: import("@playwright/test").Page): Promise
   });
 }
 
-async function expectViewportOwned(
+async function expectNoDocumentOverflow(
   page: import("@playwright/test").Page,
   viewport: { width: number; height: number },
 ): Promise<void> {
@@ -432,7 +432,7 @@ test("long room navigation stays operable and contained", async ({ page }) => {
     ))).toBe(true);
     await rail.locator(".channel-row").last().scrollIntoViewIfNeeded();
     await expect(rail.locator(".channel-row").last()).toBeVisible();
-    await expectViewportOwned(page, viewport);
+    await expectNoDocumentOverflow(page, viewport);
   }
 });
 
@@ -823,7 +823,7 @@ test("operator shell does not overflow common viewports", async ({ page }) => {
         }),
       )
       .toEqual({ left: 0, right: viewport.width, width: viewport.width });
-    await expectViewportOwned(page, viewport);
+    await expectNoDocumentOverflow(page, viewport);
     if (viewport.width <= 900) {
       await expect.poll(() => page.locator(".host-topbar").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeLessThanOrEqual(100);
       await expect.poll(() => page.getByTestId("host-chat").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(100);
@@ -996,7 +996,7 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
     await expect(page.getByTestId("host-chat")).toBeVisible();
     await expect.poll(() => page.getByTestId("operator-shell").evaluate((element) => element.clientHeight)).toBe(viewport.height);
     await expect.poll(() => page.locator(".host-layout").evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(viewport.width);
-    await expectViewportOwned(page, viewport);
+    await expectNoDocumentOverflow(page, viewport);
     const hostColumns = await page.locator(".host-layout").evaluate((layout) => {
       const rail = layout.querySelector<HTMLElement>(".host-rail")!.getBoundingClientRect();
       const chat = layout.querySelector<HTMLElement>(".host-chat")!.getBoundingClientRect();
@@ -1037,7 +1037,7 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
     await expect(page.getByTestId("management-interface")).toBeVisible();
     await expect(page.getByTestId("host-chat")).toBeHidden();
     await expect.poll(() => page.locator(".host-layout").evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(viewport.width);
-    await expectViewportOwned(page, viewport);
+    await expectNoDocumentOverflow(page, viewport);
     await expect.poll(() => page.getByRole("log", { name: "Coordinator activity" }).evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(100);
     if (viewport.width <= 900) {
       await expect(page.getByTestId("invite-panel")).toHaveAttribute("aria-hidden", "true");
@@ -1096,7 +1096,7 @@ test("keeps host mobile tools and room dialogs bounded inside the app shell", as
   }))).toEqual({ overflowY: "auto", scrollOwnsContent: true });
   await page.keyboard.press("Escape");
   await expect(profile).toBeHidden();
-  await expectViewportOwned(page, portrait);
+  await expectNoDocumentOverflow(page, portrait);
 
   await createRoom(page, "Mobile controls");
   await page.getByRole("button", { name: "Open room browser" }).click();
@@ -1108,18 +1108,18 @@ test("keeps host mobile tools and room dialogs bounded inside the app shell", as
     overflowY: getComputedStyle(element).overflowY,
     scrollable: element.scrollHeight > element.clientHeight,
   }))).toEqual({ overflowY: "auto", scrollable: true });
-  await expectViewportOwned(page, portrait);
+  await expectNoDocumentOverflow(page, portrait);
 
   const landscape = { width: 568, height: 320 };
   await page.setViewportSize(landscape);
   await expectInsideViewport(share);
   await expect.poll(() => shareBody.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(80);
-  await expectViewportOwned(page, landscape);
+  await expectNoDocumentOverflow(page, landscape);
   await share.locator(".share-close").click();
 
   await page.getByRole("button", { name: "Open management interface" }).click();
   await expect.poll(() => page.getByRole("log", { name: "Coordinator activity" }).evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(100);
-  await expectViewportOwned(page, landscape);
+  await expectNoDocumentOverflow(page, landscape);
   await page.getByRole("button", { name: "Close management interface" }).click();
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
@@ -2165,7 +2165,7 @@ test("startup covers every supported content pane", async ({ page }) => {
     await expectStartupFillsHostPane(page);
     await expectShellControlsUsable(page);
     await expectStartupMasks(page);
-    await expectViewportOwned(page, viewport);
+    await expectNoDocumentOverflow(page, viewport);
     await expect(page.getByTestId("startup-progress-panel")).toContainText(longRoomTitle);
   }
 });
