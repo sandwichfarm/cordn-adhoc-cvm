@@ -281,6 +281,46 @@ describe("coordinator recovery policy", () => {
     await store.stop();
   });
 
+  test("deleting the exact exhausted recovery target resumes startup without reacquiring resources", async () => {
+    const harness = lifecycleRuntime();
+    const store = new CoordinatorStore(harness.runtime);
+    let targets: HostedRoomRecoveryTarget[] = [targetB, targetA];
+    store.registerHostedRoomRecovery({
+      listTargets: () => targets,
+      recover: async (target) => {
+        if (target.roomIdentityKey === targetB.roomIdentityKey) {
+          throw new Error("saved room signer no longer matches");
+        }
+      },
+    });
+
+    await store.start();
+
+    expect(store.status).toBe("starting");
+    expect(store.startupProgress.roomRecovery).toMatchObject({ state: "exhausted", completed: 1, total: 2 });
+    expect(store.exhaustedRoomRecoveryTarget).toEqual(targetB);
+    await expect(store.resumeAfterRemovingFailedRoom({
+      roomId: targetA.roomId,
+      coordinatorPubkey: targetA.coordinatorPubkey,
+    })).rejects.toThrow("Failed recovery room changed");
+    expect(store.status).toBe("starting");
+    expect(store.exhaustedRoomRecoveryTarget).toEqual(targetB);
+
+    targets = [targetA];
+    await store.resumeAfterRemovingFailedRoom({
+      roomId: targetB.roomId,
+      coordinatorPubkey: targetB.coordinatorPubkey,
+    });
+
+    expect(store.status).toBe("running");
+    expect(store.exhaustedRoomRecoveryTarget).toBeNull();
+    expect(store.startupProgress.roomRecovery).toMatchObject({ state: "complete", completed: 1, total: 1 });
+    expect(harness.acquireInstanceLease).toHaveBeenCalledOnce();
+    expect(harness.createTransport).toHaveBeenCalledOnce();
+    expect(harness.startResourceMonitor).toHaveBeenCalledOnce();
+    await store.stop();
+  });
+
   test("zero targets complete publicly as 0 of 0 without exposing retry", async () => {
     const harness = lifecycleRuntime();
     const store = new CoordinatorStore(harness.runtime);

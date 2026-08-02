@@ -243,6 +243,11 @@ export class CoordinatorStore {
       && this.appliedConfigRevision !== configStore.runtimeRevision;
   }
 
+  get exhaustedRoomRecoveryTarget(): HostedRoomRecoveryTarget | null {
+    if (this.startupProgress.roomRecovery.state !== "exhausted") return null;
+    return this.recoveryTargets.find((target) => !this.recoveryCompleted.has(target.roomIdentityKey)) ?? null;
+  }
+
   async loadFromPassphrase(passphrase: string): Promise<void> {
     this.passphraseError = null;
     this.addDebugLog("info", "unlocking persisted identity");
@@ -638,6 +643,23 @@ export class CoordinatorStore {
       if (this.startupGeneration === generation) this.startupPromise = null;
     });
     return this.startupPromise;
+  }
+
+  async resumeAfterRemovingFailedRoom(target: { roomId: string; coordinatorPubkey: string }): Promise<void> {
+    const failedTarget = this.exhaustedRoomRecoveryTarget;
+    const targetCoordinatorPubkey = target.coordinatorPubkey.trim().toLowerCase();
+    if (!failedTarget
+      || failedTarget.roomId !== target.roomId
+      || failedTarget.coordinatorPubkey.toLowerCase() !== targetCoordinatorPubkey) {
+      throw new Error("Failed recovery room changed");
+    }
+
+    this.recoveryTargets = this.recoveryTargets.filter(
+      (candidate) => candidate.roomIdentityKey !== failedTarget.roomIdentityKey,
+    );
+    this.recoveryCompleted.delete(failedTarget.roomIdentityKey);
+    this.addDebugLog("warn", "removed unrecoverable hosted room from startup", failedTarget.roomName);
+    await this.retryRoomRecovery();
   }
 
   dismissError(): void {

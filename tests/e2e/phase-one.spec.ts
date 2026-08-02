@@ -506,6 +506,64 @@ test("multi-room recovery retries and exhausts safely before a retained manual r
   expect(completedHistory.some((snapshot) => snapshot.state === "complete" && snapshot.completed === 2)).toBe(true);
 });
 
+test("an unrecoverable hosted room can be confirmed, deleted, and removed from the startup queue", async ({ page }) => {
+  test.setTimeout(60_000);
+  const passphrase = "delete-failed-recovery-passphrase";
+  const roomTitle = "Unrecoverable room";
+  await page.goto("/");
+  await enablePersistence(page, passphrase);
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await createRoom(page, roomTitle);
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+
+  const fixture = await page.evaluate((expectedTitle) => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:")) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const stored = JSON.parse(raw) as {
+        id?: string;
+        title?: string;
+        coordinatorPubkey?: string;
+        stablePubkey?: string;
+        isHost?: boolean;
+      };
+      if (!stored.isHost || stored.title !== expectedTitle || !stored.id || !stored.coordinatorPubkey || !stored.stablePubkey) continue;
+      stored.stablePubkey = stored.stablePubkey === "f".repeat(64) ? "e".repeat(64) : "f".repeat(64);
+      return { key, corruptedRaw: JSON.stringify(stored), roomId: stored.id, coordinatorPubkey: stored.coordinatorPubkey };
+    }
+    throw new Error(`Could not find hosted room ${expectedTitle}`);
+  }, roomTitle);
+
+  await page.reload();
+  await page.getByPlaceholder("passphrase", { exact: true }).fill(passphrase);
+  await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
+  await page.evaluate(({ key, corruptedRaw }) => localStorage.setItem(key, corruptedRaw), fixture);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+
+  const startup = page.getByTestId("startup-progress-panel");
+  await expect(startup).toHaveAttribute("data-recovery-state", "exhausted");
+  await expect(startup).toContainText(`Couldn’t restore # ${roomTitle}`);
+  await expect(page.getByRole("button", { name: "Retry recovery" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete failed room" }).click();
+
+  const dialog = page.getByTestId("room-removal-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: `Delete #${roomTitle}?` })).toBeVisible();
+  await expect(dialog.getByTestId("room-removal-impact")).toContainText("This cannot be undone.");
+  await dialog.getByTestId("confirm-delete-room").click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByRole("button", { name: "Delete failed room" })).toHaveCount(0);
+  await expect(page.getByTestId("coordinator-empty-state")).toContainText("No rooms for this coordinator");
+  await expect(page.getByTestId("host-message-list")).toHaveCount(0);
+  await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(({ key }) => localStorage.getItem(key), fixture)).toBeNull();
+});
+
 test("browses joined chats from the root shell without starting an unprotected local coordinator", async ({ page }) => {
   await page.goto("/");
   await seedJoinedRoom(page, "Elsewhere lounge");

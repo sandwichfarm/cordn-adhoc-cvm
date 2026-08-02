@@ -109,6 +109,8 @@
   let reachabilityTargetsSignature = "";
   let unregisterHostedRoomRecovery: (() => void) | null = null;
   let pendingRecoverySession: ChatRoomSession | null = null;
+  let preferredRecoveryRoomIdentityKey: string | null = null;
+  let preferredRecoveryRoomOpened = false;
   let browserOnline = $state(typeof navigator === "undefined" ? true : navigator.onLine);
   let lastSyncedRouteContext = "";
   let unreadAnnouncement = $state("");
@@ -198,6 +200,10 @@
     if (coordinator.status === "starting") return "Coordinator starting";
     if (coordinator.status === "stopping") return "Coordinator stopping";
     return "Coordinator offline";
+  });
+  const exhaustedRecoveryRoom = $derived.by(() => {
+    const target = coordinator.exhaustedRoomRecoveryTarget;
+    return target ? loadRoom(target.roomId, target.coordinatorPubkey) : null;
   });
 
   $effect(() => {
@@ -351,6 +357,11 @@
     return {
       listTargets: () => {
         const activeCoordinatorPubkey = coordinator.identity.publicKeyHex;
+        const rememberedRoom = loadLastOpenRoom(activeCoordinatorPubkey);
+        preferredRecoveryRoomIdentityKey = rememberedRoom
+          ? roomIdentityKey(rememberedRoom.coordinatorPubkey, rememberedRoom.id)
+          : null;
+        preferredRecoveryRoomOpened = false;
         return listRooms()
           .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === activeCoordinatorPubkey)
           .map((storedRoom): HostedRoomRecoveryTarget => ({
@@ -378,7 +389,13 @@
           if (pendingRecoverySession === candidate) pendingRecoverySession = null;
           throw new Error("Hosted room recovery is unavailable");
         }
-        await openHostChat(latest, candidate);
+        const targetIsPreferred = preferredRecoveryRoomIdentityKey === target.roomIdentityKey;
+        if (!preferredRecoveryRoomOpened || targetIsPreferred) {
+          await openHostChat(latest, candidate);
+          if (targetIsPreferred) preferredRecoveryRoomOpened = true;
+        } else {
+          candidate.stop();
+        }
         if (pendingRecoverySession === candidate) pendingRecoverySession = null;
         const entry = buildHostedRoomEntry(latest);
         inviteUrl = entry.inviteUrl;
@@ -862,6 +879,12 @@
   async function removeCurrentStoredRoom(): Promise<boolean> {
     const target = roomRemovalTarget;
     if (!target) return false;
+    const failedRecoveryTarget = coordinator.exhaustedRoomRecoveryTarget;
+    const removesFailedRecoveryTarget = Boolean(
+      failedRecoveryTarget
+        && failedRecoveryTarget.roomId === target.id
+        && failedRecoveryTarget.coordinatorPubkey === target.coordinatorPubkey,
+    );
     const frozenMode = roomRemovalMode;
     const orderedRooms = roomsForCoordinator(target.coordinatorPubkey);
     const targetIndex = orderedRooms.findIndex((candidate) => sameRoomIdentity(candidate, target));
@@ -890,6 +913,10 @@
       homeJoinedRooms = homeJoinedRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
       remoteRooms = remoteRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
       previousLocalRooms = previousLocalRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
+
+      if (removesFailedRecoveryTarget && failedRecoveryTarget) {
+        await coordinator.resumeAfterRemovingFailedRoom(failedRecoveryTarget);
+      }
 
       if (deletingActiveHostRoom) {
         room = null;
@@ -1522,7 +1549,16 @@
                     {/if}
                   </footer>
                   {#if coordinator.startupProgress.phase === "restoring-rooms" && coordinator.startupProgress.roomRecovery.state === "exhausted"}
-                    <button class="startup-primary" type="button" disabled={coordinator.startupProgress.roomRecovery.state === "retrying"} onclick={() => void coordinator.retryRoomRecovery()}>Retry recovery</button>
+                    <div class="startup-recovery-actions">
+                      <button class="startup-primary" type="button" onclick={() => void coordinator.retryRoomRecovery()}>Retry recovery</button>
+                      {#if exhaustedRecoveryRoom}
+                        <button
+                          class="startup-danger"
+                          type="button"
+                          onclick={(event) => requestSidebarRoomRemoval(exhaustedRecoveryRoom!, event.currentTarget)}
+                        >Delete failed room</button>
+                      {/if}
+                    </div>
                   {/if}
                 </section>
               {:else if coordinator.status === "running" && room && session}
@@ -1928,6 +1964,12 @@
   .startup-progress-panel footer { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 1rem; margin-top: .55rem; color: #82958a; font-size: .54rem; line-height: 1.45; }
   .startup-progress-panel footer > span:first-child { min-width: 0; }
   .startup-progress-panel footer > span:last-child { flex: 0 0 auto; color: #687a6f; font-variant-numeric: tabular-nums; }
+  .startup-recovery-actions { display: flex; justify-content: flex-end; gap: .45rem; margin-top: .75rem; }
+  .startup-recovery-actions button { border: 1px solid #496451; padding: .55rem .7rem; color: #c6d7cb; font-size: .6rem; }
+  .startup-recovery-actions button:hover, .startup-recovery-actions button:focus-visible { border-color: #7cf59d; color: #effff2; outline: none; }
+  .startup-recovery-actions .startup-primary { border-color: #7cf59d; background: #7cf59d; color: #071009; font-weight: 650; }
+  .startup-recovery-actions .startup-danger { border-color: #6d413d; color: #ffaaa3; }
+  .startup-recovery-actions .startup-danger:hover, .startup-recovery-actions .startup-danger:focus-visible { border-color: #ff8f86; background: #21110f; color: #ffd5d1; }
   .startup-actions { display: flex; justify-content: center; gap: .55rem; margin-top: 1.3rem; }
   .startup-actions button { border: 1px solid #496451; background: rgb(8 14 10 / .78); padding: .7rem .9rem; color: #c6d7cb; font-size: .68rem; backdrop-filter: blur(8px); }
   .startup-actions button:hover:not(:disabled) { border-color: #7cf59d; }
