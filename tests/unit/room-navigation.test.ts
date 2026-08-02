@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NostrSigner } from "@contextvm/sdk/core";
-import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reconcileRoomHostIdentity, rememberActiveHostRoom, removeStoredRoom, requireRoomSigner, ROOMS_CHANGED_EVENT, saveRoom, type StoredRoom } from "../../src/chat/room-store";
+import { anonymousMembershipImpact, ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reconcileRoomHostIdentity, rememberActiveHostRoom, removeStoredRoom, requireRoomSigner, retireAnonymousMemberships, roomIdentityKey, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../../src/chat/room-store";
 import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
+import { bytesToHex } from "nostr-tools/utils";
 
 function storedRoom(input: Partial<StoredRoom> & Pick<StoredRoom, "id" | "title" | "coordinatorPubkey" | "isHost">): StoredRoom {
   return {
@@ -444,6 +445,68 @@ describe("room signer authority", () => {
     await expect(requireRoomSigner(room, staleSigner)).rejects.toThrow("This signer does not match the identity that joined this room");
     expect(room.messages).toHaveLength(1);
     expect(room.messages[0]?.content).toBe("Still readable");
+  });
+});
+
+describe("composite room authority retirement", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("uses the coordinator plus room id as the only room identity", () => {
+    const left = storedRoom({ id: "shared", title: "Left", coordinatorPubkey: "a".repeat(64), isHost: false });
+    const right = storedRoom({ id: "shared", title: "Right", coordinatorPubkey: "b".repeat(64), isHost: false });
+
+    expect(roomIdentityKey(left.coordinatorPubkey, left.id)).not.toBe(roomIdentityKey(right.coordinatorPubkey, right.id));
+    expect(sameRoomIdentity(left, right)).toBe(false);
+  });
+
+  it("retires only matching anonymous memberships and can restore the exact cached authority", async () => {
+    const secret = new Uint8Array(32).fill(12);
+    const signer = new BrowserNostrSigner(secret);
+    const stablePubkey = await signer.getPublicKey();
+    const matching = storedRoom({
+      id: "shared-room",
+      title: "Retired cache",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      stablePubkey,
+      anonymousSecretKey: bytesToHex(secret),
+      stateBase64: "private-state",
+      keyPackage: { reference: "private-ref", publicBase64: "public", privateBase64: "private" },
+      pending: [{ id: "queued", opaqueBase64: "secret-pending" }],
+      inviteToken: "invite-authority",
+      messages: [{ type: "message", id: "cached", sender: "f".repeat(64), name: "Host", content: "Keep this", createdAt: 1 }],
+    });
+    const other = storedRoom({
+      id: matching.id,
+      title: "Other coordinator",
+      coordinatorPubkey: "b".repeat(64),
+      isHost: false,
+      stablePubkey: "2".repeat(64),
+    });
+    saveRoom(matching);
+    saveRoom(other);
+
+    expect(await anonymousMembershipImpact(stablePubkey)).toEqual({ count: 1 });
+    const journal = await retireAnonymousMemberships(stablePubkey);
+    const retired = loadRoom(matching.id, matching.coordinatorPubkey);
+
+    expect(journal.count).toBe(1);
+    expect(retired).toMatchObject({ membershipStatus: "retired", messages: matching.messages, pending: [] });
+    expect(retired?.anonymousSecretKey).toBeUndefined();
+    expect(retired?.stateBase64).toBe("");
+    expect(retired?.keyPackage.privateBase64).toBe("");
+    expect(retired?.inviteToken).toBeUndefined();
+    expect(loadRoom(other.id, other.coordinatorPubkey)?.title).toBe(other.title);
+
+    journal.rollback();
+    expect(loadRoom(matching.id, matching.coordinatorPubkey)).toMatchObject({
+      anonymousSecretKey: matching.anonymousSecretKey,
+      stateBase64: matching.stateBase64,
+      keyPackage: matching.keyPackage,
+      pending: matching.pending,
+      inviteToken: matching.inviteToken,
+      messages: matching.messages,
+    });
   });
 });
 
