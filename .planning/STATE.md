@@ -5,8 +5,8 @@ milestone_name: Quality of Life & Polish
 current_phase: 16
 current_phase_name: Resilient Rooms & Recovery
 status: planning
-stopped_at: Phase 16 context gathered
-last_updated: "2026-08-02T17:51:39.349Z"
+stopped_at: Phase 16 UI-SPEC approved
+last_updated: "2026-08-02T18:17:11.036Z"
 last_activity: 2026-08-02
 last_activity_desc: Phase 15 complete, transitioned to Phase 16
 progress:
@@ -99,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T17:51:39.343Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-resilient-rooms-recovery/16-CONTEXT.md
+Last session: 2026-08-02T18:17:11.031Z
+Stopped at: Phase 16 UI-SPEC approved
+Resume file: .planning/phases/16-resilient-rooms-recovery/16-UI-SPEC.md
