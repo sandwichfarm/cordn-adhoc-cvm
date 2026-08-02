@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { generate } from "lean-qr";
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import type { NostrConnectSigner } from "applesauce-signers/signers";
@@ -8,6 +8,7 @@
     NIP46_CONNECT_RELAYS,
     userProfileStore,
   } from "../identity/user-profile.svelte";
+  import IdentityRotationDialog from "./IdentityRotationDialog.svelte";
 
   interface Props {
     anonymousName?: string;
@@ -37,6 +38,8 @@
   let emojiPickerOpen = $state(false);
   let remoteSigner: NostrConnectSigner | null = null;
   let remoteAbort: AbortController | null = null;
+  let rotationDialog = $state<"confirm" | "recovery" | null>(null);
+  let completionAnnouncement = $state("");
 
   const shortKey = $derived(userProfileStore.pubkey
     ? `${userProfileStore.pubkey.slice(0, 8)}…${userProfileStore.pubkey.slice(-6)}`
@@ -110,6 +113,26 @@
     open = false;
   }
 
+  function openRotationDialog(): void {
+    rotationDialog = "confirm";
+  }
+
+  async function rotateIdentity(): Promise<void> {
+    await userProfileStore.rotateAnonymousIdentity();
+    completionAnnouncement = "Identity rotated. Local room access was removed.";
+    rotationDialog = null;
+    closeMenu();
+  }
+
+  async function recoverIdentity(): Promise<void> {
+    await userProfileStore.recoverAnonymousIdentity();
+    rotationDialog = null;
+  }
+
+  $effect(() => {
+    if (userProfileStore.recoveryRequired) rotationDialog = "recovery";
+  });
+
   async function disconnect(): Promise<void> {
     await userProfileStore.logout();
     userProfileStore.setAnonymousName(anonymousName);
@@ -130,6 +153,8 @@
 </script>
 
 <div class="user-profile" data-testid="user-profile">
+  <p class="sr-only" aria-live="polite">{completionAnnouncement}</p>
+  {#if !userProfileStore.recoveryRequired}
   <button
     class="user-trigger"
     type="button"
@@ -169,7 +194,8 @@
               oninput={(event) => updateAnonymousName(event.currentTarget.value)}
             />
           </label>
-          <p>Your generated profile image is derived locally from this identity. No account is required.</p>
+          <p>Your generated avatar and identity are device-local and persist in this browser. No account is required.</p>
+          <button class="rotate-identity" type="button" onclick={openRotationDialog}>Rotate identity…</button>
         </div>
         <div class="user-menu-section">
           <span class="section-label">Connect a Nostr identity</span>
@@ -261,6 +287,21 @@
       {#if userProfileStore.error}<p class="user-error">{userProfileStore.error}</p>{/if}
     </div>
   {/if}
+  {/if}
+
+  {#if rotationDialog}
+    <IdentityRotationDialog
+      variant={rotationDialog}
+      membershipCount={0}
+      onConfirm={rotationDialog === "recovery" ? recoverIdentity : rotateIdentity}
+      onClose={() => {
+        if (rotationDialog === "confirm") {
+          rotationDialog = null;
+          void tick().then(() => document.querySelector<HTMLButtonElement>(".user-trigger")?.focus());
+        }
+      }}
+    />
+  {/if}
 </div>
 
 <style>
@@ -287,6 +328,8 @@
   .user-menu-section input { width: 100%; margin-top: .45rem; border: 1px solid #34433b; background: #070b08; padding: .65rem .7rem; color: #effff2; font-size: .72rem; outline: none; text-transform: none; }
   .user-menu-section input:focus { border-color: #7cf59d; }
   .user-menu-section p { color: #82958a; font-size: .65rem; line-height: 1.55; }
+  .rotate-identity { min-height: 2.75rem; border: 1px solid #7b4843; color: #ffaaa3; font-size: .68rem; text-align: left; padding: .65rem .7rem; }
+  .rotate-identity:hover, .rotate-identity:focus-visible { border-color: #ffaaa3; background: #24100f; outline: 2px solid #87ff9f; outline-offset: 2px; }
   .connect-button { display: flex; align-items: center; justify-content: space-between; gap: .75rem; border: 1px solid #293832; padding: .65rem .7rem; color: #c6d7cb; text-align: left; font-size: .68rem; }
   .connect-button:hover { border-color: #7cf59d; background: #111a14; }
   .connect-button small { color: #687a6f; font-size: .55rem; }
@@ -323,6 +366,7 @@
   .user-status, .user-error { border-top: 1px solid #293832; padding: .65rem .85rem; font-size: .6rem; }
   .user-status { color: #91a59a; }
   .user-error { color: #ffaaa3; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   @media (min-width: 720px) {
     .user-copy { display: block; }

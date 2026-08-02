@@ -7,12 +7,14 @@ import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import {
   createAnonymousIdentity,
   loadAnonymousIdentity,
+  prepareAnonymousIdentityReplacement,
 } from "./anonymous-identity";
 import type { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
 
 export const PROFILE_RELAYS = ["wss://purplepag.es", "wss://relay.damus.io"] as const;
 export const NIP46_CONNECT_RELAYS = ["wss://bucket.coracle.social"] as const;
 const NIP07_SESSION_STORAGE_KEY = "cordn:v1:nip07-session";
+export const ANONYMOUS_IDENTITY_RECOVERY_STORAGE_KEY = "cordn:v1:anonymous-identity-recovery";
 
 export type UserAuthMethod = "anonymous" | "nip07" | "nip46";
 export type UserProfileStatus = "idle" | "connecting" | "loading" | "ready" | "error";
@@ -90,6 +92,69 @@ export class UserProfileStore {
 
   setAnonymous(_legacyPubkey: string, name = ""): void {
     this.setAnonymousName(name);
+  }
+
+  async rotateAnonymousIdentity(): Promise<void> {
+    if (this.method !== "anonymous" || this.recoveryRequired) throw new Error("Local identity rotation is unavailable");
+    if (this.rotationInProgress) return;
+    const oldSigner = this.anonymousSigner;
+    if (!oldSigner) throw new Error("Local identity rotation is unavailable");
+
+    this.rotationInProgress = true;
+    this.error = "";
+    let candidate: Awaited<ReturnType<typeof prepareAnonymousIdentityReplacement>> | null = null;
+    let crossedBoundary = false;
+    try {
+      candidate = await prepareAnonymousIdentityReplacement();
+      if (!writeRecoveryMarker()) throw new Error("Unable to set the local recovery boundary");
+      crossedBoundary = true;
+
+      this.anonymousSigner = null;
+      oldSigner.destroy();
+      if (!candidate.commit()) throw new Error("Unable to write the new local identity");
+      if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
+
+      this.anonymousSigner = candidate.signer;
+      this.pubkey = candidate.pubkey;
+      this.profile = null;
+      this.status = "ready";
+      this.error = "";
+      this.recoveryRequired = false;
+    } catch (cause) {
+      candidate?.abort();
+      if (!crossedBoundary) {
+        this.anonymousSigner = oldSigner;
+        throw new Error("Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.");
+      }
+      this.enterRecovery("Identity replacement was interrupted. Create a new identity to continue.");
+      throw cause;
+    } finally {
+      this.rotationInProgress = false;
+    }
+  }
+
+  async recoverAnonymousIdentity(): Promise<void> {
+    if (!this.recoveryRequired || this.rotationInProgress) return;
+    this.rotationInProgress = true;
+    this.error = "";
+    const candidate = await prepareAnonymousIdentityReplacement();
+    try {
+      if (!candidate.commit()) throw new Error("Unable to write the new local identity");
+      if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
+      this.anonymousSigner = candidate.signer;
+      this.pubkey = candidate.pubkey;
+      this.profile = null;
+      this.status = "ready";
+      this.error = "";
+      this.recoveryRequired = false;
+      this.initialized = true;
+    } catch {
+      candidate.abort();
+      this.enterRecovery("Unable to create a new local identity. No identity is active. Try again.");
+      throw new Error(this.error);
+    } finally {
+      this.rotationInProgress = false;
+    }
   }
 
   private async showAnonymousIdentity(): Promise<void> {
@@ -232,6 +297,10 @@ export class UserProfileStore {
 
   private async bootstrap(anonymousName: string): Promise<void> {
     this.setAnonymousName(anonymousName);
+    if (hasRecoveryMarker()) {
+      this.enterRecovery("Identity replacement was interrupted. Create a new identity to continue.");
+      return;
+    }
     const loaded = await loadAnonymousIdentity();
     const identity = loaded.state === "absent" ? await createAnonymousIdentity() : loaded;
     if (identity.state !== "ready") {
@@ -245,6 +314,50 @@ export class UserProfileStore {
     if (this.method === "anonymous") await this.showAnonymousIdentity();
     if (this.method === "anonymous") await this.restoreNip07Session();
     this.initialized = true;
+  }
+
+  private enterRecovery(message: string): void {
+    this.anonymousSigner = null;
+    this.signer = null;
+    this.pubkey = "";
+    this.profile = null;
+    this.status = "error";
+    this.error = message;
+    this.recoveryRequired = true;
+    this.initialized = false;
+  }
+}
+
+function hasRecoveryMarker(): boolean {
+  const storage = browserStorage();
+  if (!storage) return true;
+  try {
+    const value = JSON.parse(storage.getItem(ANONYMOUS_IDENTITY_RECOVERY_STORAGE_KEY) ?? "null") as unknown;
+    return isRecord(value) && value.version === 1 && Object.keys(value).length === 1;
+  } catch {
+    return true;
+  }
+}
+
+function writeRecoveryMarker(): boolean {
+  const storage = browserStorage();
+  if (!storage) return false;
+  try {
+    storage.setItem(ANONYMOUS_IDENTITY_RECOVERY_STORAGE_KEY, JSON.stringify({ version: 1 }));
+    return hasRecoveryMarker();
+  } catch {
+    return false;
+  }
+}
+
+function clearRecoveryMarker(): boolean {
+  const storage = browserStorage();
+  if (!storage) return false;
+  try {
+    storage.removeItem(ANONYMOUS_IDENTITY_RECOVERY_STORAGE_KEY);
+    return !hasRecoveryMarker();
+  } catch {
+    return false;
   }
 }
 

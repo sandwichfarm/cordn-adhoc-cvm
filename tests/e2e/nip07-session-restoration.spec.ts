@@ -273,7 +273,7 @@ test("rotates a zero-membership local identity only after the approved confirmat
   const dialog = page.getByTestId("identity-rotation-dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Rotate local identity?" })).toBeVisible();
-  await expect(dialog.getByText("No local room memberships")).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "No local room memberships" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Keep current identity" })).toBeFocused();
   await dialog.getByRole("button", { name: "Rotate identity" }).click();
 
