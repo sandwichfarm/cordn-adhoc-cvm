@@ -487,6 +487,8 @@ describe("composite room authority retirement", () => {
     });
     saveRoom(matching);
     saveRoom(other);
+    const listener = vi.fn();
+    window.addEventListener(ROOMS_CHANGED_EVENT, listener);
 
     expect(await anonymousMembershipImpact(stablePubkey)).toEqual({ count: 1 });
     const journal = await retireAnonymousMemberships(stablePubkey);
@@ -499,8 +501,20 @@ describe("composite room authority retirement", () => {
     expect(retired?.keyPackage.privateBase64).toBe("");
     expect(retired?.inviteToken).toBeUndefined();
     expect(loadRoom(other.id, other.coordinatorPubkey)?.title).toBe(other.title);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {
+        action: "membership-retired",
+        affectedCompositeIdentities: [roomIdentityKey(matching.coordinatorPubkey, matching.id)],
+      },
+    }));
 
     journal.rollback();
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {
+        action: "membership-rollback",
+        affectedCompositeIdentities: [roomIdentityKey(matching.coordinatorPubkey, matching.id)],
+      },
+    }));
     expect(loadRoom(matching.id, matching.coordinatorPubkey)).toMatchObject({
       anonymousSecretKey: matching.anonymousSecretKey,
       stateBase64: matching.stateBase64,
@@ -509,6 +523,7 @@ describe("composite room authority retirement", () => {
       inviteToken: matching.inviteToken,
       messages: matching.messages,
     });
+    window.removeEventListener(ROOMS_CHANGED_EVENT, listener);
   });
 
   it("does not retire external room authority that shares the anonymous public key", async () => {

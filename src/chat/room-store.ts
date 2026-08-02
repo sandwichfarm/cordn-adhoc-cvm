@@ -601,12 +601,10 @@ export async function anonymousMembershipImpact(stablePubkey: string): Promise<A
 
 /**
  * Retire local anonymous authority while retaining room presentation and decrypted cache.
- * The returned journal can restore every exact raw storage value until its commit boundary.
- */
-/**
- * Retire anonymous room authority. Recovery calls this without a public key only
+ * Recovery calls this without a public key only
  * after the user explicitly accepts that ambiguous pre-provenance room access is
- * removed; explicitly external records always remain untouched.
+ * removed; explicitly external records always remain untouched. The returned journal
+ * can restore every exact raw storage value until its commit boundary.
  */
 export async function retireAnonymousMemberships(stablePubkey?: string): Promise<MembershipRetirementJournal> {
   const originals = new Map<string, string | null>();
@@ -623,6 +621,7 @@ export async function retireAnonymousMemberships(stablePubkey?: string): Promise
     if (!originals.has(key)) originals.set(key, localStorage.getItem(key));
   };
   let count = 0;
+  const affectedCompositeIdentities: string[] = [];
   for (const entries of matching.values()) {
     const authoritative = entries.find(({ key, room }) => key === roomStorageKey(room.coordinatorPubkey, room.id)) ?? entries[0];
     if (!authoritative) continue;
@@ -652,6 +651,13 @@ export async function retireAnonymousMemberships(stablePubkey?: string): Promise
       if (sameRoomIdentity(source, retired)) localStorage.removeItem(key);
     }
     count += 1;
+    affectedCompositeIdentities.push(roomIdentityKey(authoritative.room.coordinatorPubkey, authoritative.room.id));
+  }
+
+  if (affectedCompositeIdentities.length > 0) {
+    window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, {
+      detail: { action: "membership-retired", affectedCompositeIdentities },
+    }));
   }
 
   let closed = false;
@@ -668,7 +674,9 @@ export async function retireAnonymousMemberships(stablePubkey?: string): Promise
         else localStorage.setItem(key, raw);
       }
       closed = true;
-      window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, { detail: { action: "membership-rollback" } }));
+      window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, {
+        detail: { action: "membership-rollback", affectedCompositeIdentities },
+      }));
     },
   };
 }
