@@ -68,7 +68,7 @@
   let removalTarget = $state<RoomTarget | null>(null);
   let removalOrigin = $state<HTMLButtonElement | null>(null);
   let unreadAnnouncement = $state("");
-  let observedUnreadCounts = new Map<string, number>();
+  let observedUnreadCounts = $state<Record<string, number>>({});
 
   const invite = $derived(parseInviteUrl(currentUrl));
   const storedRooms = $derived(readRooms(roomsRevision));
@@ -200,13 +200,13 @@
   }
 
   $effect(() => {
-    const next = new Map<string, number>();
+    const next: Record<string, number> = {};
     for (const room of storedRooms) {
       const key = roomIdentityKey(room.coordinatorPubkey, room.id);
       const count = roomUnreadCount(room);
-      const previous = observedUnreadCounts.get(key);
+      const previous = observedUnreadCounts[key];
       if (previous === 0 && count > 0) unreadAnnouncement = `New messages in # ${room.title}`;
-      next.set(key, count);
+      next[key] = count;
     }
     observedUnreadCounts = next;
   });
@@ -290,7 +290,7 @@
   }
 
   function removalModeFor(room: StoredRoom): "delete" | "leave" {
-    return Boolean(coordinator && effectiveHomeCoordinatorPubkey && room.isHost && room.membershipStatus !== "retired" && room.coordinatorPubkey === effectiveHomeCoordinatorPubkey) ? "delete" : "leave";
+    return coordinator && effectiveHomeCoordinatorPubkey && room.isHost && room.membershipStatus !== "retired" && room.coordinatorPubkey === effectiveHomeCoordinatorPubkey ? "delete" : "leave";
   }
 
   function requestRemoval(room: RoomLink, origin: HTMLButtonElement | undefined): void {
@@ -483,7 +483,6 @@
               <strong>Previous local sessions</strong>
               <small>Coordinator key changed; these rooms are retained on this device.</small>
             </span>
-            {#if coordinatorUnreadCount(room.coordinatorPubkey) > 0}<span class="unread-badge" data-testid={`coordinator-unread-${room.coordinatorPubkey}`} title={`${coordinatorUnreadCount(room.coordinatorPubkey)} unread messages for this coordinator`} aria-label={`${coordinatorUnreadCount(room.coordinatorPubkey)} unread messages for this coordinator`}>{displayUnreadCount(coordinatorUnreadCount(room.coordinatorPubkey))}</span>{/if}
             <span class="server-kind previous">previous</span>
           </div>
           <div class="room-list">
