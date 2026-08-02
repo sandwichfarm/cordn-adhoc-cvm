@@ -54,7 +54,7 @@ export class UserProfileStore {
   private remoteSigner: NostrConnectSigner | null = null;
   private remotePool: NostrConnectPool | null = null;
   private initialization: Promise<void> | null = null;
-  private anonymousSessions = new Set<AnonymousSessionLifecycle>();
+  private anonymousSessions = new SvelteSet<AnonymousSessionLifecycle>();
 
   get displayName(): string {
     return this.profile?.display_name?.trim()
@@ -149,7 +149,7 @@ export class UserProfileStore {
         journal?.rollback();
         for (const lifecycle of retiredSessions.reverse()) await lifecycle.restore();
         this.anonymousSigner = oldSigner;
-        throw new Error("Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.");
+        throw new Error("Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.", { cause });
       }
       this.enterRecovery("Identity replacement was interrupted. Create a new identity to continue.");
       throw cause;
