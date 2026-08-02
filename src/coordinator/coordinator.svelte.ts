@@ -1,4 +1,4 @@
-import { configStore } from "../config/config.svelte";
+import { configStore, type BrowserCoordinatorOptions } from "../config/config.svelte";
 import { SvelteSet } from "svelte/reactivity";
 import {
   clearPersistedCoordinatorState,
@@ -10,9 +10,14 @@ import {
   WrongPassphraseError,
   type CoordinatorKeyBackup,
 } from "../crypto/key-storage";
-import { transportFactory, type RunningTransport } from "../lib/transport";
+import { transportFactory, type RunningTransport, type TransportDiagnostics } from "../lib/transport";
 import { resourceMonitor } from "./resource-monitor.svelte";
-import { INSTANCE_RUNNING_MESSAGE, SingleInstanceGuard, type InstanceLease } from "./single-instance-guard";
+import {
+  INSTANCE_RUNNING_MESSAGE,
+  SingleInstanceGuard,
+  type InstanceLease,
+  type SingleInstanceAcquireInput,
+} from "./single-instance-guard";
 import { isConfigLocked, transitionCoordinator } from "./state-machine";
 import { createHostedRoomRecoveryProgress } from "./types";
 import type {
@@ -41,7 +46,18 @@ export const ROOM_RECOVERY_POLICY = {
   retryDelayMs: [250, 750] as const,
 } as const;
 
-export interface RoomRecoveryRuntime {
+export interface CoordinatorStoreRuntime {
+  acquireInstanceLease(input: SingleInstanceAcquireInput): Promise<InstanceLease>;
+  createTransport(
+    privateKey: Uint8Array,
+    relayUrls: string[],
+    options: BrowserCoordinatorOptions,
+    persistent: boolean,
+    diagnostics?: TransportDiagnostics,
+  ): Promise<RunningTransport>;
+  closeTransport(transport: RunningTransport): void;
+  startResourceMonitor(transport: RunningTransport): void;
+  stopResourceMonitor(): void;
   wait(milliseconds: number, signal: AbortSignal): Promise<void>;
   runAttempt(operation: (signal: AbortSignal) => Promise<void>, timeoutMs: number, signal: AbortSignal): Promise<void>;
 }
@@ -50,7 +66,22 @@ function abortError(): DOMException {
   return new DOMException("Recovery cancelled", "AbortError");
 }
 
-const defaultRoomRecoveryRuntime: RoomRecoveryRuntime = {
+export const defaultCoordinatorStoreRuntime: CoordinatorStoreRuntime = {
+  acquireInstanceLease(input) {
+    return new SingleInstanceGuard().acquire(input);
+  },
+  createTransport(privateKey, relayUrls, options, persistent, diagnostics) {
+    return transportFactory.create(privateKey, relayUrls, options, persistent, diagnostics);
+  },
+  closeTransport(transport) {
+    transport.close();
+  },
+  startResourceMonitor(transport) {
+    resourceMonitor.start(transport);
+  },
+  stopResourceMonitor() {
+    resourceMonitor.stop();
+  },
   wait(milliseconds, signal) {
     return new Promise((resolve, reject) => {
       if (signal.aborted) return reject(abortError());
@@ -185,10 +216,10 @@ export class CoordinatorStore {
   private startupGeneration = 0;
   private startupController: AbortController | null = null;
   private startupPromise: Promise<void> | null = null;
-  private readonly roomRecoveryRuntime: RoomRecoveryRuntime;
+  private readonly runtime: CoordinatorStoreRuntime;
 
-  constructor(roomRecoveryRuntime: RoomRecoveryRuntime = defaultRoomRecoveryRuntime) {
-    this.roomRecoveryRuntime = roomRecoveryRuntime;
+  constructor(runtime: CoordinatorStoreRuntime = defaultCoordinatorStoreRuntime) {
+    this.runtime = runtime;
     if (keyStorage.hasPersisted()) {
       this.loadState = "prompting";
       this.persistenceEnabled = true;
@@ -338,8 +369,7 @@ export class CoordinatorStore {
 
     try {
       const keyManager = this.requireKeyManager();
-      const instanceGuard = new SingleInstanceGuard();
-      const lease = await instanceGuard.acquire({
+      const lease = await this.runtime.acquireInstanceLease({
         publicKeyHex: keyManager.identity.publicKeyHex,
         relayUrls: configStore.enabledRelayUrls,
         getSecretKeyBytes: () => keyManager.getSecretKeyBytes(),
@@ -352,7 +382,7 @@ export class CoordinatorStore {
       this.instanceLease = lease;
       this.registerPagehideRelease(generation);
 
-      const running = await transportFactory.create(
+      const running = await this.runtime.createTransport(
         keyManager.getSecretKeyBytes(),
         configStore.enabledRelayUrls,
         configStore.coordinatorOptions,
@@ -405,7 +435,7 @@ export class CoordinatorStore {
         },
       );
       if (!this.ownsGeneration(generation, signal)) {
-        running.close();
+        this.runtime.closeTransport(running);
         return;
       }
       this.running = running;
@@ -414,13 +444,13 @@ export class CoordinatorStore {
       if (!recovered || !this.ownsGeneration(generation, signal)) return;
       this.status = transitionCoordinator(this.status, "started");
       this.appliedConfigRevision = configStore.runtimeRevision;
-      resourceMonitor.start(this.running);
+      this.runtime.startResourceMonitor(this.running);
       this.addDebugLog("info", "coordinator started", keyManager.identity.npub);
     } catch (error) {
       if (!this.ownsGeneration(generation, signal)) return;
       this.running = null;
       await this.releaseInstanceLease();
-      resourceMonitor.stop();
+      this.runtime.stopResourceMonitor();
       this.error = error instanceof Error ? error.message : "Coordinator startup failed";
       this.setStartupProgress("failed", this.error);
       if (this.error === INSTANCE_RUNNING_MESSAGE) {
@@ -440,6 +470,7 @@ export class CoordinatorStore {
     this.startupController = null;
     const activeStartup = this.startupPromise;
     if (activeStartup) await activeStartup;
+    if (this.startupPromise === activeStartup) this.startupPromise = null;
     this.status = transitionCoordinator(this.status, "stop");
     await this.stopSync();
     this.recoveryTargets = [];
@@ -495,8 +526,8 @@ export class CoordinatorStore {
   }
 
   async stopSync(): Promise<void> {
-    resourceMonitor.stop();
-    this.running?.close();
+    this.runtime.stopResourceMonitor();
+    if (this.running) this.runtime.closeTransport(this.running);
     this.running = null;
     await this.releaseInstanceLease();
   }
@@ -526,7 +557,7 @@ export class CoordinatorStore {
     if (total === 0) {
       this.setRoomRecoveryProgress("complete", 0, 0, null, 0, "No rooms to restore");
       // Keep the approved zero-room completion visible long enough to be perceived before ready.
-      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 500));
+      await this.runtime.wait(500, signal);
       if (!this.ownsGeneration(generation, signal)) return false;
       return true;
     }
@@ -538,7 +569,7 @@ export class CoordinatorStore {
         if (!this.ownsGeneration(generation, signal)) return false;
         this.setRoomRecoveryProgress(attempt === 1 ? "restoring" : "retrying", this.recoveryCompleted.size, total, target.roomName, attempt);
         try {
-          await this.roomRecoveryRuntime.runAttempt(
+          await this.runtime.runAttempt(
             (attemptSignal) => adapter.recover(target, attemptSignal),
             ROOM_RECOVERY_POLICY.attemptTimeoutMs,
             signal,
@@ -561,7 +592,7 @@ export class CoordinatorStore {
             return false;
           }
           this.setRoomRecoveryProgress("retrying", this.recoveryCompleted.size, total, target.roomName, attempt, "Trying again…");
-          await this.roomRecoveryRuntime.wait(ROOM_RECOVERY_POLICY.retryDelayMs[attempt - 1]!, signal);
+          await this.runtime.wait(ROOM_RECOVERY_POLICY.retryDelayMs[attempt - 1]!, signal);
         }
       }
       if (!succeeded) return false;
@@ -601,7 +632,7 @@ export class CoordinatorStore {
       if (!recovered || !this.ownsGeneration(generation, controller.signal)) return;
       this.status = transitionCoordinator(this.status, "started");
       this.appliedConfigRevision = configStore.runtimeRevision;
-      resourceMonitor.start(this.running!);
+      this.runtime.startResourceMonitor(this.running!);
     });
     this.startupPromise = transaction.finally(() => {
       if (this.startupGeneration === generation) this.startupPromise = null;
@@ -624,7 +655,7 @@ export class CoordinatorStore {
   }
 
   private destroyStateSynchronously(): void {
-    resourceMonitor.stop();
+    this.runtime.stopResourceMonitor();
     void this.releaseInstanceLease();
     this.keyManager?.destroy();
     keyStorage.clear();

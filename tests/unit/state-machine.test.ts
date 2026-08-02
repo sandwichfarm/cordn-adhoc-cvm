@@ -1,8 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { isConfigLocked, transitionCoordinator } from "../../src/coordinator/state-machine";
-import { CoordinatorStore, ROOM_RECOVERY_POLICY, type RoomRecoveryRuntime } from "../../src/coordinator/coordinator.svelte";
-import type { HostedRoomRecoveryAdapter, HostedRoomRecoveryTarget } from "../../src/coordinator/types";
+import { CoordinatorStore, ROOM_RECOVERY_POLICY, type CoordinatorStoreRuntime } from "../../src/coordinator/coordinator.svelte";
+import type { RunningTransport } from "../../src/lib/transport";
+import type { InstanceLease } from "../../src/coordinator/single-instance-guard";
+import type { HostedRoomRecoveryTarget } from "../../src/coordinator/types";
 import {
   createHostedRoomRecoveryProgress,
   type CoordinatorEvent,
@@ -82,59 +84,214 @@ describe("hosted room recovery progress", () => {
 });
 
 describe("coordinator recovery policy", () => {
-  const target: HostedRoomRecoveryTarget = {
-    coordinatorPubkey: "c".repeat(64),
-    roomId: "room-id",
-    roomName: "Planning",
-    roomIdentityKey: `${"c".repeat(64)}:room-id`,
+  const targetA: HostedRoomRecoveryTarget = {
+    coordinatorPubkey: "a".repeat(64),
+    roomId: "alpha",
+    roomName: "Alpha",
+    roomIdentityKey: `${"a".repeat(64)}:alpha`,
+  };
+  const targetB: HostedRoomRecoveryTarget = {
+    coordinatorPubkey: "b".repeat(64),
+    roomId: "bravo",
+    roomName: "Bravo",
+    roomIdentityKey: `${"b".repeat(64)}:bravo`,
   };
 
-  function recoveryStore(recover: HostedRoomRecoveryAdapter["recover"]) {
+  interface Deferred<T> {
+    promise: Promise<T>;
+    resolve(value: T): void;
+    reject(reason?: unknown): void;
+  }
+
+  function deferred<T>(): Deferred<T> {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+  }
+
+  function lifecycleRuntime() {
+    const leases: Array<InstanceLease & { release: ReturnType<typeof vi.fn> }> = [];
+    const transports: Array<RunningTransport & { close: ReturnType<typeof vi.fn> }> = [];
+    const acquireInstanceLease = vi.fn<CoordinatorStoreRuntime["acquireInstanceLease"]>(async () => {
+      const lease = { release: vi.fn(async () => undefined) };
+      leases.push(lease);
+      return lease;
+    });
+    const createTransport = vi.fn<CoordinatorStoreRuntime["createTransport"]>(async () => {
+      const transport = { close: vi.fn() } as unknown as RunningTransport & { close: ReturnType<typeof vi.fn> };
+      transports.push(transport);
+      return transport;
+    });
+    const closeTransport = vi.fn<CoordinatorStoreRuntime["closeTransport"]>((transport) => transport.close());
+    const startResourceMonitor = vi.fn<CoordinatorStoreRuntime["startResourceMonitor"]>();
+    const stopResourceMonitor = vi.fn<CoordinatorStoreRuntime["stopResourceMonitor"]>();
     const wait = vi.fn<(milliseconds: number, signal: AbortSignal) => Promise<void>>(async () => undefined);
     const runAttempt = vi.fn<(operation: (signal: AbortSignal) => Promise<void>, timeout: number, signal: AbortSignal) => Promise<void>>(
       async (operation, _timeout, signal) => operation(signal),
     );
-    const runtime: RoomRecoveryRuntime = { wait, runAttempt };
-    const store = new CoordinatorStore(runtime);
-    store.registerHostedRoomRecovery({ listTargets: () => [target], recover });
-    (store as unknown as { startupGeneration: number }).startupGeneration = 1;
-    return { store, wait, runAttempt };
+    const runtime: CoordinatorStoreRuntime = {
+      acquireInstanceLease,
+      createTransport,
+      closeTransport,
+      startResourceMonitor,
+      stopResourceMonitor,
+      wait,
+      runAttempt,
+    };
+    return {
+      runtime,
+      leases,
+      transports,
+      acquireInstanceLease,
+      createTransport,
+      closeTransport,
+      startResourceMonitor,
+      stopResourceMonitor,
+      wait,
+      runAttempt,
+    };
   }
 
-  test("uses three injected attempts with 250ms then 750ms backoff and advances once", async () => {
-    let attempt = 0;
-    const { store, wait, runAttempt } = recoveryStore(async () => {
-      attempt += 1;
-      if (attempt < 3) throw new Error("transient");
+  test("public start shares one transaction and restores deduplicated rooms in stable order", async () => {
+    const harness = lifecycleRuntime();
+    const store = new CoordinatorStore(harness.runtime);
+    const alpha = deferred<void>();
+    const bravo = deferred<void>();
+    const order: string[] = [];
+    store.registerHostedRoomRecovery({
+      listTargets: () => [targetB, targetA, { ...targetB, roomName: "Duplicate Bravo" }],
+      recover: async (target) => {
+        order.push(target.roomIdentityKey);
+        await (target.roomIdentityKey === targetA.roomIdentityKey ? alpha.promise : bravo.promise);
+      },
     });
 
-    await expect((store as unknown as { recoverHostedRooms(generation: number, signal: AbortSignal): Promise<boolean> })
-      .recoverHostedRooms(1, new AbortController().signal)).resolves.toBe(true);
+    const firstStart = store.start();
+    const sharedStart = store.start();
+    await vi.waitFor(() => expect(order).toEqual([targetA.roomIdentityKey]));
+    expect(store.status).toBe("starting");
+    expect(store.startupProgress.roomRecovery).toMatchObject({ completed: 0, total: 2 });
+    alpha.resolve(undefined);
+    await vi.waitFor(() => expect(order).toEqual([targetA.roomIdentityKey, targetB.roomIdentityKey]));
+    expect(store.startupProgress.roomRecovery).toMatchObject({ completed: 1, total: 2 });
+    bravo.resolve(undefined);
+    await Promise.all([firstStart, sharedStart]);
 
-    expect(runAttempt).toHaveBeenCalledTimes(3);
-    expect(runAttempt.mock.calls.map((call) => call[1])).toEqual([
+    expect(harness.acquireInstanceLease).toHaveBeenCalledOnce();
+    expect(harness.createTransport).toHaveBeenCalledOnce();
+    expect(harness.runAttempt).toHaveBeenCalledTimes(2);
+    expect(harness.startResourceMonitor).toHaveBeenCalledOnce();
+    expect(store.startupProgress.roomRecovery).toMatchObject({ state: "complete", completed: 2, total: 2 });
+    expect(store.status).toBe("running");
+    await store.stop();
+  });
+
+  test("restart awaits and discards stale non-abortable recovery before replacement owns resources", async () => {
+    const harness = lifecycleRuntime();
+    const store = new CoordinatorStore(harness.runtime);
+    const staleRecovery = deferred<void>();
+    let recoverCalls = 0;
+    const discard = vi.fn(async () => undefined);
+    store.registerHostedRoomRecovery({
+      listTargets: () => [targetA],
+      recover: async () => {
+        recoverCalls += 1;
+        if (recoverCalls === 1) await staleRecovery.promise;
+      },
+      discard,
+    });
+
+    const firstStart = store.start();
+    await vi.waitFor(() => expect(recoverCalls).toBe(1));
+    const restarting = store.restart();
+    await Promise.resolve();
+    expect(harness.acquireInstanceLease).toHaveBeenCalledOnce();
+    staleRecovery.resolve(undefined);
+    await Promise.all([firstStart, restarting]);
+
+    expect(recoverCalls).toBe(2);
+    expect(discard).toHaveBeenCalledOnce();
+    expect(harness.acquireInstanceLease).toHaveBeenCalledTimes(2);
+    expect(harness.createTransport).toHaveBeenCalledTimes(2);
+    expect(harness.closeTransport).toHaveBeenCalledTimes(1);
+    expect(harness.closeTransport).toHaveBeenCalledWith(harness.transports[0]);
+    expect(harness.leases[0]?.release).toHaveBeenCalledOnce();
+    expect(harness.leases[1]?.release).not.toHaveBeenCalled();
+    expect(harness.startResourceMonitor).toHaveBeenCalledTimes(1);
+    expect(harness.startResourceMonitor).toHaveBeenCalledWith(harness.transports[1]);
+    expect(store.status).toBe("running");
+    expect(store.startupProgress.roomRecovery).toMatchObject({ state: "complete", completed: 1, total: 1 });
+    await store.stop();
+  });
+
+  test("exhausted public recovery retries once, keeps completed rooms, and preserves policy", async () => {
+    const harness = lifecycleRuntime();
+    const store = new CoordinatorStore(harness.runtime);
+    const calls: string[] = [];
+    let bravoAttempts = 0;
+    store.registerHostedRoomRecovery({
+      listTargets: () => [targetB, targetA],
+      recover: async (target) => {
+        calls.push(target.roomIdentityKey);
+        if (target.roomIdentityKey === targetB.roomIdentityKey) {
+          bravoAttempts += 1;
+          if (bravoAttempts <= ROOM_RECOVERY_POLICY.maxAttempts) throw new Error("internal relay detail");
+        }
+      },
+    });
+
+    await store.start();
+
+    expect(store.status).toBe("starting");
+    expect(store.startupProgress.roomRecovery).toMatchObject({
+      state: "exhausted",
+      completed: 1,
+      total: 2,
+      roomName: "Bravo",
+      diagnostic: "Check your connection, then retry recovery.",
+    });
+    expect(harness.runAttempt.mock.calls.map((call) => call[1])).toEqual([
+      ROOM_RECOVERY_POLICY.attemptTimeoutMs,
       ROOM_RECOVERY_POLICY.attemptTimeoutMs,
       ROOM_RECOVERY_POLICY.attemptTimeoutMs,
       ROOM_RECOVERY_POLICY.attemptTimeoutMs,
     ]);
-    expect(wait.mock.calls.map((call) => call[0])).toEqual([250, 750]);
-    expect(store.startupProgress.roomRecovery).toMatchObject({ state: "complete", completed: 1, total: 1 });
+    expect(harness.wait.mock.calls.map((call) => call[0])).toEqual([250, 750]);
+
+    const firstRetry = store.retryRoomRecovery();
+    const duplicateRetry = store.retryRoomRecovery();
+    await Promise.all([firstRetry, duplicateRetry]);
+
+    expect(calls).toEqual([
+      targetA.roomIdentityKey,
+      targetB.roomIdentityKey,
+      targetB.roomIdentityKey,
+      targetB.roomIdentityKey,
+      targetB.roomIdentityKey,
+    ]);
+    expect(harness.acquireInstanceLease).toHaveBeenCalledOnce();
+    expect(harness.createTransport).toHaveBeenCalledOnce();
+    expect(harness.startResourceMonitor).toHaveBeenCalledOnce();
+    expect(store.status).toBe("running");
+    expect(store.startupProgress.roomRecovery).toMatchObject({ state: "complete", completed: 2, total: 2 });
+    await store.stop();
   });
 
-  test("keeps exhausted recovery in startup state with a safe room diagnostic", async () => {
-    const { store, wait, runAttempt } = recoveryStore(async () => { throw new Error("raw relay URL must not render"); });
+  test("zero targets complete publicly as 0 of 0 without exposing retry", async () => {
+    const harness = lifecycleRuntime();
+    const store = new CoordinatorStore(harness.runtime);
+    store.registerHostedRoomRecovery({ listTargets: () => [], recover: vi.fn() });
 
-    await expect((store as unknown as { recoverHostedRooms(generation: number, signal: AbortSignal): Promise<boolean> })
-      .recoverHostedRooms(1, new AbortController().signal)).resolves.toBe(false);
+    await store.start();
 
-    expect(runAttempt).toHaveBeenCalledTimes(3);
-    expect(wait.mock.calls.map((call) => call[0])).toEqual([250, 750]);
-    expect(store.startupProgress.roomRecovery).toMatchObject({
-      state: "exhausted",
-      completed: 0,
-      total: 1,
-      roomName: "Planning",
-      diagnostic: "Check your connection, then retry recovery.",
-    });
+    expect(store.status).toBe("running");
+    expect(store.startupProgress.roomRecovery).toMatchObject({ state: "complete", completed: 0, total: 0 });
+    expect(harness.runAttempt).not.toHaveBeenCalled();
+    expect(harness.wait).toHaveBeenCalledWith(500, expect.any(AbortSignal));
+    await store.stop();
   });
 });

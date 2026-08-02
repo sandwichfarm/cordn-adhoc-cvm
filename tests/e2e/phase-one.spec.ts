@@ -377,6 +377,135 @@ test("does not render disconnected local chat during recovery", async ({ page })
   await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i)).toHaveCount(0);
 });
 
+test("multi-room recovery retries and exhausts safely before a retained manual retry", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto("/");
+  await enablePersistence(page, "multi-room-recovery-passphrase");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await createRoom(page, "Recovery alpha");
+  await createRoom(page, "Recovery bravo");
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+
+  const fixture = await page.evaluate(() => {
+    const entries: Array<{ key: string; raw: string; room: { coordinatorPubkey: string; id: string; title: string; stablePubkey: string } }> = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:")) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const room = JSON.parse(raw) as { coordinatorPubkey?: string; id?: string; title?: string; stablePubkey?: string; isHost?: boolean };
+      if (!room.isHost || !room.coordinatorPubkey || !room.id || !room.title || !room.stablePubkey) continue;
+      entries.push({ key, raw, room: room as { coordinatorPubkey: string; id: string; title: string; stablePubkey: string } });
+    }
+    entries.sort((left, right) => `${left.room.coordinatorPubkey}:${left.room.id}`.localeCompare(`${right.room.coordinatorPubkey}:${right.room.id}`));
+    if (entries.length !== 2) throw new Error(`Expected two hosted rooms, found ${entries.length}`);
+    const target = entries[1]!;
+    const corrupted = JSON.parse(target.raw) as { stablePubkey: string };
+    corrupted.stablePubkey = corrupted.stablePubkey === "f".repeat(64) ? "e".repeat(64) : "f".repeat(64);
+    return {
+      key: target.key,
+      validRaw: target.raw,
+      corruptedRaw: JSON.stringify(corrupted),
+      roomName: target.room.title,
+      forbiddenStablePubkey: corrupted.stablePubkey,
+      rooms: entries.map((entry) => ({
+        key: entry.key,
+        id: entry.room.id,
+        title: entry.room.title,
+        coordinatorPubkey: entry.room.coordinatorPubkey,
+        stablePubkey: entry.room.stablePubkey,
+      })),
+    };
+  });
+  expect(new Set(fixture.rooms.map((room) => `${room.coordinatorPubkey}:${room.id}`)).size).toBe(2);
+  expect(new Set(fixture.rooms.map((room) => room.coordinatorPubkey)).size).toBe(1);
+  expect(new Set(fixture.rooms.map((room) => room.stablePubkey)).size).toBe(1);
+
+  await page.reload();
+  await page.getByPlaceholder("passphrase", { exact: true }).fill("multi-room-recovery-passphrase");
+  await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
+  const roomsAfterUnlock = await page.evaluate(() => {
+    const rooms: Array<{ key: string; id?: string; title?: string; coordinatorPubkey?: string; stablePubkey?: string; isHost?: boolean; membershipStatus?: string }> = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:")) continue;
+      const raw = localStorage.getItem(key);
+      if (raw) rooms.push({ key, ...JSON.parse(raw) });
+    }
+    return rooms;
+  });
+  expect(roomsAfterUnlock.map((room) => ({
+    id: room.id,
+    title: room.title,
+    coordinatorPubkey: room.coordinatorPubkey,
+    stablePubkey: room.stablePubkey,
+    isHost: room.isHost,
+    membershipStatus: room.membershipStatus,
+  }))).toEqual(expect.arrayContaining(fixture.rooms.map((room) => expect.objectContaining({
+    id: room.id,
+    title: room.title,
+    coordinatorPubkey: room.coordinatorPubkey,
+    isHost: true,
+  }))));
+  await page.evaluate(({ key, corruptedRaw }) => localStorage.setItem(key, corruptedRaw), fixture);
+  await page.evaluate(() => {
+    type RecoverySnapshot = { state: string; completed: number; total: number; retryActions: number };
+    const target = window as unknown as { __recoveryHistory: RecoverySnapshot[] };
+    target.__recoveryHistory = [];
+    const capture = () => {
+      const panel = document.querySelector<HTMLElement>('[data-testid="startup-progress-panel"]');
+      if (!panel) return;
+      const state = panel.dataset.recoveryState ?? "";
+      const completed = Number(panel.dataset.recoveryCompleted ?? "0");
+      const total = Number(panel.dataset.recoveryTotal ?? "0");
+      const retryActions = Array.from(panel.querySelectorAll("button")).filter((button) => button.textContent?.trim() === "Retry recovery").length;
+      const next = { state, completed, total, retryActions };
+      const previous = target.__recoveryHistory.at(-1);
+      if (!previous || JSON.stringify(previous) !== JSON.stringify(next)) target.__recoveryHistory.push(next);
+    };
+    new MutationObserver(capture).observe(document.body, { subtree: true, childList: true, attributes: true });
+    capture();
+  });
+
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  const startup = page.getByTestId("startup-progress-panel");
+  await expect(startup).toHaveAttribute("data-recovery-total", "2");
+  await expect(startup).toHaveAttribute("data-recovery-state", "retrying");
+  await expect(page.getByRole("button", { name: "Retry recovery" })).toHaveCount(0);
+  await expect(startup).toHaveAttribute("data-recovery-state", "exhausted");
+  await expect(startup).toHaveAttribute("data-recovery-completed", "1");
+  await expect(startup).toContainText(`Couldn’t restore # ${fixture.roomName}`);
+  await expect(startup).toContainText("Check your connection, then retry recovery.");
+  await expect(page.getByRole("button", { name: "Retry recovery" })).toHaveCount(1);
+  await expect(page.getByTestId("status-badge")).toHaveText("starting");
+  await expect(page.getByTestId("host-message-list")).toHaveCount(0);
+  await expect(page.getByTestId("room-connection-panel")).toHaveCount(0);
+  await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
+  await expect(page.locator('input[placeholder="Message as host"]')).toHaveCount(0);
+  const renderedText = await page.locator("body").innerText();
+  expect(renderedText).not.toContain(fixture.forbiddenStablePubkey);
+  expect(renderedText).not.toMatch(/signer does not match|MCP error|Hosted room recovery failed|wss:\/\//i);
+
+  const automaticHistory = await page.evaluate(() => (
+    window as unknown as { __recoveryHistory: Array<{ state: string; completed: number; total: number; retryActions: number }> }
+  ).__recoveryHistory.filter((snapshot) => snapshot.total === 2));
+  expect(automaticHistory.some((snapshot) => snapshot.state === "retrying" && snapshot.retryActions === 0)).toBe(true);
+  expect(automaticHistory.at(-1)).toMatchObject({ state: "exhausted", completed: 1, total: 2 });
+  expect(automaticHistory.every((snapshot, index) => index === 0 || snapshot.completed >= automaticHistory[index - 1]!.completed)).toBe(true);
+
+  await page.evaluate(({ key, validRaw }) => localStorage.setItem(key, validRaw), fixture);
+  await page.getByRole("button", { name: "Retry recovery" }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("host-message-list")).toBeVisible();
+  await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
+  const completedHistory = await page.evaluate(() => (
+    window as unknown as { __recoveryHistory: Array<{ state: string; completed: number; total: number }> }
+  ).__recoveryHistory.filter((snapshot) => snapshot.total === 2));
+  expect(completedHistory.some((snapshot) => snapshot.state === "restoring" && snapshot.completed === 1)).toBe(true);
+  expect(completedHistory.some((snapshot) => snapshot.state === "complete" && snapshot.completed === 2)).toBe(true);
+});
+
 test("browses joined chats from the root shell without starting an unprotected local coordinator", async ({ page }) => {
   await page.goto("/");
   await seedJoinedRoom(page, "Elsewhere lounge");
@@ -1668,7 +1797,7 @@ test("restores the remembered anonymous host channel after identity initializati
   await expect(page.getByText("No channel selected")).toBeHidden();
 });
 
-test("keeps an offline remembered room in startup while its reachable coordinator remains online", async ({ page }) => {
+test("keeps an unavailable remembered local room behind the startup surface", async ({ page }) => {
   await page.goto("/");
   await enablePersistence(page, "offline-host-room-passphrase");
   await configureMockRelay(page);
@@ -1704,17 +1833,16 @@ test("keeps an offline remembered room in startup while its reachable coordinato
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
   await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("starting");
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
-  const roomConnectionPanel = page.getByTestId("room-connection-panel");
-  await expect(roomConnectionPanel).toBeVisible();
-  await expect(roomConnectionPanel).toContainText("Local room offline", { timeout: 20_000 });
+  await expect(page.getByTestId("room-connection-panel")).toHaveCount(0);
+  await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(localStatus).toHaveAttribute("data-state", "online");
-  await expect(localStatus).toHaveAttribute("title", "Coordinator online");
+  await expect(localStatus).toHaveAttribute("data-state", "connecting");
+  await expect(localStatus).toHaveAttribute("title", "Coordinator starting");
 
   await page.locator(".channel-context-button").click();
-  await expect(page.getByTestId("local-coordinator-menu-status")).toHaveAttribute("data-state", "online");
+  await expect(page.getByTestId("local-coordinator-menu-status")).toHaveAttribute("data-state", "connecting");
 });
 
 test("blocks a second running coordinator for the same public key", async ({ page }) => {

@@ -349,19 +349,22 @@
 
   function hostedRoomRecoveryAdapter(): HostedRoomRecoveryAdapter {
     return {
-      listTargets: () => listRooms()
-        .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
-        .map((storedRoom): HostedRoomRecoveryTarget => ({
+      listTargets: () => {
+        const activeCoordinatorPubkey = coordinator.identity.publicKeyHex;
+        return listRooms()
+          .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === activeCoordinatorPubkey)
+          .map((storedRoom): HostedRoomRecoveryTarget => ({
           coordinatorPubkey: storedRoom.coordinatorPubkey,
           roomId: storedRoom.id,
           roomName: storedRoom.title,
-          roomIdentityKey: roomIdentityKey(storedRoom),
-        })),
+          roomIdentityKey: roomIdentityKey(storedRoom.coordinatorPubkey, storedRoom.id),
+          }));
+      },
       recover: async (target, signal) => {
         if (signal.aborted) throw new DOMException("Recovery cancelled", "AbortError");
         const latest = loadRoom(target.roomId, target.coordinatorPubkey);
         const signer = userProfileStore.activeSigner;
-        if (!latest || !latest.isHost || latest.coordinatorPubkey !== coordinatorPubkey || !signer) {
+        if (!latest || !latest.isHost || latest.coordinatorPubkey !== coordinator.identity.publicKeyHex || !signer) {
           throw new Error("Hosted room recovery is unavailable");
         }
         await requireRoomSigner(latest, signer);
@@ -387,6 +390,11 @@
       },
     };
   }
+
+  // Register before the first rendered Start control can be activated. Waiting
+  // for onMount allowed a fast click to begin startup without any room targets.
+  // svelte-ignore state_referenced_locally
+  unregisterHostedRoomRecovery = coordinator.registerHostedRoomRecovery(hostedRoomRecoveryAdapter());
 
   function buildHostedRoomEntry(nextRoom: StoredRoom): HostedRoomEntry {
     const coordinatorKeyMode = coordinator.persistenceEnabled ? "persistent" : "ephemeral";
@@ -972,7 +980,6 @@
       .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
       .map(buildHostedRoomEntry);
     refreshRemoteRooms();
-    unregisterHostedRoomRecovery = coordinator.registerHostedRoomRecovery(hostedRoomRecoveryAdapter());
     if (!locked && config.autostart && config.presenceState !== "offline" && coordinator.status === "idle") void coordinator.start();
     const compactQuery = window.matchMedia("(max-width: 900px)");
     const markCoordinatorOnline = (event: Event) => handleCoordinatorReachabilityEvent(event, "online");
@@ -1458,7 +1465,14 @@
               <p class="startup-kicker">Private MLS coordination</p>
               <h1>{config.coordinatorName || "My coordinator"}</h1>
               {#if coordinator.status === "starting"}
-                <section class="startup-progress-panel" data-testid="startup-progress-panel" aria-label="Coordinator startup">
+                <section
+                  class="startup-progress-panel"
+                  data-testid="startup-progress-panel"
+                  data-recovery-state={coordinator.startupProgress.roomRecovery.state}
+                  data-recovery-completed={coordinator.startupProgress.roomRecovery.completed}
+                  data-recovery-total={coordinator.startupProgress.roomRecovery.total}
+                  aria-label="Coordinator startup"
+                >
                   <header>
                     <div>
                       <span>{coordinator.startupProgress.phase === "restoring-rooms" ? "Restoring rooms" : "Current operation"}</span>
@@ -1512,18 +1526,23 @@
                   {/if}
                 </section>
               {:else if coordinator.status === "running" && room && session}
-                <section class="startup-progress-panel room-connection-panel" data-testid="room-connection-panel" aria-label="Local room connection">
+                <section
+                  class="startup-progress-panel"
+                  data-testid="startup-progress-panel"
+                  data-recovery-state={coordinator.startupProgress.roomRecovery.state}
+                  data-recovery-completed={coordinator.startupProgress.roomRecovery.completed}
+                  data-recovery-total={coordinator.startupProgress.roomRecovery.total}
+                  aria-label="Opening local room"
+                >
                   <header>
                     <div>
-                      <span>Room connection</span>
-                      <strong data-testid="room-connection-loading-status">{roomConnection === "offline" ? "Local room offline" : "Connecting local room"}</strong>
+                      <span>Opening room</span>
+                      <strong>Reconnecting to # {room.title}</strong>
                     </div>
-                    <span class:error={roomConnection === "offline"} class="startup-progress-value">{roomConnection}</span>
+                    <span class="startup-progress-value">{coordinator.startupProgress.roomRecovery.completed}/{coordinator.startupProgress.roomRecovery.total}</span>
                   </header>
                   <footer>
-                    <span role="status" aria-live="polite">{roomConnection === "offline"
-                      ? `The coordinator is running, but this local room is offline${roomConnectionDetail ? `: ${roomConnectionDetail}` : "."}`
-                      : "Coordinator is ready. Opening your local hosted room…"}</span>
+                    <span role="status" aria-live="polite">Opening the encrypted local room. Chat remains unavailable until it reconnects.</span>
                   </footer>
                 </section>
               {:else}
