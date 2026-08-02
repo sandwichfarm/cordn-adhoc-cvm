@@ -8,7 +8,7 @@
   import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, removeStoredRoom, requireRoomSigner, roomIdentityKey, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, roomIdentityKey, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import type { RemoteJoinRequest } from "../chat/coordinator-client";
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
@@ -688,6 +688,24 @@
     onNavigate(href);
   }
 
+  function openStoredRoomFromRail(nextRoom: StoredRoom): void {
+    rememberLastOpenRoom(nextRoom);
+    navigateFromRail(remoteRoomHref(nextRoom));
+  }
+
+  function selectCoordinator(pubkey: string): void {
+    selectedServerPubkey = pubkey;
+    serverMenuOpen = false;
+    const remembered = loadLastOpenRoom(pubkey);
+    if (!remembered) return;
+    if (pubkey === coordinatorPubkey && remembered.isHost) {
+      const entry = hostedRooms.find((candidate) => sameRoomIdentity(candidate.room, remembered));
+      if (entry) void selectRoom(entry);
+      return;
+    }
+    openStoredRoomFromRail(remembered);
+  }
+
   function handleEmbeddedChatContext(context: ChatPaneContext | null): void {
     embeddedChatContext = context;
   }
@@ -1093,7 +1111,7 @@
                       class:active={selectedServerIsHome}
                       type="button"
                       role="menuitem"
-                      onclick={() => { selectedServerPubkey = coordinatorPubkey; serverMenuOpen = false; }}
+                        onclick={() => selectCoordinator(coordinatorPubkey)}
                     >
                       <span
                         class:online={localCoordinatorStatus === "online"}
@@ -1115,7 +1133,7 @@
                         class:active={selectedServerPubkey === server.pubkey}
                         type="button"
                         role="menuitem"
-                        onclick={() => { selectedServerPubkey = server.pubkey; serverMenuOpen = false; }}
+                        onclick={() => selectCoordinator(server.pubkey)}
                       >
                         <span
                           class:online={externalCoordinatorReachability(server.pubkey) === "online"}
@@ -1165,7 +1183,7 @@
                           class:active={selectedServerPubkey === server.pubkey}
                           type="button"
                           role="menuitem"
-                          onclick={() => { selectedServerPubkey = server.pubkey; serverMenuOpen = false; }}
+                          onclick={() => selectCoordinator(server.pubkey)}
                         >
                           <span
                             class:online={externalCoordinatorReachability(server.pubkey) === "online"}
@@ -1212,7 +1230,7 @@
                       class="channel-row"
                       type="button"
                       aria-label={`Open joined room ${joinedRoom.title}, hosted by ${hostIdentityForRoom(joinedRoom).name}`}
-                      onclick={() => navigateFromRail(remoteRoomHref(joinedRoom))}
+                        onclick={() => openStoredRoomFromRail(joinedRoom)}
                     >
                       <span class="channel-active-mark" aria-hidden="true"></span>
                       <span class="channel-hash" aria-hidden="true">#</span>
@@ -1239,7 +1257,7 @@
                         aria-label={selectedServerIsPreviousLocal
                           ? `Open previous local session ${remoteRoom.title}, hosted by ${hostIdentityForRoom(remoteRoom).name}`
                           : `Open room ${remoteRoom.title}, hosted by ${hostIdentityForRoom(remoteRoom).name}, on ${serverHost(selectedExternalServer.origin)}`}
-                        onclick={() => navigateFromRail(remoteRoomHref(remoteRoom))}
+                        onclick={() => openStoredRoomFromRail(remoteRoom)}
                       >
                         <span class="channel-active-mark" aria-hidden="true"></span>
                         <span class="channel-hash" aria-hidden="true">#</span>
