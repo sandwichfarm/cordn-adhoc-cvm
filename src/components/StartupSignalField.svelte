@@ -9,8 +9,11 @@
 
   let { signal }: Props = $props();
 
-  const columns = 210;
-  const rows = 112;
+  // The texture itself must overrun the largest supported content pane.
+  // A full-size wrapper is not enough: finite preformatted rows otherwise
+  // visibly end early on wide displays even though their element fills 100%.
+  const columns = 512;
+  const rows = 256;
   const glyphs = "        ....::::++++**xx0011##//\\";
 
   function asciiField(seed: number): string {

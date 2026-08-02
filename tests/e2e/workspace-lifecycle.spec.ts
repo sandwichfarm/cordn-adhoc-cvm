@@ -114,7 +114,8 @@ async function expectStartupFillsHostPane(page: import("@playwright/test").Page)
     const pane = document.querySelector<HTMLElement>('[data-testid="host-chat"]');
     const stage = pane?.querySelector<HTMLElement>(".startup-stage");
     const field = stage?.querySelector<HTMLElement>('[data-testid="startup-ascii-field"]');
-    if (!pane || !stage || !field) return false;
+    const bed = field?.querySelector<HTMLElement>(".ascii-bed .ascii-texture");
+    if (!pane || !stage || !field || !bed) return false;
 
     const paneBounds = pane.getBoundingClientRect();
     const stageBounds = stage.getBoundingClientRect();
@@ -129,8 +130,17 @@ async function expectStartupFillsHostPane(page: import("@playwright/test").Page)
     const paneStyle = getComputedStyle(pane);
     const stageStyle = getComputedStyle(stage);
     const fieldStyle = getComputedStyle(field);
+    const firstLine = bed.textContent?.split("\n", 1)[0] ?? "";
+    const textNode = bed.firstChild;
+    const firstLineRange = document.createRange();
+    if (!textNode || firstLine.length === 0) return false;
+    firstLineRange.setStart(textNode, 0);
+    firstLineRange.setEnd(textNode, firstLine.length);
+    const visibleTextureWidth = firstLineRange.getBoundingClientRect().width;
     return aligned(paneBounds, stageBounds)
       && aligned(paneBounds, fieldBounds)
+      && visibleTextureWidth >= fieldBounds.width * 1.08
+      && bed.scrollHeight >= fieldBounds.height
       && paneStyle.position === "relative"
       && stageStyle.position === "absolute"
       && fieldStyle.position === "absolute";
