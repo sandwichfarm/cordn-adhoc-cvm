@@ -337,17 +337,13 @@ onClose={() => {
 | A3 | CoordinatorStore can own the recovery controller without a separate module. | Summary / Pattern 3 | The existing transport factory may require an extracted service seam for clean cancellation. |
 | A4 | The frontend-server label is the closest tier name for the browser-local coordinator lifecycle authority. | Responsibility Map | This naming does not imply SSR; implementation remains browser-only. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Precise retry policy**
-   - What we know: The retry count, timeout, and backoff are explicitly delegated, and current polling occurs every four seconds. [VERIFIED: codebase graph]
-   - What's unclear: The coordinator client does not yet expose a tested per-attempt timeout/cancellation seam. [VERIFIED: codebase graph]
-   - Recommendation: Plan a small injectable recovery runtime (`attempt`, `sleep`, `now`/timer) and select concrete values during implementation; do not embed sleeps in browser tests. [ASSUMED]
+   - Resolution: Use an injected recovery runtime with exactly 3 attempts, a 4000ms per-attempt timeout, and backoff delays of 250ms then 750ms. Tests inject the attempt, timeout, and sleeper seams so browser and unit coverage do not wait on wall-clock timers.
 
 2. **Last-open persistence ownership**
-   - What we know: Local-host remembered selection currently stores only a room ID under a coordinator-specific key; navigation needs every coordinator's composite last-open identity. [VERIFIED: codebase graph]
-   - What's unclear: Whether to evolve that existing key into a validated `{ coordinatorPubkey, roomId }` record or add a single versioned navigation preference record. [ASSUMED]
-   - Recommendation: Reuse the existing per-coordinator namespace but validate/read back the composite identity and remove it when exact room removal succeeds. [ASSUMED]
+   - Resolution: Use versioned per-coordinator composite preference ownership: each coordinator's existing preference namespace stores and validates `{ version, coordinatorPubkey, roomId }`, reconciles it to the exact stored room, and removes the preference when that exact room is removed or the record is invalid.
 
 ## Environment Availability
 
