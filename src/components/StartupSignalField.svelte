@@ -1,6 +1,13 @@
 <script lang="ts">
   import { gsap } from "gsap";
   import { onMount } from "svelte";
+  import type { StartupSignalPresentation } from "./startup-signal-presentation";
+
+  interface Props {
+    signal: StartupSignalPresentation;
+  }
+
+  let { signal }: Props = $props();
 
   const columns = 210;
   const rows = 112;
@@ -106,7 +113,17 @@
   });
 </script>
 
-<div bind:this={field} class="signal-field" aria-hidden="true" data-testid="startup-ascii-field">
+<div
+  bind:this={field}
+  class="signal-field"
+  aria-hidden="true"
+  data-testid="startup-ascii-field"
+  data-phase={signal.phase}
+  data-recovery-state={signal.recoveryState}
+  data-forward-target={signal.forwardPercent}
+  data-mode={signal.mode}
+  style={`--signal-forward-target: ${signal.forwardPercent}`}
+>
   <div class="field-glow"></div>
   <div class="ascii-bed"><pre class="ascii-texture">{textures[0]}</pre></div>
   <div class="ring-plane">
@@ -119,6 +136,7 @@
 <style>
   .signal-field {
     position: absolute;
+    z-index: 0;
     inset: 0;
     overflow: hidden;
     pointer-events: none;

@@ -28,6 +28,7 @@
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
   import StartupSignalField from "./StartupSignalField.svelte";
+  import { projectStartupSignal } from "./startup-signal-presentation";
   import UserProfile from "./UserProfile.svelte";
   import WorkspaceNav from "./WorkspaceNav.svelte";
   import { userProfileStore } from "../identity/user-profile.svelte";
@@ -186,6 +187,7 @@
       && session !== null
       && roomConnection === "connected"
   );
+  const startupSignal = $derived(projectStartupSignal(coordinator.startupProgress, coordinator.status));
   const localCoordinatorStatus = $derived<CoordinatorReachability>(
     !browserOnline
       ? "offline"
@@ -1500,7 +1502,7 @@
           </div>
         {:else if coordinator.status !== "running" || (room && session)}
           <div class="startup-stage">
-            <StartupSignalField />
+            <StartupSignalField signal={startupSignal} />
             <div class="startup-content">
               <p class="startup-kicker">Private MLS coordination</p>
               <h1>{config.coordinatorName || "My coordinator"}</h1>
@@ -1573,6 +1575,9 @@
                       {/if}
                     </div>
                   {/if}
+                  <div class="startup-stage-actions">
+                    <button type="button" onclick={openSettings}>Review settings</button>
+                  </div>
                 </section>
               {:else if coordinator.status === "running" && room && session}
                 <section
@@ -1799,7 +1804,7 @@
   .host-commandbar :global(.presence-trigger:hover:not(:disabled)), .host-commandbar :global(.presence-trigger[aria-expanded="true"]), .host-commandbar :global(.inbox-trigger:hover), .host-commandbar :global(.inbox-trigger.pending), .host-commandbar :global(.notification-trigger:hover), .host-commandbar :global(.notification-trigger[aria-expanded="true"]), .host-commandbar :global(.user-trigger:hover), .host-commandbar :global(.user-trigger[aria-expanded="true"]) { background: #101713; }
   .host-commandbar :global(.compact-controls) { height: 2.65rem; gap: .25rem; border: 0; border-right: 1px solid #202d25; background: transparent; padding: .3rem .4rem; }
   .host-layout { position: relative; width: 100%; max-width: 100%; overflow: hidden; grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .host-chat { width: 100%; max-width: 100%; }
+  .host-chat { position: relative; width: 100%; height: 100%; max-width: 100%; }
   .host-layout:not(.management-open) .management-main { display: none; }
   .host-layout.management-open { grid-template-columns: minmax(21rem, 28rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .host-layout.management-open .host-chat { display: none; }
@@ -1957,13 +1962,13 @@
   .reaction-chip.pressed { border-color: #7cf59d; background: #173323; }
   .reaction-picker { display: flex; gap: .25rem; width: 100%; padding-top: .2rem; }
   .reaction-error { margin-top: .45rem; color: #ffaaa3; font-size: .65rem; }
-  .startup-stage { position: relative; display: grid; height: 100%; place-items: center; overflow: hidden; padding: 2rem; background: radial-gradient(circle at 50% 45%, rgb(35 72 47 / .18), transparent 34%), #101614; }
+  .startup-stage { position: absolute; z-index: 1; inset: 0; display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; padding: 1rem; background: radial-gradient(circle at 50% 45%, rgb(35 72 47 / .18), transparent 34%), #101614; }
   .startup-stage::before { position: absolute; inset: 0; background-image: linear-gradient(rgb(124 245 157 / .025) 1px, transparent 1px), linear-gradient(90deg, rgb(124 245 157 / .025) 1px, transparent 1px); background-size: 48px 48px; content: ""; mask-image: radial-gradient(circle at center, black, transparent 72%); }
-  .startup-content { position: relative; z-index: 1; width: min(38rem, 100%); max-height: 100%; overflow-y: auto; text-align: center; }
+  .startup-content { position: relative; z-index: 1; width: min(512px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto; overscroll-behavior: contain; text-align: center; }
   .startup-kicker { margin-top: 1.4rem; color: #7cf59d; font-size: .6rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
   .startup-content h1 { margin-top: .6rem; color: #f3fff6; font-size: clamp(1.8rem, 4vw, 3.4rem); font-weight: 650; letter-spacing: -.035em; }
   .startup-copy { max-width: 32rem; margin: .8rem auto 0; color: #91a59a; font-size: .8rem; line-height: 1.65; }
-  .startup-progress-panel { width: min(32rem, 100%); margin: 1.25rem auto 0; background: rgb(8 14 10 / .82); padding: .8rem .9rem; text-align: left; backdrop-filter: blur(8px); }
+  .startup-progress-panel { width: min(448px, 100%); margin: 1.25rem auto 0; background: rgb(8 14 10 / .82); padding: .8rem .9rem; text-align: left; backdrop-filter: blur(8px); }
   .startup-progress-panel header { display: flex; min-width: 0; align-items: end; justify-content: space-between; gap: 1rem; }
   .startup-progress-panel header > div { min-width: 0; }
   .startup-progress-panel header span, .startup-progress-panel header strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1983,6 +1988,9 @@
   .startup-recovery-actions .startup-primary { border-color: #7cf59d; background: #7cf59d; color: #071009; font-weight: 650; }
   .startup-recovery-actions .startup-danger { border-color: #6d413d; color: #ffaaa3; }
   .startup-recovery-actions .startup-danger:hover, .startup-recovery-actions .startup-danger:focus-visible { border-color: #ff8f86; background: #21110f; color: #ffd5d1; }
+  .startup-stage-actions { display: flex; justify-content: center; margin-top: .75rem; }
+  .startup-stage-actions button { border: 1px solid #496451; background: rgb(8 14 10 / .78); padding: .55rem .7rem; color: #c6d7cb; font-size: .6rem; }
+  .startup-stage-actions button:hover, .startup-stage-actions button:focus-visible { border-color: #7cf59d; color: #effff2; outline: none; }
   .startup-actions { display: flex; justify-content: center; gap: .55rem; margin-top: 1.3rem; }
   .startup-actions button { border: 1px solid #496451; background: rgb(8 14 10 / .78); padding: .7rem .9rem; color: #c6d7cb; font-size: .68rem; backdrop-filter: blur(8px); }
   .startup-actions button:hover:not(:disabled) { border-color: #7cf59d; }

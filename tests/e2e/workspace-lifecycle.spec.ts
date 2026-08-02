@@ -109,6 +109,34 @@ async function expectInsideViewport(locator: import("@playwright/test").Locator)
   })).toBe(true);
 }
 
+async function expectStartupFillsHostPane(page: import("@playwright/test").Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => {
+    const pane = document.querySelector<HTMLElement>('[data-testid="host-chat"]');
+    const stage = pane?.querySelector<HTMLElement>(".startup-stage");
+    const field = stage?.querySelector<HTMLElement>('[data-testid="startup-ascii-field"]');
+    if (!pane || !stage || !field) return false;
+
+    const paneBounds = pane.getBoundingClientRect();
+    const stageBounds = stage.getBoundingClientRect();
+    const fieldBounds = field.getBoundingClientRect();
+    const aligned = (left: DOMRect, right: DOMRect) => (
+      Math.abs(left.left - right.left) <= 1
+      && Math.abs(left.top - right.top) <= 1
+      && Math.abs(left.width - right.width) <= 1
+      && Math.abs(left.height - right.height) <= 1
+      && Math.abs(left.right - right.right) <= 1
+    );
+    const paneStyle = getComputedStyle(pane);
+    const stageStyle = getComputedStyle(stage);
+    const fieldStyle = getComputedStyle(field);
+    return aligned(paneBounds, stageBounds)
+      && aligned(paneBounds, fieldBounds)
+      && paneStyle.position === "relative"
+      && stageStyle.position === "absolute"
+      && fieldStyle.position === "absolute";
+  })).toBe(true);
+}
+
 async function openRoomActions(
   page: import("@playwright/test").Page,
   roomTitle: string,
@@ -1893,7 +1921,9 @@ test("restores the remembered anonymous host channel after identity initializati
   await expect(page.getByText("No channel selected")).toBeHidden();
 });
 
-test("keeps an unavailable remembered local room behind the startup surface", async ({ page }) => {
+test("startup fills the workspace content pane and keeps shell controls usable", async ({ page }) => {
+  const viewport = { width: 1280, height: 720 };
+  await page.setViewportSize(viewport);
   await page.goto("/");
   await enablePersistence(page, "offline-host-room-passphrase");
   await configureMockRelay(page);
@@ -1928,6 +1958,36 @@ test("keeps an unavailable remembered local room behind the startup surface", as
 
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
+  await expectStartupFillsHostPane(page);
+  const stage = page.locator(".startup-stage");
+  await expect(stage).toHaveCSS("position", "absolute");
+  await expect(page.locator(".host-topbar")).toBeVisible();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
+  await expect(page.locator(".host-topbar")).not.toHaveAttribute("inert");
+  await expect(page.locator(".host-topbar")).not.toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByTestId("invite-panel")).not.toHaveAttribute("inert");
+  await expect(page.getByTestId("invite-panel")).not.toHaveAttribute("aria-hidden", "true");
+  const headerSettings = page.locator(".host-topbar").getByRole("button", { name: "Settings", exact: true });
+  await headerSettings.focus();
+  await expect(headerSettings).toBeFocused();
+  await headerSettings.click();
+  const settings = page.getByTestId("coordinator-settings");
+  await expect(settings).toBeVisible();
+  await closeCoordinatorSettings(settings);
+  const railControl = page.locator(".channel-context-button");
+  await railControl.focus();
+  await expect(railControl).toBeFocused();
+  await railControl.click();
+  await expect(page.getByRole("menu", { name: "Choose coordinator" })).toBeVisible();
+  await railControl.click();
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-forward-target", /\d+/);
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", /restoring|retrying|exhausted/);
+  await expect(page.getByRole("progressbar")).toBeVisible();
+  await expect(page.getByRole("status")).toBeVisible();
+  await stage.getByRole("button", { name: "Review settings" }).click();
+  const stageSettings = page.getByTestId("coordinator-settings");
+  await expect(stageSettings).toBeVisible();
+  await closeCoordinatorSettings(stageSettings);
   await expect(page.getByTestId("host-message-list")).toBeHidden();
   await expect(page.getByTestId("status-badge")).toHaveText("starting");
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
