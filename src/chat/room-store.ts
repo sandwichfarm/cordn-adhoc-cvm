@@ -620,38 +620,51 @@ export async function retireAnonymousMemberships(stablePubkey?: string): Promise
   const capture = (key: string) => {
     if (!originals.has(key)) originals.set(key, localStorage.getItem(key));
   };
+  const restoreOriginals = () => {
+    for (const [key, raw] of originals) {
+      if (raw === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, raw);
+    }
+  };
   let count = 0;
   const affectedCompositeIdentities: string[] = [];
-  for (const entries of matching.values()) {
-    const authoritative = entries.find(({ key, room }) => key === roomStorageKey(room.coordinatorPubkey, room.id)) ?? entries[0];
-    if (!authoritative) continue;
-    const targetKey = roomStorageKey(authoritative.room.coordinatorPubkey, authoritative.room.id);
-    capture(targetKey);
-    for (const { key } of entries) capture(key);
+  try {
+    for (const entries of matching.values()) {
+      const authoritative = entries.find(({ key, room }) => key === roomStorageKey(room.coordinatorPubkey, room.id)) ?? entries[0];
+      if (!authoritative) continue;
+      const targetKey = roomStorageKey(authoritative.room.coordinatorPubkey, authoritative.room.id);
+      capture(targetKey);
+      for (const { key } of entries) capture(key);
 
-    const retired: StoredRoom = {
-      ...authoritative.room,
-      membershipStatus: "retired",
-      anonymousSecretKey: undefined,
-      stateBase64: "",
-      keyPackage: { reference: "", publicBase64: "", privateBase64: "" },
-      pending: [],
-      inviteToken: undefined,
-      autoApprove: undefined,
-      joinRequestSent: undefined,
-      updatedAt: Date.now(),
-    };
-    localStorage.setItem(targetKey, JSON.stringify(retired));
-    const verified = readStoredRoom(localStorage.getItem(targetKey));
-    if (!sameRoomIdentity(verified, retired) || verified.membershipStatus !== "retired") continue;
+      const retired: StoredRoom = {
+        ...authoritative.room,
+        membershipStatus: "retired",
+        anonymousSecretKey: undefined,
+        stateBase64: "",
+        keyPackage: { reference: "", publicBase64: "", privateBase64: "" },
+        pending: [],
+        inviteToken: undefined,
+        autoApprove: undefined,
+        joinRequestSent: undefined,
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem(targetKey, JSON.stringify(retired));
+      const verified = readStoredRoom(localStorage.getItem(targetKey));
+      if (!sameRoomIdentity(verified, retired) || verified.membershipStatus !== "retired") {
+        throw new Error("Unable to verify anonymous membership retirement");
+      }
 
-    for (const { key } of entries) {
-      if (key === targetKey) continue;
-      const source = readStoredRoom(localStorage.getItem(key));
-      if (sameRoomIdentity(source, retired)) localStorage.removeItem(key);
+      for (const { key } of entries) {
+        if (key === targetKey) continue;
+        const source = readStoredRoom(localStorage.getItem(key));
+        if (sameRoomIdentity(source, retired)) localStorage.removeItem(key);
+      }
+      count += 1;
+      affectedCompositeIdentities.push(roomIdentityKey(authoritative.room.coordinatorPubkey, authoritative.room.id));
     }
-    count += 1;
-    affectedCompositeIdentities.push(roomIdentityKey(authoritative.room.coordinatorPubkey, authoritative.room.id));
+  } catch (cause) {
+    restoreOriginals();
+    throw cause;
   }
 
   if (affectedCompositeIdentities.length > 0) {
@@ -669,10 +682,7 @@ export async function retireAnonymousMemberships(stablePubkey?: string): Promise
     },
     rollback() {
       if (closed) return;
-      for (const [key, raw] of originals) {
-        if (raw === null) localStorage.removeItem(key);
-        else localStorage.setItem(key, raw);
-      }
+      restoreOriginals();
       closed = true;
       window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, {
         detail: { action: "membership-rollback", affectedCompositeIdentities },

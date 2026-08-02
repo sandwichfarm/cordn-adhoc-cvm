@@ -38,7 +38,7 @@ import {
   prepareAnonymousIdentityReplacement,
 } from "../../src/identity/anonymous-identity";
 import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
-import { loadRoom, saveRoom, type StoredRoom } from "../../src/chat/room-store";
+import { loadRoom, ROOMS_CHANGED_EVENT, saveRoom, type StoredRoom } from "../../src/chat/room-store";
 
 const NIP07_SESSION_STORAGE_KEY = "cordn:v1:nip07-session";
 const NIP07_PUBKEY = "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0";
@@ -403,5 +403,51 @@ describe("user profile helpers", () => {
     expect(store.recoveryRequired).toBe(false);
     expect(loadRoom("rotation-room", "a".repeat(64))).toMatchObject({ stateBase64: "", anonymousSecretKey: "00".repeat(32) });
     expect(restored).not.toHaveBeenCalled();
+  });
+
+  test("restores every room without publishing retirement when membership storage fails", async () => {
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    const originalPubkey = store.pubkey;
+    const originalSigner = store.activeSigner;
+    const first = anonymousRoom(originalPubkey, "a".repeat(64));
+    first.stateBase64 = "first-private-state";
+    const second = anonymousRoom(originalPubkey, "b".repeat(64));
+    second.id = "second-rotation-room";
+    second.stateBase64 = "second-private-state";
+    saveRoom(first);
+    saveRoom(second);
+    const originalStorage = Array.from({ length: localStorage.length }, (_, index) => {
+      const key = localStorage.key(index);
+      return [key, key === null ? null : localStorage.getItem(key)] as const;
+    }).sort(([left], [right]) => (left ?? "").localeCompare(right ?? ""));
+    const listener = vi.fn();
+    window.addEventListener(ROOMS_CHANGED_EVENT, listener);
+    const originalSetItem = localStorage.setItem.bind(localStorage);
+    let writes = 0;
+    const setItemSpy = vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
+      writes += 1;
+      if (writes === 2) throw new Error("storage full");
+      originalSetItem(key, value);
+    });
+
+    try {
+      await expect(store.rotateAnonymousIdentity()).rejects.toThrow("Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.");
+    } finally {
+      setItemSpy.mockRestore();
+      window.removeEventListener(ROOMS_CHANGED_EVENT, listener);
+    }
+
+    const restoredStorage = Array.from({ length: localStorage.length }, (_, index) => {
+      const key = localStorage.key(index);
+      return [key, key === null ? null : localStorage.getItem(key)] as const;
+    }).sort(([left], [right]) => (left ?? "").localeCompare(right ?? ""));
+    expect(restoredStorage).toEqual(originalStorage);
+    expect(listener).not.toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ action: "membership-retired" }),
+    }));
+    expect(store.pubkey).toBe(originalPubkey);
+    expect(store.activeSigner).toBe(originalSigner);
+    expect(store.recoveryRequired).toBe(false);
   });
 });
