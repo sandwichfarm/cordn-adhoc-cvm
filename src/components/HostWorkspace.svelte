@@ -104,6 +104,8 @@
   let reachabilityProbeGeneration = 0;
   let reachabilityTimer: number | null = null;
   let reachabilityTargetsSignature = "";
+  let hostRoomRestoreReady = $state(false);
+  let hostRoomRestoreStarted = false;
   let browserOnline = $state(typeof navigator === "undefined" ? true : navigator.onLine);
   let lastSyncedRouteContext = "";
   const reachabilityProbe = new SimplePoolNostrInstanceNetwork(1_500);
@@ -192,6 +194,25 @@
 
   $effect(() => {
     if (revision >= 0) void tick().then(() => messageList?.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" }));
+  });
+
+  $effect(() => {
+    if (!identityReady || !hostRoomRestoreReady || hostRoomRestoreStarted) return;
+    hostRoomRestoreStarted = true;
+    const intendedHostedRoom = activeIntentInvite
+      ? hostedRooms.find((entry) => sameRoomIdentity(entry.room, {
+        id: activeIntentInvite.groupId,
+        coordinatorPubkey: activeIntentInvite.coordinatorPubkey,
+      }))
+      : undefined;
+    if (intendedHostedRoom) void selectRoom(intendedHostedRoom);
+    else void restoreHostChat();
+    if (activeIntentInvite && !intendedHostedRoom) selectedServerPubkey = activeIntentInvite.coordinatorPubkey;
+  });
+
+  $effect(() => {
+    if (coordinator.status !== "running" || !session) return;
+    void session.start();
   });
 
   $effect(() => {
@@ -312,7 +333,6 @@
     }
     autoApprove = nextRoom.autoApprove !== false;
     rememberActiveHostRoom(nextRoom);
-    void session.start();
     update();
   }
 
@@ -324,6 +344,14 @@
 
     for (const candidate of candidates) {
       const latest = loadRoom(candidate.id, candidate.coordinatorPubkey) ?? candidate;
+      const signer = userProfileStore.activeSigner;
+      if (!signer) return;
+      try {
+        await requireRoomSigner(latest, signer);
+      } catch {
+        if (candidate.id === remembered?.id) forgetRememberedHostRoom(coordinatorPubkey);
+        continue;
+      }
       try {
         const entry = buildHostedRoomEntry(latest);
         await openHostChat(entry.room);
@@ -331,7 +359,7 @@
         qrUrl = entry.qrUrl;
         return;
       } catch {
-        if (candidate.id === remembered?.id) forgetRememberedHostRoom(coordinatorPubkey);
+        // A transient session failure must not discard a remembered room.
       }
     }
   }
@@ -821,15 +849,7 @@
       .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
       .map(buildHostedRoomEntry);
     refreshRemoteRooms();
-    const intendedHostedRoom = activeIntentInvite
-      ? hostedRooms.find((entry) => sameRoomIdentity(entry.room, {
-        id: activeIntentInvite.groupId,
-        coordinatorPubkey: activeIntentInvite.coordinatorPubkey,
-      }))
-      : undefined;
-    if (intendedHostedRoom) void selectRoom(intendedHostedRoom);
-    else void restoreHostChat();
-    if (activeIntentInvite && !intendedHostedRoom) selectedServerPubkey = activeIntentInvite.coordinatorPubkey;
+    hostRoomRestoreReady = true;
     if (!locked && config.autostart && config.presenceState !== "offline" && coordinator.status === "idle") void coordinator.start();
     const compactQuery = window.matchMedia("(max-width: 900px)");
     const markCoordinatorOnline = (event: Event) => handleCoordinatorReachabilityEvent(event, "online");

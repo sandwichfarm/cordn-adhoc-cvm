@@ -1401,7 +1401,7 @@ test("persists relay and runtime configuration across reloads", async ({ page })
   await closeCoordinatorSettings(reloadedSettings);
 });
 
-test("restores the last active host channel across sessions", async ({ page }) => {
+test("restores the remembered anonymous host channel after identity initialization", async ({ page }) => {
   await page.goto("/");
   await enablePersistence(page, "active-room-passphrase");
   await configureMockRelay(page);
@@ -1412,6 +1412,17 @@ test("restores the last active host channel across sessions", async ({ page }) =
   const firstRoom = page.locator(".channel-row").filter({ hasText: "First room" });
   await firstRoom.click();
   await expect(firstRoom).toHaveClass(/active/);
+  await expect.poll(() => page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:")) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const room = JSON.parse(raw) as { title?: string; identityOwner?: string };
+      if (room.title === "First room") return room.identityOwner;
+    }
+    return null;
+  })).toBe("anonymous");
 
   await page.reload();
   await page.getByPlaceholder("passphrase", { exact: true }).fill("active-room-passphrase");
