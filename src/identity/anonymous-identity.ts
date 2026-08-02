@@ -80,9 +80,8 @@ export async function prepareAnonymousIdentityReplacement(): Promise<PreparedAno
       }
     },
     abort: () => {
-      if (settled) return;
+      if (!settled) candidateSecretKey.fill(0);
       settled = true;
-      candidateSecretKey.fill(0);
       signer.destroy();
     },
   };

@@ -53,12 +53,13 @@ function anonymousRoom(stablePubkey: string, coordinatorPubkey = "a".repeat(64))
     relayUrls: ["wss://relay.example"],
     name: "River",
     stablePubkey,
-    stateBase64: "authority",
-    keyPackage: { publicBase64: "public", privateBase64: "private" },
+    stateBase64: "",
+    keyPackage: { reference: "rotation-key", publicBase64: "", privateBase64: "private" },
+    lastCursor: 0,
     messages: [{ type: "message", id: "cached", sender: coordinatorPubkey, name: "Host", content: "Preserve history", createdAt: 1 }],
     pending: [],
     isHost: false,
-    anonymousSecretKey: "legacy-authority",
+    anonymousSecretKey: "00".repeat(32),
     inviteToken: "invite-authority",
   };
 }
@@ -376,7 +377,7 @@ describe("user profile helpers", () => {
 
     expect(store.pubkey).toBe(oldPubkey);
     expect(store.recoveryRequired).toBe(false);
-    expect(loadRoom("rotation-room", "a".repeat(64))).toMatchObject({ stateBase64: "authority", anonymousSecretKey: "legacy-authority" });
+    expect(loadRoom("rotation-room", "a".repeat(64))).toMatchObject({ stateBase64: "", anonymousSecretKey: "00".repeat(32) });
     expect(restored).not.toHaveBeenCalled();
   });
 });

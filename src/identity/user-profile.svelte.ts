@@ -10,6 +10,7 @@ import {
   prepareAnonymousIdentityReplacement,
 } from "./anonymous-identity";
 import type { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
+import { retireAnonymousMemberships, type MembershipRetirementJournal } from "../chat/room-store";
 
 export const PROFILE_RELAYS = ["wss://purplepag.es", "wss://relay.damus.io"] as const;
 export const NIP46_CONNECT_RELAYS = ["wss://bucket.coracle.social"] as const;
@@ -32,6 +33,12 @@ interface NostrConnectPool {
   destroy: () => void;
 }
 
+export interface AnonymousSessionLifecycle {
+  stablePubkey: string;
+  retire: () => void | Promise<void>;
+  restore: () => void | Promise<void>;
+}
+
 export class UserProfileStore {
   method = $state<UserAuthMethod>("anonymous");
   pubkey = $state("");
@@ -47,6 +54,7 @@ export class UserProfileStore {
   private remoteSigner: NostrConnectSigner | null = null;
   private remotePool: NostrConnectPool | null = null;
   private initialization: Promise<void> | null = null;
+  private anonymousSessions = new Set<AnonymousSessionLifecycle>();
 
   get displayName(): string {
     return this.profile?.display_name?.trim()
@@ -94,6 +102,11 @@ export class UserProfileStore {
     this.setAnonymousName(name);
   }
 
+  registerAnonymousSession(lifecycle: AnonymousSessionLifecycle): () => void {
+    this.anonymousSessions.add(lifecycle);
+    return () => this.anonymousSessions.delete(lifecycle);
+  }
+
   async rotateAnonymousIdentity(): Promise<void> {
     if (this.method !== "anonymous" || this.recoveryRequired) throw new Error("Local identity rotation is unavailable");
     if (this.rotationInProgress) return;
@@ -103,16 +116,25 @@ export class UserProfileStore {
     this.rotationInProgress = true;
     this.error = "";
     let candidate: Awaited<ReturnType<typeof prepareAnonymousIdentityReplacement>> | null = null;
+    let journal: MembershipRetirementJournal | null = null;
+    const retiredSessions: AnonymousSessionLifecycle[] = [];
     let crossedBoundary = false;
     try {
       candidate = await prepareAnonymousIdentityReplacement();
+      const stablePubkey = await oldSigner.getPublicKey();
+      for (const lifecycle of this.anonymousSessions) {
+        if (lifecycle.stablePubkey !== stablePubkey) continue;
+        await lifecycle.retire();
+        retiredSessions.push(lifecycle);
+      }
+      journal = await retireAnonymousMemberships(stablePubkey);
       if (!writeRecoveryMarker()) throw new Error("Unable to set the local recovery boundary");
       crossedBoundary = true;
 
       this.anonymousSigner = null;
       oldSigner.destroy();
       if (!candidate.commit()) throw new Error("Unable to write the new local identity");
-      if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
+      journal.commit();
 
       this.anonymousSigner = candidate.signer;
       this.pubkey = candidate.pubkey;
@@ -120,9 +142,12 @@ export class UserProfileStore {
       this.status = "ready";
       this.error = "";
       this.recoveryRequired = false;
+      if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
     } catch (cause) {
       candidate?.abort();
       if (!crossedBoundary) {
+        journal?.rollback();
+        for (const lifecycle of retiredSessions.reverse()) await lifecycle.restore();
         this.anonymousSigner = oldSigner;
         throw new Error("Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.");
       }
