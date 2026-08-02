@@ -26,12 +26,18 @@ importers:
       applesauce-signers:
         specifier: ^6.2.2
         version: 6.2.2(@capacitor/core@7.6.8)(typescript@5.9.3)
+      gsap:
+        specifier: ^3.15.0
+        version: 3.15.0
       lean-qr:
         specifier: ^2.7.2
         version: 2.7.2
       nostr-tools:
         specifier: 2.23.5
         version: 2.23.5(typescript@5.9.3)
+      rxjs:
+        specifier: 7.8.2
+        version: 7.8.2
       svelte:
         specifier: 5.56.3
         version: 5.56.3(@typescript-eslint/types@8.61.1)
@@ -943,6 +949,9 @@ packages:
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
+
+  gsap@3.15.0:
+    resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
 
   hash-sum@2.0.0:
     resolution: {integrity: sha512-WdZTbAByD+pHfl/g9QSsBIIwy8IT+EsPiKDs0KNX+zSHhdDLFKdZu0BQHljvO+0QI/BasbMSUa8wYNCZTvhslg==}
@@ -2463,6 +2472,8 @@ snapshots:
   globals@17.6.0: {}
 
   graceful-fs@4.2.11: {}
+
+  gsap@3.15.0: {}
 
   hash-sum@2.0.0: {}
 

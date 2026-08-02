@@ -1,12 +1,25 @@
 import { configStore } from "../config/config.svelte";
-import { clearPersistedCoordinatorState } from "../cordn/coordinator/storage/browserSqliteStorage";
+import {
+  clearPersistedCoordinatorState,
+  createBrowserCoordinatorStorage,
+} from "../cordn/coordinator/storage/browserSqliteStorage";
 import { KeyManager } from "../crypto/key-manager";
-import { keyStorage, WrongPassphraseError } from "../crypto/key-storage";
+import {
+  keyStorage,
+  WrongPassphraseError,
+  type CoordinatorKeyBackup,
+} from "../crypto/key-storage";
 import { transportFactory, type RunningTransport } from "../lib/transport";
 import { resourceMonitor } from "./resource-monitor.svelte";
 import { INSTANCE_RUNNING_MESSAGE, SingleInstanceGuard, type InstanceLease } from "./single-instance-guard";
 import { isConfigLocked, transitionCoordinator } from "./state-machine";
-import type { CoordinatorLoadState, CoordinatorStatus, RelayConnectionStatus } from "./types";
+import type {
+  CoordinatorLoadState,
+  CoordinatorStartupPhase,
+  CoordinatorStartupProgress,
+  CoordinatorStatus,
+  RelayConnectionStatus,
+} from "./types";
 
 export interface DebugLogEntry {
   id: string;
@@ -24,6 +37,67 @@ const debugTimeFormatter = new Intl.DateTimeFormat("en-US", {
   hour12: false,
 });
 
+const STARTUP_TOTAL_STEPS = 5;
+
+const STARTUP_PHASE_COPY: Record<CoordinatorStartupPhase, Omit<CoordinatorStartupProgress, "phase" | "detail"> & { detail: string }> = {
+  idle: {
+    step: 0,
+    totalSteps: STARTUP_TOTAL_STEPS,
+    percent: 0,
+    label: "Ready to start",
+    detail: "The coordinator is offline.",
+  },
+  "checking-instance": {
+    step: 1,
+    totalSteps: STARTUP_TOTAL_STEPS,
+    percent: 20,
+    label: "Checking coordinator availability",
+    detail: "Confirming this identity is not already active.",
+  },
+  "opening-storage": {
+    step: 2,
+    totalSteps: STARTUP_TOTAL_STEPS,
+    percent: 40,
+    label: "Opening room storage",
+    detail: "Loading the coordinator's room state.",
+  },
+  "preparing-runtime": {
+    step: 3,
+    totalSteps: STARTUP_TOTAL_STEPS,
+    percent: 60,
+    label: "Preparing MLS services",
+    detail: "Registering encrypted room coordination methods.",
+  },
+  "connecting-relays": {
+    step: 4,
+    totalSteps: STARTUP_TOTAL_STEPS,
+    percent: 80,
+    label: "Connecting relay paths",
+    detail: "Subscribing for coordinator requests.",
+  },
+  online: {
+    step: 5,
+    totalSteps: STARTUP_TOTAL_STEPS,
+    percent: 100,
+    label: "Coordinator online",
+    detail: "Encrypted room delivery is ready.",
+  },
+  failed: {
+    step: 0,
+    totalSteps: STARTUP_TOTAL_STEPS,
+    percent: 0,
+    label: "Startup interrupted",
+    detail: "The coordinator could not start.",
+  },
+};
+
+function startupProgress(
+  phase: CoordinatorStartupPhase,
+  detail = STARTUP_PHASE_COPY[phase].detail,
+): CoordinatorStartupProgress {
+  return { phase, ...STARTUP_PHASE_COPY[phase], detail };
+}
+
 export class CoordinatorStore {
   keyManager = $state<KeyManager | null>(null);
   loadState = $state<CoordinatorLoadState>("ready");
@@ -34,6 +108,8 @@ export class CoordinatorStore {
   persistenceEnabled = $state(false);
   relayStatuses = $state<Record<string, RelayConnectionStatus>>({});
   debugLog = $state<DebugLogEntry[]>([]);
+  startupProgress = $state<CoordinatorStartupProgress>(startupProgress("idle"));
+  appliedConfigRevision = $state<number | null>(null);
   private running: RunningTransport | null = null;
   private instanceLease: InstanceLease | null = null;
   private pagehideRelease: (() => void) | null = null;
@@ -54,6 +130,12 @@ export class CoordinatorStore {
 
   get locked(): boolean {
     return isConfigLocked(this.status);
+  }
+
+  get restartRequired(): boolean {
+    return this.status === "running"
+      && this.appliedConfigRevision !== null
+      && this.appliedConfigRevision !== configStore.runtimeRevision;
   }
 
   async loadFromPassphrase(passphrase: string): Promise<void> {
@@ -110,8 +192,50 @@ export class CoordinatorStore {
     this.addDebugLog("info", "encrypted persistence disabled");
   }
 
+  async exportCoordinatorKeyBackup(passphrase: string): Promise<CoordinatorKeyBackup | null> {
+    this.persistenceError = null;
+
+    if (!this.persistenceEnabled || !keyStorage.hasPersisted()) {
+      this.persistenceError = "Enable persistence before exporting this coordinator";
+      return null;
+    }
+
+    if (passphrase.length === 0) {
+      this.persistenceError = "Passphrase is required";
+      return null;
+    }
+
+    try {
+      const backup = await keyStorage.exportBackup(passphrase);
+      if (!this.persistenceEnabled || !keyStorage.hasPersisted()) {
+        this.persistenceError = "Persistence changed before the export completed";
+        this.addDebugLog("warn", "encrypted coordinator export cancelled", this.persistenceError);
+        return null;
+      }
+
+      if (backup.identity.publicKeyHex !== this.identity.publicKeyHex) {
+        this.persistenceError = "Saved key does not match this coordinator";
+        this.addDebugLog("warn", "encrypted coordinator export rejected", this.persistenceError);
+        return null;
+      }
+
+      this.addDebugLog("info", "encrypted coordinator backup exported");
+      return backup;
+    } catch (error) {
+      this.persistenceError =
+        error instanceof WrongPassphraseError ? "Wrong passphrase" : "Could not export persisted key";
+      this.addDebugLog("warn", "encrypted coordinator export failed", this.persistenceError);
+      return null;
+    }
+  }
+
+  clearPersistenceError(): void {
+    this.persistenceError = null;
+  }
+
   async start(): Promise<void> {
     this.status = transitionCoordinator(this.status, "start");
+    this.setStartupProgress("checking-instance");
     configStore.lock();
     this.error = null;
     this.setEnabledRelayStatuses("connecting");
@@ -134,7 +258,21 @@ export class CoordinatorStore {
         configStore.coordinatorOptions,
         this.persistenceEnabled,
         {
+          onStartupPhase: ({ phase }) => {
+            const detail = phase === "opening-storage"
+              ? this.persistenceEnabled
+                ? "Loading encrypted room state from this device."
+                : "Preparing temporary room state for this session."
+              : phase === "connecting-relays"
+                ? `Opening ${configStore.enabledRelayUrls.length} configured relay ${configStore.enabledRelayUrls.length === 1 ? "path" : "paths"}.`
+                : undefined;
+            this.setStartupProgress(phase, detail);
+          },
           onStarted: ({ publicKeyHex, relayUrls }) => {
+            this.setStartupProgress(
+              "online",
+              `Listening across ${relayUrls.length} relay ${relayUrls.length === 1 ? "path" : "paths"}.`,
+            );
             this.addDebugLog(
               "info",
               "nostr transport subscribed",
@@ -171,13 +309,15 @@ export class CoordinatorStore {
       );
       this.setEnabledRelayStatuses("connected");
       this.status = transitionCoordinator(this.status, "started");
+      this.appliedConfigRevision = configStore.runtimeRevision;
       resourceMonitor.start(this.running);
       this.addDebugLog("info", "coordinator started", keyManager.identity.npub);
     } catch (error) {
       this.running = null;
-      this.releaseInstanceLease();
+      await this.releaseInstanceLease();
       resourceMonitor.stop();
       this.error = error instanceof Error ? error.message : "Coordinator startup failed";
+      this.setStartupProgress("failed", this.error);
       if (this.error === INSTANCE_RUNNING_MESSAGE) {
         this.addDebugLog("warn", INSTANCE_RUNNING_MESSAGE);
       } else {
@@ -191,17 +331,57 @@ export class CoordinatorStore {
   async stop(): Promise<void> {
     this.addDebugLog("info", "coordinator stop requested");
     this.status = transitionCoordinator(this.status, "stop");
-    this.stopSync();
+    await this.stopSync();
     this.relayStatuses = {};
     this.status = transitionCoordinator(this.status, "stopped");
+    this.setStartupProgress("idle");
     this.addDebugLog("info", "coordinator stopped");
   }
 
-  stopSync(): void {
+  async restart(): Promise<void> {
+    if (this.status !== "running") return;
+    this.addDebugLog("info", "coordinator restart requested", "applying updated settings");
+    await this.stop();
+    await this.start();
+  }
+
+  /**
+   * Delete a room through the local host control plane. This is deliberately
+   * not registered as a coordinator RPC method.
+   */
+  async deleteHostedRoom(groupId: string): Promise<void> {
+    const normalizedGroupId = groupId.trim();
+    if (normalizedGroupId.length === 0) {
+      throw new Error("Room id is required");
+    }
+
+    try {
+      if (this.running) {
+        this.running.coordinator.deleteGroup(normalizedGroupId);
+      } else {
+        const storage = await createBrowserCoordinatorStorage(
+          this.persistenceEnabled,
+          this.identity.publicKeyHex,
+        );
+        try {
+          storage.deleteGroup(normalizedGroupId);
+        } finally {
+          storage.close();
+        }
+      }
+      this.addDebugLog("info", "hosted room deleted", normalizedGroupId);
+    } catch (error) {
+      const details = error instanceof Error ? error.message : String(error);
+      this.addDebugLog("warn", "hosted room deletion failed", details);
+      throw error;
+    }
+  }
+
+  async stopSync(): Promise<void> {
     resourceMonitor.stop();
     this.running?.close();
     this.running = null;
-    this.releaseInstanceLease();
+    await this.releaseInstanceLease();
   }
 
   dismissError(): void {
@@ -220,7 +400,7 @@ export class CoordinatorStore {
 
   private destroyStateSynchronously(): void {
     resourceMonitor.stop();
-    this.releaseInstanceLease();
+    void this.releaseInstanceLease();
     this.keyManager?.destroy();
     keyStorage.clear();
     this.keyManager = KeyManager.generate();
@@ -228,7 +408,9 @@ export class CoordinatorStore {
     this.persistenceError = null;
     this.passphraseError = null;
     this.relayStatuses = {};
+    this.appliedConfigRevision = null;
     this.error = null;
+    this.setStartupProgress("idle");
     configStore.resetToDefaults();
     this.status = "idle";
     this.loadState = "ready";
@@ -244,6 +426,10 @@ export class CoordinatorStore {
     this.relayStatuses = Object.fromEntries(
       configStore.enabledRelayUrls.map((url) => [url, status]),
     );
+  }
+
+  private setStartupProgress(phase: CoordinatorStartupPhase, detail?: string): void {
+    this.startupProgress = startupProgress(phase, detail);
   }
 
   private requireKeyManager(): KeyManager {
@@ -267,11 +453,12 @@ export class CoordinatorStore {
     this.debugLog = [...this.debugLog, entry].slice(-80);
   }
 
-  private releaseInstanceLease(): void {
+  private async releaseInstanceLease(): Promise<void> {
     this.pagehideRelease?.();
     this.pagehideRelease = null;
-    this.instanceLease?.release();
+    const lease = this.instanceLease;
     this.instanceLease = null;
+    await lease?.release();
   }
 
   private registerPagehideRelease(): void {
@@ -279,7 +466,7 @@ export class CoordinatorStore {
 
     const handler = (): void => {
       this.addDebugLog("info", "page unloading; releasing coordinator instance lease");
-      this.releaseInstanceLease();
+      void this.releaseInstanceLease();
     };
 
     globalThis.addEventListener("pagehide", handler, { once: true });

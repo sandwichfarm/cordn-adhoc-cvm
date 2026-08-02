@@ -18,12 +18,19 @@ export interface BrowserCoordinatorOptions {
   maxUsers: number;
 }
 
+export type PresenceState = "online" | "invisible" | "offline";
+
 interface PersistedConfig {
   version: typeof CONFIG_STORAGE_VERSION;
   relays: Array<Pick<RelayConfig, "url" | "enabled">>;
   announce: boolean;
   maxUsers: number;
   autostart: boolean;
+  coordinatorName?: string;
+  userName?: string;
+  hostBadgeLabel?: string;
+  hostBadgeEmoji?: string;
+  presenceState?: PresenceState;
 }
 
 export class ConfigStore {
@@ -34,6 +41,13 @@ export class ConfigStore {
   announce = $state(false);
   maxUsers = $state(DEFAULT_MAX_USERS);
   autostart = $state(false);
+  coordinatorName = $state("My coordinator");
+  userName = $state("");
+  hostBadgeLabel = $state("host");
+  hostBadgeEmoji = $state("🛡️");
+  presenceState = $state<PresenceState>("invisible");
+  revision = $state(0);
+  runtimeRevision = $state(0);
 
   constructor() {
     this.loadPersistedConfig();
@@ -81,30 +95,34 @@ export class ConfigStore {
 
     this.relays = [...this.relays, { id: crypto.randomUUID(), url, enabled: true }];
     this.relayError = null;
-    this.persistConfig();
+    this.commit(true);
     return true;
   }
 
   removeRelay(id: string): void {
+    if (!this.relays.some((relay) => relay.id === id)) return;
     this.relays = this.relays.filter((relay) => relay.id !== id);
-    this.persistConfig();
+    this.commit(true);
   }
 
   toggleRelay(id: string): void {
+    if (!this.relays.some((relay) => relay.id === id)) return;
     this.relays = this.relays.map((relay) =>
       relay.id === id ? { ...relay, enabled: !relay.enabled } : relay,
     );
-    this.persistConfig();
+    this.commit(true);
   }
 
   setAnnouncement(value: boolean): void {
+    if (this.announce === value) return;
     this.announce = value;
-    this.persistConfig();
+    this.commit(true);
   }
 
   setAutostart(value: boolean): void {
+    if (this.autostart === value) return;
     this.autostart = value;
-    this.persistConfig();
+    this.commit();
   }
 
   setMaxUsers(value: number): boolean {
@@ -116,8 +134,42 @@ export class ConfigStore {
 
     this.maxUsers = value;
     this.limitError = null;
-    this.persistConfig();
+    this.commit(true);
     return true;
+  }
+
+  setCoordinatorName(value: string): void {
+    const name = value.trimStart().slice(0, 48);
+    if (this.coordinatorName === name) return;
+    this.coordinatorName = name;
+    this.commit();
+  }
+
+  setUserName(value: string): void {
+    const name = value.trimStart().slice(0, 32);
+    if (this.userName === name) return;
+    this.userName = name;
+    this.commit();
+  }
+
+  setHostBadgeLabel(value: string): void {
+    const label = value.trimStart().slice(0, 20);
+    if (this.hostBadgeLabel === label) return;
+    this.hostBadgeLabel = label;
+    this.commit();
+  }
+
+  setHostBadgeEmoji(value: string): void {
+    const emoji = Array.from(value.trim()).slice(0, 2).join("");
+    if (this.hostBadgeEmoji === emoji) return;
+    this.hostBadgeEmoji = emoji;
+    this.commit();
+  }
+
+  setPresenceState(value: PresenceState): void {
+    if (this.presenceState === value) return;
+    this.presenceState = value;
+    this.commit();
   }
 
   resetToDefaults(): void {
@@ -129,6 +181,18 @@ export class ConfigStore {
     this.announce = false;
     this.maxUsers = DEFAULT_MAX_USERS;
     this.autostart = false;
+    this.coordinatorName = "My coordinator";
+    this.userName = "";
+    this.hostBadgeLabel = "host";
+    this.hostBadgeEmoji = "🛡️";
+    this.presenceState = "invisible";
+    this.revision += 1;
+  }
+
+  private commit(restartRequired = false): void {
+    this.revision += 1;
+    if (restartRequired) this.runtimeRevision += 1;
+    this.persistConfig();
   }
 
   private persistConfig(): void {
@@ -142,6 +206,11 @@ export class ConfigStore {
       announce: this.announce,
       maxUsers: this.maxUsers,
       autostart: this.autostart,
+      coordinatorName: this.coordinatorName,
+      userName: this.userName,
+      hostBadgeLabel: this.hostBadgeLabel,
+      hostBadgeEmoji: this.hostBadgeEmoji,
+      presenceState: this.presenceState,
     };
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
   }
@@ -160,6 +229,11 @@ export class ConfigStore {
     this.announce = persisted.announce;
     this.maxUsers = persisted.maxUsers;
     this.autostart = persisted.autostart;
+    this.coordinatorName = persisted.coordinatorName || "My coordinator";
+    this.userName = persisted.userName || "";
+    this.hostBadgeLabel = persisted.hostBadgeLabel ?? "host";
+    this.hostBadgeEmoji = persisted.hostBadgeEmoji ?? "🛡️";
+    this.presenceState = persisted.presenceState ?? "invisible";
   }
 }
 
@@ -204,10 +278,31 @@ function readPersistedConfig(): PersistedConfig | null {
       announce: parsed.announce === true,
       maxUsers: limitError ? DEFAULT_MAX_USERS : maxUsers,
       autostart: parsed.autostart === true,
+      coordinatorName: normalizeName(parsed.coordinatorName, 48),
+      userName: normalizeName(parsed.userName, 32),
+      hostBadgeLabel: normalizeName(parsed.hostBadgeLabel, 20),
+      hostBadgeEmoji: normalizeEmoji(parsed.hostBadgeEmoji),
+      presenceState: normalizePresenceState(parsed.presenceState),
     };
   } catch {
     return null;
   }
+}
+
+function normalizePresenceState(value: unknown): PresenceState | undefined {
+  return value === "online" || value === "invisible" || value === "offline" ? value : undefined;
+}
+
+function normalizeName(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().slice(0, maxLength);
+  return normalized || undefined;
+}
+
+function normalizeEmoji(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = Array.from(value.trim()).slice(0, 2).join("");
+  return normalized || undefined;
 }
 
 function normalizePersistedRelay(value: unknown): Pick<RelayConfig, "url" | "enabled"> | null {

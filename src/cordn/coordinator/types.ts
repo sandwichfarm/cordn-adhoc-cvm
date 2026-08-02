@@ -23,6 +23,7 @@ export interface JoinRequestRecord {
   groupId: string;
   requesterStablePubkey: string;
   keyPackageRef: string;
+  inviteToken?: string;
   createdAt: number;
   readAt: number | null;
 }
@@ -60,6 +61,7 @@ export interface StoreJoinRequestInput {
   groupId: string;
   requesterStablePubkey: string;
   keyPackageRef: string;
+  inviteToken?: string;
 }
 
 export interface PostGroupMessageInput {

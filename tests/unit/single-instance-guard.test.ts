@@ -43,9 +43,47 @@ describe("SingleInstanceGuard", () => {
     await expect(second.acquire(acquireInput())).rejects.toThrow(CordnAlreadyRunningError);
     await expect(second.acquire(acquireInput())).rejects.toThrow(INSTANCE_RUNNING_MESSAGE);
 
-    lease.release();
+    await lease.release();
     const secondLease = await second.acquire(acquireInput());
-    secondLease.release();
+    await secondLease.release();
+  });
+
+  test("waits for the browser Web Lock to be released before resolving the lease", async () => {
+    let held = false;
+    const locks = {
+      async request<T>(
+        _name: string,
+        _options: { ifAvailable: true; mode?: "exclusive" },
+        callback: (lock: unknown | null) => T | Promise<T>,
+      ): Promise<T> {
+        if (held) return await callback(null);
+        held = true;
+        try {
+          return await callback({});
+        } finally {
+          held = false;
+        }
+      },
+    };
+    const first = new SingleInstanceGuard({
+      storage: null,
+      createBroadcastChannel: null,
+      locks,
+      nostr: null,
+    });
+    const second = new SingleInstanceGuard({
+      storage: null,
+      createBroadcastChannel: null,
+      locks,
+      nostr: null,
+    });
+
+    const lease = await first.acquire(acquireInput());
+    await expect(second.acquire(acquireInput())).rejects.toThrow(INSTANCE_RUNNING_MESSAGE);
+
+    await lease.release();
+    const restartedLease = await second.acquire(acquireInput());
+    await restartedLease.release();
   });
 
   test("blocks when the Nostr public-key probe finds an active heartbeat", async () => {
@@ -84,7 +122,7 @@ describe("SingleInstanceGuard", () => {
       expect.objectContaining({ publicKeyHex, relayUrls, instanceToken: "heartbeat-token" }),
       undefined,
     );
-    lease.release();
+    await lease.release();
     expect(release).toHaveBeenCalledOnce();
   });
 });

@@ -135,6 +135,109 @@ describe("browser Cordn server adapter", () => {
     ]);
   });
 
+  test("tombstones deleted rooms and rejects stale joins and messages", () => {
+    const storage = new InMemoryCoordinatorStorage();
+    const encodedMessage = createPrivateApplicationMessage("group-deleted", 9n);
+
+    storage.storeJoinRequest({
+      groupId: "group-deleted",
+      requesterStablePubkey: "requester",
+      keyPackageRef: "key-package",
+      inviteToken: "stale-invite",
+      createdAt: 1,
+      readAt: null,
+    });
+    storage.appendGroupMessage({
+      groupId: "group-deleted",
+      latestHandshakeEpoch: 9n,
+      epoch: 9n,
+      ephemeralSenderPubkey: "sender",
+      opaqueMessage: encodedMessage,
+      createdAt: 2,
+    });
+
+    storage.deleteGroup("group-deleted");
+
+    expect(storage.isGroupDeleted("group-deleted")).toBe(true);
+    expect(storage.getGroupRouting("group-deleted")).toBeNull();
+    expect(storage.toSnapshot()).toMatchObject({
+      deletedGroups: ["group-deleted"],
+      groups: [],
+      joinRequests: [],
+    });
+    expect(() => storage.fetchGroupMessages({ groupId: "group-deleted" })).toThrow(
+      "Room deleted by host",
+    );
+    expect(() =>
+      storage.storeJoinRequest({
+        groupId: "group-deleted",
+        requesterStablePubkey: "requester",
+        keyPackageRef: "key-package",
+        inviteToken: "stale-invite",
+        createdAt: 3,
+        readAt: null,
+      }),
+    ).toThrow("Room deleted by host");
+    expect(() =>
+      storage.appendGroupMessage({
+        groupId: "group-deleted",
+        latestHandshakeEpoch: 9n,
+        epoch: 9n,
+        ephemeralSenderPubkey: "sender",
+        opaqueMessage: encodedMessage,
+        createdAt: 4,
+      }),
+    ).toThrow("Room deleted by host");
+  });
+
+  test("restores v1 snapshots with or without deleted-room tombstones", () => {
+    const legacySnapshot = new InMemoryCoordinatorStorage().toSnapshot();
+    delete legacySnapshot.deletedGroups;
+
+    expect(new InMemoryCoordinatorStorage(legacySnapshot).isGroupDeleted("legacy-room")).toBe(
+      false,
+    );
+
+    const firstStorage = new InMemoryCoordinatorStorage();
+    firstStorage.deleteGroup("deleted-room");
+    const restoredStorage = new InMemoryCoordinatorStorage(firstStorage.toSnapshot());
+
+    expect(restoredStorage.isGroupDeleted("deleted-room")).toBe(true);
+    expect(() => restoredStorage.fetchGroupMessages({ groupId: "deleted-room" })).toThrow(
+      "Room deleted by host",
+    );
+  });
+
+  test("closes every leg of a live subscription when its room is deleted", async () => {
+    const coordinator = new Coordinator({ welcomeCleanupIntervalMs: 0 });
+    const subscription = coordinator.subscribeManyGroupMessages({
+      groups: [{ groupId: "deleted-room" }, { groupId: "other-room" }],
+    });
+    const pendingMessage = subscription.messages[Symbol.asyncIterator]().next();
+
+    expect(coordinator.getActiveSubscriptionMetrics()).toEqual({
+      activeStreams: 1,
+      groupLegs: 2,
+    });
+
+    coordinator.deleteGroup("deleted-room");
+
+    await expect(pendingMessage).resolves.toEqual({ value: undefined, done: true });
+    expect(coordinator.getActiveSubscriptionMetrics()).toEqual({
+      activeStreams: 0,
+      groupLegs: 0,
+    });
+    expect(() =>
+      coordinator.subscribeGroupMessages({ groupId: "deleted-room" }),
+    ).toThrow("Room deleted by host");
+    expect(() =>
+      coordinator.postGroupMessage({
+        ephemeralSenderPubkey: "sender",
+        opaqueMessage: createPrivateApplicationMessage("deleted-room", 1n),
+      }),
+    ).toThrow("Room deleted by host");
+  });
+
   test("uses browser base64 APIs without Buffer", () => {
     const encoded = encodeBase64(Uint8Array.from([1, 2, 3, 254]));
 

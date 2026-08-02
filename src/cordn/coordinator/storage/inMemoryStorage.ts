@@ -13,6 +13,7 @@ import {
   type AppendGroupMessageParams,
   type CoordinatorStorage,
   MAX_PENDING_JOIN_REQUESTS_PER_GROUP,
+  ROOM_DELETED_BY_HOST_ERROR,
 } from "./storage";
 import { decodeBase64, encodeBase64 } from "../../server/base64";
 import {
@@ -30,6 +31,8 @@ interface GroupLog {
 
 export interface CoordinatorStorageSnapshot {
   version: 1;
+  /** Optional to preserve compatibility with snapshots written before room deletion. */
+  deletedGroups?: string[];
   keyPackages: Array<{
     stablePubkey: string;
     keyPackageRef: string;
@@ -86,6 +89,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   private readonly welcomesByIdentity = new Map<string, WelcomeQueueRecord[]>();
   private readonly joinRequestsByGroup = new Map<string, JoinRequestRecord[]>();
   private readonly groups = new Map<string, GroupLog>();
+  private readonly deletedGroups = new Set<string>();
 
   constructor(
     snapshot?: CoordinatorStorageSnapshot | null,
@@ -99,6 +103,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   toSnapshot(): CoordinatorStorageSnapshot {
     return {
       version: 1,
+      deletedGroups: [...this.deletedGroups].sort(),
       keyPackages: this.listAllKeyPackages().map((record) => ({
         stablePubkey: record.stablePubkey,
         keyPackageRef: record.keyPackageRef,
@@ -197,10 +202,15 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   consumeKeyPackage(identifier: string): PublishedKeyPackageRecord | null {
     const directRecord = this.consumeKeyPackageByReference(identifier);
     if (directRecord) {
+      this.removeJoinRequestsForKeyPackage(directRecord.keyPackageRef);
       return directRecord;
     }
 
-    return this.consumeKeyPackageByIdentity(identifier);
+    const identityRecord = this.consumeKeyPackageByIdentity(identifier);
+    if (identityRecord) {
+      this.removeJoinRequestsForKeyPackage(identityRecord.keyPackageRef);
+    }
+    return identityRecord;
   }
 
   storeWelcome(record: WelcomeQueueRecord): WelcomeQueueRecord {
@@ -260,6 +270,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   }
 
   storeJoinRequest(record: JoinRequestRecord): JoinRequestRecord {
+    this.assertGroupAvailable(record.groupId);
     const existing = this.joinRequestsByGroup.get(record.groupId) ?? [];
     // Cap unread pending join requests per group to prevent unbounded accumulation.
     const unreadCount = existing.filter((req) => req.readAt === null).length;
@@ -270,6 +281,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     const duplicate = existing.find(
       (req) =>
         req.requesterStablePubkey === record.requesterStablePubkey &&
+        req.inviteToken === record.inviteToken &&
         req.readAt === null,
     );
     if (duplicate) {
@@ -335,7 +347,23 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     return deleted;
   }
 
+  isGroupDeleted(groupId: string): boolean {
+    return this.deletedGroups.has(groupId);
+  }
+
+  deleteGroup(groupId: string): void {
+    const newlyDeleted = !this.deletedGroups.has(groupId);
+    const removedGroup = this.groups.delete(groupId);
+    const removedJoinRequests = this.joinRequestsByGroup.delete(groupId);
+    this.deletedGroups.add(groupId);
+
+    if (newlyDeleted || removedGroup || removedJoinRequests) {
+      this.persist();
+    }
+  }
+
   appendGroupMessage(params: AppendGroupMessageParams): GroupMessageRecord {
+    this.assertGroupAvailable(params.groupId);
     const group =
       this.groups.get(params.groupId) ??
       createGroupLog(params.groupId, params.latestHandshakeEpoch);
@@ -361,6 +389,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   }
 
   fetchGroupMessages(input: FetchGroupMessagesInput): GroupMessageRecord[] {
+    this.assertGroupAvailable(input.groupId);
     const messages = this.groups.get(input.groupId)?.messages ?? [];
     const sinceEpoch = input.sinceEpoch;
     const afterCursor = input.afterCursor;
@@ -403,6 +432,21 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     }
 
     return records.at(-1) ?? null;
+  }
+
+  private removeJoinRequestsForKeyPackage(keyPackageRef: string): void {
+    let changed = false;
+    for (const [groupId, records] of this.joinRequestsByGroup) {
+      const kept = records.filter((record) => record.keyPackageRef !== keyPackageRef);
+      if (kept.length === records.length) continue;
+      changed = true;
+      if (kept.length === 0) {
+        this.joinRequestsByGroup.delete(groupId);
+      } else {
+        this.joinRequestsByGroup.set(groupId, kept);
+      }
+    }
+    if (changed) this.persist();
   }
 
   private consumeKeyPackageByReference(
@@ -449,6 +493,10 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
       throw new Error("Unsupported coordinator storage snapshot");
     }
 
+    for (const groupId of snapshot.deletedGroups ?? []) {
+      this.deletedGroups.add(groupId);
+    }
+
     for (const record of snapshot.keyPackages) {
       const keyPackageRecords =
         this.keyPackagesByIdentity.get(record.stablePubkey) ?? [];
@@ -478,12 +526,18 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     }
 
     for (const record of snapshot.joinRequests) {
+      if (this.isGroupDeleted(record.groupId)) {
+        continue;
+      }
       const records = this.joinRequestsByGroup.get(record.groupId) ?? [];
       records.push({ ...record });
       this.joinRequestsByGroup.set(record.groupId, records);
     }
 
     for (const group of snapshot.groups) {
+      if (this.isGroupDeleted(group.groupId)) {
+        continue;
+      }
       this.groups.set(group.groupId, {
         nextCursor: group.nextCursor,
         routing: {
@@ -505,5 +559,11 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
 
   private persist(): void {
     this.onChange?.(this.toSnapshot());
+  }
+
+  private assertGroupAvailable(groupId: string): void {
+    if (this.isGroupDeleted(groupId)) {
+      throw new Error(ROOM_DELETED_BY_HOST_ERROR);
+    }
   }
 }

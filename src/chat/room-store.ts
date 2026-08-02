@@ -2,7 +2,8 @@ import type { NostrSigner } from "@contextvm/sdk/core";
 import { generateSecretKey } from "nostr-tools";
 import { bytesToHex, hexToBytes } from "nostr-tools/utils";
 import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
-import type { ChatInvite } from "./invite";
+import { notificationCenter } from "../notifications/notification-center.svelte";
+import { normalizeRoomHostIdentity, type ChatInvite, type RoomHostIdentity } from "./invite";
 import {
   addMember,
   createKeyPackage,
@@ -11,14 +12,21 @@ import {
   decryptMessage,
   encodeState,
   encryptMessage,
+  groupCreatorPubkey,
   groupId,
   joinWelcome,
+  sanitizeChatEnvelopeHostBadge,
+  signChatEnvelope,
   type ChatEnvelope,
   type LocalKeyPackage,
 } from "./protocol";
-import { ChatCoordinatorClient } from "./coordinator-client";
+import { ChatCoordinatorClient, type RemoteJoinRequest } from "./coordinator-client";
 
 const ROOM_KEY_PREFIX = "cordn-adhoc-chat-room:";
+const ROOM_KEY_V2_PREFIX = `${ROOM_KEY_PREFIX}v2:`;
+const ACTIVE_HOST_ROOM_KEY_PREFIX = "cordn-adhoc-active-host-room:";
+export const ROOMS_CHANGED_EVENT = "cordn:rooms-changed";
+export const SERVER_ONLINE_EVENT = "cordn:server-online";
 
 export interface StoredMessage extends ChatEnvelope {
   cursor?: number;
@@ -30,13 +38,24 @@ export interface PendingMessage {
   opaqueBase64: string;
 }
 
+export interface RoomIdentity {
+  name: string;
+  avatar?: string;
+  badgeLabel?: string;
+  badgeEmoji?: string;
+}
+
 export interface StoredRoom {
   version: 1;
   id: string;
   title: string;
   coordinatorPubkey: string;
+  coordinatorOrigin?: string;
   relayUrls: string[];
   name: string;
+  avatar?: string;
+  badgeLabel?: string;
+  badgeEmoji?: string;
   stablePubkey: string;
   isHost: boolean;
   stateBase64: string;
@@ -46,7 +65,11 @@ export interface StoredRoom {
   messages: StoredMessage[];
   pending: PendingMessage[];
   autoApprove?: boolean;
+  inviteToken?: string;
+  host?: RoomHostIdentity;
   joinRequestSent?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface RoomStatus {
@@ -57,9 +80,17 @@ export interface RoomStatus {
 export class ChatRoomSession {
   private client: ChatCoordinatorClient | null = null;
   private timer: number | null = null;
-  private syncing = false;
+  private operationQueue: Promise<void> = Promise.resolve();
+  private pendingSync: Promise<void> | null = null;
+  private serverWasOnline = false;
+  private stopped = false;
+  private persistenceEnabled = true;
+  private lifecycleGeneration = 0;
+  private hasCompletedInitialMessageSync = false;
+  private readonly knownJoinRequestIds = new Set<string>();
   private readonly listeners = new Set<() => void>();
   status: RoomStatus = { connection: "connecting" };
+  pendingJoinRequests: RemoteJoinRequest[] = [];
 
   constructor(public room: StoredRoom, private signer: NostrSigner) {}
 
@@ -69,12 +100,20 @@ export class ChatRoomSession {
   }
 
   async start(): Promise<void> {
+    const generation = ++this.lifecycleGeneration;
+    this.stopped = false;
+    if (this.timer) window.clearInterval(this.timer);
+    this.timer = null;
+    window.removeEventListener("online", this.handleOnline);
     await this.sync();
+    if (this.stopped || generation !== this.lifecycleGeneration) return;
     this.timer = window.setInterval(() => void this.sync(), 4_000);
     window.addEventListener("online", this.handleOnline);
   }
 
   stop(): void {
+    this.lifecycleGeneration += 1;
+    this.stopped = true;
     if (this.timer) window.clearInterval(this.timer);
     this.timer = null;
     window.removeEventListener("online", this.handleOnline);
@@ -82,65 +121,156 @@ export class ChatRoomSession {
     this.client = null;
   }
 
+  /**
+   * Permanently stop this session without allowing an in-flight operation to
+   * write the room back to local storage. Use this before deleting or leaving
+   * a room; `stop()` alone intentionally remains restartable.
+   */
+  discard(): void {
+    this.persistenceEnabled = false;
+    this.stop();
+  }
+
   async send(content: string): Promise<void> {
     const trimmed = content.trim();
     if (!trimmed) return;
-    const event: ChatEnvelope = {
-      type: "message",
-      id: crypto.randomUUID(),
-      sender: this.room.stablePubkey,
-      name: this.room.name,
-      content: trimmed,
-      createdAt: Date.now(),
-    };
-    const encrypted = await encryptMessage(decodeState(this.room.stateBase64), event);
-    this.room.stateBase64 = encodeState(encrypted.state);
-    this.room.messages = [...this.room.messages, { ...event, pending: true }];
-    this.room.pending = [...this.room.pending, { id: event.id, opaqueBase64: encrypted.opaqueBase64 }];
+    await this.runExclusive(async () => {
+      if (this.stopped || this.status.connection !== "connected") {
+        throw new Error("The coordinator must be connected before you can send a message");
+      }
+      if (this.room.joinRequestSent) {
+        throw new Error("Wait for the host to admit you before sending a message");
+      }
+      const event = await signChatEnvelope({
+        type: "message",
+        id: crypto.randomUUID(),
+        sender: this.room.stablePubkey,
+        name: this.room.name,
+        avatar: this.room.avatar,
+        badgeLabel: this.room.badgeLabel,
+        badgeEmoji: this.room.badgeEmoji,
+        content: trimmed,
+        createdAt: Date.now(),
+      }, this.signer);
+      const encrypted = await encryptMessage(decodeState(this.room.stateBase64), event);
+      this.room.stateBase64 = encodeState(encrypted.state);
+      this.room.messages = [...this.room.messages, { ...event, pending: true }];
+      this.room.pending = [...this.room.pending, { id: event.id, opaqueBase64: encrypted.opaqueBase64 }];
+      this.persist();
+      this.emit();
+      await this.syncOnce();
+    });
+  }
+
+  setIdentity(identity: RoomIdentity): void {
+    this.room.name = identity.name.trim() || (this.room.isHost ? "Host" : "Anonymous");
+    this.room.avatar = identity.avatar?.trim() || undefined;
+    this.room.badgeLabel = identity.badgeLabel?.trim() || undefined;
+    this.room.badgeEmoji = identity.badgeEmoji?.trim() || undefined;
+    if (this.room.isHost) {
+      this.room.host = normalizeRoomHostIdentity({
+        name: this.room.name,
+        pubkey: this.room.stablePubkey,
+        avatar: this.room.avatar,
+      });
+    }
     this.persist();
-    await this.sync();
+    this.emit();
   }
 
   async setAutoApprove(enabled: boolean): Promise<void> {
-    this.room.autoApprove = enabled;
-    this.persist();
-    await this.sync();
+    await this.runExclusive(async () => {
+      this.room.autoApprove = enabled;
+      this.persist();
+      await this.syncOnce();
+    });
   }
 
   async approveJoinRequests(): Promise<void> {
-    const client = this.getClient();
-    await this.acceptJoinRequests(client);
-    await this.sync();
+    await this.runExclusive(async () => {
+      const client = this.getClient();
+      const requests = this.pendingJoinRequests.length > 0
+        ? [...this.pendingJoinRequests]
+        : this.currentInviteRequests(await client.fetchJoinRequests(this.room.id));
+      await this.acceptJoinRequests(client, requests);
+      this.pendingJoinRequests = [];
+      await this.syncOnce();
+    });
   }
 
   async sync(): Promise<void> {
-    if (this.syncing) return;
-    this.syncing = true;
-    this.status = { connection: "connecting" };
-    this.emit();
+    if (this.stopped) return;
+    if (this.pendingSync) return this.pendingSync;
+    const operation = this.runExclusive(() => this.syncOnce());
+    this.pendingSync = operation;
+    try {
+      await operation;
+    } finally {
+      if (this.pendingSync === operation) this.pendingSync = null;
+    }
+  }
+
+  private async syncOnce(): Promise<void> {
+    if (this.stopped) return;
+    if (this.status.connection !== "connected" && this.status.connection !== "offline") {
+      this.status = { connection: "connecting" };
+      this.emit();
+    }
     try {
       const client = this.getClient();
-      if (this.room.isHost && this.room.autoApprove !== false) await this.acceptJoinRequests(client);
+      if (this.room.isHost) {
+        const requests = this.currentInviteRequests(await client.fetchJoinRequests(this.room.id));
+        const newRequests = requests.filter((request) => !this.knownJoinRequestIds.has(request.kp_ref));
+        for (const request of requests) this.knownJoinRequestIds.add(request.kp_ref);
+        for (const request of newRequests) {
+          notificationCenter.enqueue({
+            category: "join_request",
+            key: `${this.room.id}:${request.kp_ref}`,
+            room: this.room.title,
+            action: this.room.autoApprove !== false ? "joined" : "waiting",
+          });
+        }
+        if (this.room.autoApprove !== false) {
+          await this.acceptJoinRequests(client, requests);
+          this.pendingJoinRequests = [];
+        } else {
+          this.pendingJoinRequests = requests;
+        }
+      }
       if (!this.room.isHost && this.room.joinRequestSent) await this.acceptWelcome(client);
       if (!this.room.isHost && this.room.joinRequestSent) {
-        this.status = { connection: "connected", detail: "Waiting for the host to admit you" };
+        this.markServerOnline("Waiting for the host to admit you");
         return;
       }
       await this.flushPending(client);
       await this.pullMessages(client);
-      this.status = { connection: "connected" };
+      if (this.stopped) return;
+      this.markServerOnline();
     } catch (error) {
+      this.serverWasOnline = false;
       this.status = { connection: "offline", detail: error instanceof Error ? error.message : "Coordinator unavailable" };
       await this.client?.close();
       this.client = null;
     } finally {
-      this.syncing = false;
       this.persist();
       this.emit();
     }
   }
 
   private handleOnline = () => void this.sync();
+
+  private markServerOnline(detail?: string): void {
+    this.status = { connection: "connected", detail };
+    this.emit();
+    if (this.serverWasOnline) return;
+    this.serverWasOnline = true;
+    window.dispatchEvent(new CustomEvent(SERVER_ONLINE_EVENT, {
+      detail: {
+        coordinatorPubkey: this.room.coordinatorPubkey,
+        roomId: this.room.id,
+      },
+    }));
+  }
 
   private getClient(): ChatCoordinatorClient {
     if (!this.client) {
@@ -149,8 +279,13 @@ export class ChatRoomSession {
     return this.client;
   }
 
-  private async acceptJoinRequests(client: ChatCoordinatorClient): Promise<void> {
-    for (const request of await client.fetchJoinRequests(this.room.id)) {
+  private currentInviteRequests(requests: RemoteJoinRequest[]): RemoteJoinRequest[] {
+    if (!this.room.inviteToken) return requests;
+    return requests.filter((request) => request.invite_token === this.room.inviteToken);
+  }
+
+  private async acceptJoinRequests(client: ChatCoordinatorClient, requests: RemoteJoinRequest[]): Promise<void> {
+    for (const request of requests) {
       const consumed = await client.consumeKeyPackage(request.kp_ref);
       if (!consumed) continue;
       const event = consumed.event as { content?: string };
@@ -169,7 +304,10 @@ export class ChatRoomSession {
     const welcome = (await client.fetchWelcomes()).find((entry) => entry.kp_ref === this.room.keyPackage.reference);
     if (!welcome) return;
     const state = await joinWelcome(welcome.welcome_64, this.room.keyPackage);
-    this.room.id = groupId(state);
+    if (groupId(state) !== this.room.id) {
+      throw new Error("The coordinator welcome does not match this room");
+    }
+    this.room.host = reconcileRoomHostIdentity(this.room.host, groupCreatorPubkey(state));
     this.room.stateBase64 = encodeState(state);
     this.room.lastCursor = welcome.after ?? 0;
     this.room.joinRequestSent = false;
@@ -187,13 +325,24 @@ export class ChatRoomSession {
   private async pullMessages(client: ChatCoordinatorClient): Promise<void> {
     const messages = await client.fetchMessages(this.room.id, this.room.lastCursor);
     let state = decodeState(this.room.stateBase64);
+    const shouldNotify = this.hasCompletedInitialMessageSync;
     for (const message of messages) {
       try {
-        const decoded = await decryptMessage(state, message.msg_64);
+        const decoded = await decryptMessage(state, message.msg_64, {
+          expectedHostPubkey: groupCreatorPubkey(state) ?? undefined,
+        });
         state = decoded.state;
         this.room.lastCursor = Math.max(this.room.lastCursor, message.cursor);
         if (decoded.envelope && !this.room.messages.some((entry) => entry.id === decoded.envelope?.id)) {
           this.room.messages = [...this.room.messages, { ...decoded.envelope, cursor: message.cursor }];
+          if (shouldNotify && decoded.envelope.sender !== this.room.stablePubkey) {
+            notificationCenter.enqueue({
+              category: "new_message",
+              key: decoded.envelope.id,
+              actor: decoded.envelope.name,
+              room: this.room.title,
+            });
+          }
         }
       } catch {
         // A stale pre-join message is intentionally ignored. Its cursor is still
@@ -202,30 +351,44 @@ export class ChatRoomSession {
       }
     }
     this.room.stateBase64 = encodeState(state);
+    this.hasCompletedInitialMessageSync = true;
   }
 
   private persist(): void {
+    if (!this.persistenceEnabled) return;
     saveRoom(this.room);
   }
 
   private emit(): void {
     for (const listener of this.listeners) listener();
   }
+
+  private runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.operationQueue.then(operation, operation);
+    this.operationQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
 }
 
-export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; autoApprove?: boolean }): Promise<StoredRoom> {
+export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity }): Promise<StoredRoom> {
   const secret = generateSecretKey();
   const signer = new BrowserNostrSigner(secret);
   const stablePubkey = await signer.getPublicKey();
   const key = await createKeyPackage(stablePubkey);
   const state = await createRoomState(key.keyPackage, key.privateKeyPackage);
+  const name = input.identity?.name.trim() || "Host";
+  const avatar = input.identity?.avatar?.trim() || undefined;
   const room: StoredRoom = {
     version: 1,
     id: groupId(state),
     title: input.title.trim() || "Untitled chat",
     coordinatorPubkey: input.coordinatorPubkey,
+    coordinatorOrigin: input.coordinatorOrigin ?? window.location.origin,
     relayUrls: input.relayUrls,
-    name: "Host",
+    name,
+    avatar,
+    badgeLabel: input.identity?.badgeLabel?.trim() || "host",
+    badgeEmoji: input.identity?.badgeEmoji,
     stablePubkey,
     isHost: true,
     stateBase64: encodeState(state),
@@ -235,12 +398,15 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
     messages: [],
     pending: [],
     autoApprove: input.autoApprove ?? true,
+    inviteToken: createInviteToken(),
+    host: normalizeRoomHostIdentity({ name, pubkey: stablePubkey, avatar }),
+    createdAt: Date.now(),
   };
   saveRoom(room);
   return room;
 }
 
-export async function createJoiningRoom(input: { invite: ChatInvite; name: string; signer: NostrSigner; anonymousSecretKey?: string }): Promise<StoredRoom> {
+export async function createJoiningRoom(input: { invite: ChatInvite; name: string; signer: NostrSigner; anonymousSecretKey?: string; avatar?: string }): Promise<StoredRoom> {
   const stablePubkey = await input.signer.getPublicKey();
   const key = await createKeyPackage(stablePubkey);
   const room: StoredRoom = {
@@ -248,8 +414,10 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
     id: input.invite.groupId,
     title: input.invite.title || "Chat",
     coordinatorPubkey: input.invite.coordinatorPubkey,
+    coordinatorOrigin: input.invite.coordinatorOrigin ?? window.location.origin,
     relayUrls: input.invite.relayUrls,
     name: input.name.trim() || "Anonymous",
+    avatar: input.avatar,
     stablePubkey,
     isHost: false,
     stateBase64: "",
@@ -258,12 +426,15 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
     lastCursor: 0,
     messages: [],
     pending: [],
+    inviteToken: input.invite.inviteToken,
+    host: normalizeRoomHostIdentity(input.invite.host),
     joinRequestSent: true,
+    createdAt: Date.now(),
   };
   const client = new ChatCoordinatorClient({ coordinatorPubkey: room.coordinatorPubkey, relayUrls: room.relayUrls }, input.signer);
   try {
     await client.publishKeyPackage(key.stored.reference, key.stored.publicBase64);
-    await client.storeJoinRequest(room.id, key.stored.reference);
+    await client.storeJoinRequest(room.id, key.stored.reference, room.inviteToken);
   } finally {
     await client.close();
   }
@@ -275,17 +446,285 @@ export function signerForStoredRoom(room: StoredRoom): BrowserNostrSigner | null
   return room.anonymousSecretKey ? new BrowserNostrSigner(hexToBytes(room.anonymousSecretKey)) : null;
 }
 
-export function loadRoom(id: string): StoredRoom | null {
+/** Resolve an explicit host, with deterministic fallbacks for legacy rooms. */
+export function hostIdentityForRoom(room: StoredRoom): RoomHostIdentity {
+  const host = normalizeRoomHostIdentity(room.host);
+  if (room.isHost) {
+    if (host) return host;
+    return normalizeRoomHostIdentity({
+      name: room.name.trim() || "Host",
+      pubkey: room.stablePubkey,
+      avatar: room.avatar,
+    }) ?? { name: room.name.trim() || "Host", pubkey: room.stablePubkey };
+  }
+  if (!room.joinRequestSent && room.stateBase64) {
+    try {
+      return reconcileRoomHostIdentity(host, groupCreatorPubkey(decodeState(room.stateBase64)));
+    } catch {
+      // A corrupt cached state is handled by the normal room connection flow.
+    }
+  }
+  if (room.joinRequestSent && host) return host;
+  return unknownHostIdentity();
+}
+
+/** Keep claimed presentation only when MLS proves the same creator key. */
+export function reconcileRoomHostIdentity(host: RoomHostIdentity | undefined, creatorPubkey: string | null): RoomHostIdentity {
+  const normalized = normalizeRoomHostIdentity(host);
+  if (creatorPubkey && normalized?.pubkey.toLowerCase() === creatorPubkey.toLowerCase()) return normalized;
+  return unknownHostIdentity(creatorPubkey ?? "");
+}
+
+function unknownHostIdentity(pubkey = ""): RoomHostIdentity {
+  return { name: "Unknown host", pubkey };
+}
+
+export function loadRoom(id: string, coordinatorPubkey?: string): StoredRoom | null {
   try {
-    const raw = localStorage.getItem(`${ROOM_KEY_PREFIX}${id}`);
-    if (!raw) return null;
-    const room = JSON.parse(raw) as StoredRoom;
-    return room.version === 1 ? room : null;
+    if (coordinatorPubkey) {
+      const stored = readStoredRoom(localStorage.getItem(roomStorageKey(coordinatorPubkey, id)));
+      if (stored?.id === id && stored.coordinatorPubkey === coordinatorPubkey) return stored;
+
+      const legacyKey = `${ROOM_KEY_PREFIX}${id}`;
+      const legacy = readStoredRoom(localStorage.getItem(legacyKey));
+      if (legacy?.id !== id || legacy.coordinatorPubkey !== coordinatorPubkey) return null;
+      migrateLegacyRoom(legacyKey, legacy);
+      return legacy;
+    }
+
+    const matches = listRooms().filter((room) => room.id === id);
+    return matches.length === 1 ? matches[0] : null;
   } catch {
     return null;
   }
 }
 
+export function listRooms(): StoredRoom[] {
+  const rooms = new Map<string, { room: StoredRoom; currentKey: boolean; storageKey: string; sourceKeys: string[] }>();
+  try {
+    const entries: Array<{ key: string; raw: string }> = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(ROOM_KEY_PREFIX)) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      entries.push({ key, raw });
+    }
+
+    for (const { key, raw } of entries) {
+      const room = readStoredRoom(raw);
+      if (!room) continue;
+      const identity = roomIdentity(room.coordinatorPubkey, room.id);
+      const currentKey = key === roomStorageKey(room.coordinatorPubkey, room.id);
+      const existing = rooms.get(identity);
+      if (!existing) {
+        rooms.set(identity, { room, currentKey, storageKey: key, sourceKeys: [key] });
+      } else {
+        existing.sourceKeys.push(key);
+        if (currentKey && !existing.currentKey) {
+          existing.room = room;
+          existing.currentKey = true;
+          existing.storageKey = key;
+        }
+      }
+    }
+
+    for (const entry of rooms.values()) {
+      if (!entry.currentKey) migrateLegacyRoom(entry.storageKey, entry.room);
+    }
+
+    for (const entry of rooms.values()) {
+      const currentStorageKey = roomStorageKey(entry.room.coordinatorPubkey, entry.room.id);
+      const current = readStoredRoom(localStorage.getItem(currentStorageKey));
+      if (!sameRoomIdentity(current, entry.room)) continue;
+      entry.room = current;
+      entry.currentKey = true;
+      for (const sourceKey of entry.sourceKeys) {
+        if (sourceKey === currentStorageKey) continue;
+        const source = readStoredRoom(localStorage.getItem(sourceKey));
+        if (sameRoomIdentity(source, entry.room)) localStorage.removeItem(sourceKey);
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  return Array.from(rooms.values(), ({ room }) => room).sort((left, right) => {
+    const leftActivity = left.updatedAt ?? left.messages.at(-1)?.createdAt ?? left.createdAt ?? 0;
+    const rightActivity = right.updatedAt ?? right.messages.at(-1)?.createdAt ?? right.createdAt ?? 0;
+    return rightActivity - leftActivity || left.title.localeCompare(right.title);
+  });
+}
+
+export function rememberActiveHostRoom(room: StoredRoom): void {
+  if (!room.isHost) return;
+  try {
+    localStorage.setItem(`${ACTIVE_HOST_ROOM_KEY_PREFIX}${room.coordinatorPubkey}`, room.id);
+  } catch {
+    // Room selection still works when storage is unavailable.
+  }
+}
+
+export function loadRememberedHostRoom(coordinatorPubkey: string): StoredRoom | null {
+  try {
+    const roomId = localStorage.getItem(`${ACTIVE_HOST_ROOM_KEY_PREFIX}${coordinatorPubkey}`);
+    if (!roomId) return null;
+    const room = loadRoom(roomId, coordinatorPubkey);
+    if (room?.isHost && room.coordinatorPubkey === coordinatorPubkey) return room;
+    localStorage.removeItem(`${ACTIVE_HOST_ROOM_KEY_PREFIX}${coordinatorPubkey}`);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function forgetRememberedHostRoom(coordinatorPubkey: string): void {
+  try {
+    localStorage.removeItem(`${ACTIVE_HOST_ROOM_KEY_PREFIX}${coordinatorPubkey}`);
+  } catch {
+    // Nothing else depends on selection persistence.
+  }
+}
+
 export function saveRoom(room: StoredRoom): void {
-  localStorage.setItem(`${ROOM_KEY_PREFIX}${room.id}`, JSON.stringify(room));
+  room.updatedAt = Date.now();
+  localStorage.setItem(roomStorageKey(room.coordinatorPubkey, room.id), JSON.stringify(room));
+  const legacyKey = `${ROOM_KEY_PREFIX}${room.id}`;
+  const legacy = readStoredRoom(localStorage.getItem(legacyKey));
+  if (legacy?.id === room.id && legacy.coordinatorPubkey === room.coordinatorPubkey) {
+    localStorage.removeItem(legacyKey);
+  }
+  window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, {
+    detail: { roomId: room.id, coordinatorPubkey: room.coordinatorPubkey },
+  }));
+}
+
+export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubkey">): void {
+  const currentKey = roomStorageKey(room.coordinatorPubkey, room.id);
+  const current = readStoredRoom(localStorage.getItem(currentKey));
+  if (sameRoomIdentity(current, room)) localStorage.removeItem(currentKey);
+
+  const legacyKey = `${ROOM_KEY_PREFIX}${room.id}`;
+  const legacy = readStoredRoom(localStorage.getItem(legacyKey));
+  if (sameRoomIdentity(legacy, room)) localStorage.removeItem(legacyKey);
+
+  const activeHostKey = `${ACTIVE_HOST_ROOM_KEY_PREFIX}${room.coordinatorPubkey}`;
+  if (localStorage.getItem(activeHostKey) === room.id) localStorage.removeItem(activeHostKey);
+
+  window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, {
+    detail: { roomId: room.id, coordinatorPubkey: room.coordinatorPubkey, action: "removed" },
+  }));
+}
+
+export function rotateRoomInvite(room: StoredRoom): StoredRoom {
+  room.inviteToken = createInviteToken();
+  saveRoom(room);
+  return room;
+}
+
+function createInviteToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function roomIdentity(coordinatorPubkey: string, id: string): string {
+  return `${coordinatorPubkey}\u0000${id}`;
+}
+
+function roomStorageKey(coordinatorPubkey: string, id: string): string {
+  return `${ROOM_KEY_V2_PREFIX}${encodeURIComponent(coordinatorPubkey)}:${encodeURIComponent(id)}`;
+}
+
+function readStoredRoom(raw: string | null): StoredRoom | null {
+  if (!raw) return null;
+  try {
+    const room = JSON.parse(raw) as unknown;
+    if (!isRecord(room)
+      || room.version !== 1
+      || typeof room.id !== "string"
+      || typeof room.title !== "string"
+      || typeof room.coordinatorPubkey !== "string"
+      || !isStringArray(room.relayUrls)
+      || typeof room.name !== "string"
+      || typeof room.stablePubkey !== "string"
+      || typeof room.isHost !== "boolean"
+      || typeof room.stateBase64 !== "string"
+      || !isLocalKeyPackage(room.keyPackage)
+      || typeof room.lastCursor !== "number"
+      || !Number.isFinite(room.lastCursor)
+      || !Array.isArray(room.messages)
+      || !room.messages.every(isStoredMessage)
+      || !Array.isArray(room.pending)
+      || !room.pending.every(isPendingMessage)) return null;
+    const stored = room as unknown as StoredRoom;
+    const host = normalizeRoomHostIdentity(room.host);
+    if (host) stored.host = host;
+    else delete stored.host;
+    const expectedHostPubkey = stored.isHost
+      ? stored.stablePubkey
+      : verifiedCreatorPubkeyFromStoredState(stored);
+    stored.messages = stored.messages.map((message) => sanitizeChatEnvelopeHostBadge(message, expectedHostPubkey));
+    return stored;
+  } catch {
+    return null;
+  }
+}
+
+function migrateLegacyRoom(storageKey: string, room: StoredRoom): void {
+  const nextKey = roomStorageKey(room.coordinatorPubkey, room.id);
+  const current = readStoredRoom(localStorage.getItem(nextKey));
+  if (!sameRoomIdentity(current, room)) localStorage.setItem(nextKey, JSON.stringify(room));
+  const verified = readStoredRoom(localStorage.getItem(nextKey));
+  if (storageKey !== nextKey && sameRoomIdentity(verified, room)) {
+    const source = readStoredRoom(localStorage.getItem(storageKey));
+    if (sameRoomIdentity(source, room)) localStorage.removeItem(storageKey);
+  }
+}
+
+function sameRoomIdentity(left: StoredRoom | null, right: Pick<StoredRoom, "coordinatorPubkey" | "id">): left is StoredRoom {
+  return left?.coordinatorPubkey === right.coordinatorPubkey && left.id === right.id;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isLocalKeyPackage(value: unknown): value is LocalKeyPackage {
+  return isRecord(value)
+    && typeof value.reference === "string"
+    && typeof value.publicBase64 === "string"
+    && typeof value.privateBase64 === "string";
+}
+
+function isStoredMessage(value: unknown): value is StoredMessage {
+  return isRecord(value)
+    && value.type === "message"
+    && typeof value.id === "string"
+    && typeof value.sender === "string"
+    && typeof value.name === "string"
+    && typeof value.content === "string"
+    && typeof value.createdAt === "number"
+    && Number.isFinite(value.createdAt)
+    && (value.auth === undefined || (isRecord(value.auth)
+      && typeof value.auth.id === "string"
+      && typeof value.auth.sig === "string"))
+    && (value.cursor === undefined || (typeof value.cursor === "number" && Number.isFinite(value.cursor)))
+    && (value.pending === undefined || typeof value.pending === "boolean");
+}
+
+function verifiedCreatorPubkeyFromStoredState(room: StoredRoom): string | undefined {
+  if (room.joinRequestSent || !room.stateBase64) return undefined;
+  try {
+    return groupCreatorPubkey(decodeState(room.stateBase64)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isPendingMessage(value: unknown): value is PendingMessage {
+  return isRecord(value) && typeof value.id === "string" && typeof value.opaqueBase64 === "string";
 }

@@ -558,6 +558,7 @@ export class CoordinatorAdapter {
       groupId: input.gid,
       requesterStablePubkey: clientPubkey,
       keyPackageRef: input.kp_ref,
+      inviteToken: input.invite_token,
     });
 
     this.recordOperation("storeJoinRequest");
@@ -585,6 +586,7 @@ export class CoordinatorAdapter {
           pk: record.requesterStablePubkey,
           kp_ref: record.keyPackageRef,
           at: record.createdAt,
+          invite_token: record.inviteToken,
         })),
       },
     };
@@ -608,6 +610,7 @@ export class CoordinatorAdapter {
           pk: record.requesterStablePubkey,
           kp_ref: record.keyPackageRef,
           at: record.createdAt,
+          invite_token: record.inviteToken,
         })),
       },
     };

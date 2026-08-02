@@ -1,12 +1,38 @@
+import { nip19 } from "nostr-tools";
+import { getPublicKey } from "nostr-tools/pure";
+
 export const STORAGE_KEY = "cordn:v1:persistence";
 export const PBKDF2_ITERATIONS = 600_000;
+export const KEY_BACKUP_FORMAT = "cordn.coordinator-key-backup";
+export const KEY_BACKUP_VERSION = 1;
 
-interface PersistedBlob {
+export interface PersistedKeyBlob {
   version: 1;
   pbkdf2Iterations: number;
   salt: string;
   iv: string;
   ciphertext: string;
+}
+
+export interface CoordinatorKeyBackup {
+  format: typeof KEY_BACKUP_FORMAT;
+  version: typeof KEY_BACKUP_VERSION;
+  exportedAt: string;
+  identity: {
+    publicKeyHex: string;
+    npub: string;
+  };
+  crypto: {
+    kdf: {
+      name: "PBKDF2";
+      hash: "SHA-256";
+    };
+    cipher: {
+      name: "AES-GCM";
+      keyLength: 256;
+    };
+  };
+  encryptedKey: PersistedKeyBlob;
 }
 
 export class WrongPassphraseError extends Error {
@@ -48,6 +74,34 @@ async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKe
   );
 }
 
+function parsePersistedBlob(raw: string): PersistedKeyBlob {
+  const blob = JSON.parse(raw) as PersistedKeyBlob;
+  if (blob.version !== 1 || blob.pbkdf2Iterations !== PBKDF2_ITERATIONS) {
+    throw new Error("Unsupported persisted key format");
+  }
+
+  return {
+    version: blob.version,
+    pbkdf2Iterations: blob.pbkdf2Iterations,
+    salt: blob.salt,
+    iv: blob.iv,
+    ciphertext: blob.ciphertext,
+  };
+}
+
+async function decryptPersistedBlob(blob: PersistedKeyBlob, passphrase: string): Promise<Uint8Array> {
+  const salt = base64UrlToBytes(blob.salt);
+  const iv = base64UrlToBytes(blob.iv);
+  const key = await deriveKey(passphrase, salt);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
+    key,
+    toArrayBuffer(base64UrlToBytes(blob.ciphertext)),
+  );
+
+  return new Uint8Array(decrypted);
+}
+
 export class KeyStorage {
   hasPersisted(): boolean {
     return localStorage.getItem(STORAGE_KEY) !== null;
@@ -63,7 +117,7 @@ export class KeyStorage {
       toArrayBuffer(secretKey),
     );
 
-    const blob: PersistedBlob = {
+    const blob: PersistedKeyBlob = {
       version: 1,
       pbkdf2Iterations: PBKDF2_ITERATIONS,
       salt: bytesToBase64Url(salt),
@@ -81,27 +135,56 @@ export class KeyStorage {
     }
 
     try {
-      const blob = JSON.parse(raw) as PersistedBlob;
-      if (blob.version !== 1 || blob.pbkdf2Iterations !== PBKDF2_ITERATIONS) {
-        throw new Error("Unsupported persisted key format");
-      }
-
-      const salt = base64UrlToBytes(blob.salt);
-      const iv = base64UrlToBytes(blob.iv);
-      const key = await deriveKey(passphrase, salt);
-      const decrypted = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: toArrayBuffer(iv) },
-        key,
-        toArrayBuffer(base64UrlToBytes(blob.ciphertext)),
-      );
-
-      return new Uint8Array(decrypted);
+      return await decryptPersistedBlob(parsePersistedBlob(raw), passphrase);
     } catch (error) {
       if (error instanceof WrongPassphraseError) {
         throw error;
       }
 
       throw new WrongPassphraseError();
+    }
+  }
+
+  async exportBackup(passphrase: string): Promise<CoordinatorKeyBackup> {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      throw new WrongPassphraseError();
+    }
+
+    let decryptedKey: Uint8Array | undefined;
+    try {
+      const encryptedKey = parsePersistedBlob(raw);
+      decryptedKey = await decryptPersistedBlob(encryptedKey, passphrase);
+      const publicKeyHex = getPublicKey(decryptedKey);
+
+      return {
+        format: KEY_BACKUP_FORMAT,
+        version: KEY_BACKUP_VERSION,
+        exportedAt: new Date().toISOString(),
+        identity: {
+          publicKeyHex,
+          npub: nip19.npubEncode(publicKeyHex),
+        },
+        crypto: {
+          kdf: {
+            name: "PBKDF2",
+            hash: "SHA-256",
+          },
+          cipher: {
+            name: "AES-GCM",
+            keyLength: 256,
+          },
+        },
+        encryptedKey,
+      };
+    } catch (error) {
+      if (error instanceof WrongPassphraseError) {
+        throw error;
+      }
+
+      throw new WrongPassphraseError();
+    } finally {
+      decryptedKey?.fill(0);
     }
   }
 

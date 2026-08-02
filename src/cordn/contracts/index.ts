@@ -106,6 +106,7 @@ export const storeWelcomeOutputSchema = z.object({
 export const storeJoinRequestInputSchema = z.object({
   gid: z.string().min(1),
   kp_ref: z.string().min(1),
+  invite_token: z.string().min(1).optional(),
 });
 
 export const storeJoinRequestOutputSchema = z.object({
@@ -116,6 +117,7 @@ export const joinRequestSchema = z.object({
   pk: z.string(),
   kp_ref: z.string(),
   at: z.number(),
+  invite_token: z.string().optional(),
 });
 
 export const fetchPendingJoinRequestsInputSchema = z.object({

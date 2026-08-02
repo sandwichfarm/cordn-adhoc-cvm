@@ -18,6 +18,8 @@ import type {
  */
 export const MAX_PENDING_JOIN_REQUESTS_PER_GROUP = 100;
 
+export const ROOM_DELETED_BY_HOST_ERROR = "Room deleted by host";
+
 /**
  * Storage instances are owned by a single coordinator instance.
  *
@@ -125,6 +127,13 @@ export interface CoordinatorStorage {
     readThreshold: number,
     unreadThreshold: number,
   ): number;
+  isGroupDeleted(groupId: string): boolean;
+  /**
+   * Permanently tombstone a group and remove its coordinator-held message log
+   * and pending join requests. Deletion is intentionally irreversible so a
+   * stale invite cannot recreate a room after the host removes it.
+   */
+  deleteGroup(groupId: string): void;
   appendGroupMessage(params: AppendGroupMessageParams): GroupMessageRecord;
   /**
    * Fetch messages for one group only. If `afterCursor` is provided, it is a

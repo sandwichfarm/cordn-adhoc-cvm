@@ -1,0 +1,263 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { NostrSigner } from "@contextvm/sdk/core";
+import type { StoredRoom } from "../../src/chat/room-store";
+
+const protocolMocks = vi.hoisted(() => ({
+  addMember: vi.fn(),
+  createKeyPackage: vi.fn(),
+  createRoomState: vi.fn(),
+  decodeState: vi.fn((state: unknown) => state),
+  decryptMessage: vi.fn(),
+  encodeState: vi.fn((state: unknown) => String(state)),
+  encryptMessage: vi.fn(),
+  groupCreatorPubkey: vi.fn(),
+  groupId: vi.fn(),
+  joinWelcome: vi.fn(),
+  sanitizeChatEnvelopeHostBadge: vi.fn((envelope: unknown) => envelope),
+  signChatEnvelope: vi.fn((envelope: unknown) => envelope),
+}));
+
+const coordinatorMocks = vi.hoisted(() => ({
+  close: vi.fn(),
+  consumeKeyPackage: vi.fn(),
+  fetchJoinRequests: vi.fn(),
+  fetchMessages: vi.fn(),
+  fetchWelcomes: vi.fn(),
+  postGroupMessage: vi.fn(),
+  storeWelcome: vi.fn(),
+}));
+
+vi.mock("../../src/chat/protocol", () => protocolMocks);
+
+vi.mock("../../src/chat/coordinator-client", () => ({
+  ChatCoordinatorClient: class {
+    close = coordinatorMocks.close;
+    consumeKeyPackage = coordinatorMocks.consumeKeyPackage;
+    fetchJoinRequests = coordinatorMocks.fetchJoinRequests;
+    fetchMessages = coordinatorMocks.fetchMessages;
+    fetchWelcomes = coordinatorMocks.fetchWelcomes;
+    postGroupMessage = coordinatorMocks.postGroupMessage;
+    storeWelcome = coordinatorMocks.storeWelcome;
+  },
+}));
+
+vi.mock("../../src/notifications/notification-center.svelte", () => ({
+  notificationCenter: { enqueue: vi.fn() },
+}));
+
+import { ChatRoomSession, loadRoom, removeStoredRoom, saveRoom } from "../../src/chat/room-store";
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function storedRoom(): StoredRoom {
+  return {
+    version: 1,
+    id: "room-id",
+    title: "Concurrent room",
+    coordinatorPubkey: "c".repeat(64),
+    relayUrls: ["wss://relay.example"],
+    name: "Guest",
+    stablePubkey: "a".repeat(64),
+    isHost: false,
+    stateBase64: "state-0",
+    keyPackage: {
+      reference: "key-reference",
+      publicBase64: "public-key-package",
+      privateBase64: "private-key-package",
+    },
+    lastCursor: 0,
+    messages: [],
+    pending: [],
+    joinRequestSent: false,
+  };
+}
+
+function connectedSession(room = storedRoom()): ChatRoomSession {
+  const session = new ChatRoomSession(room, {} as NostrSigner);
+  session.status = { connection: "connected" };
+  return session;
+}
+
+describe("ChatRoomSession concurrency", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    for (const mock of Object.values(protocolMocks)) mock.mockReset();
+    for (const mock of Object.values(coordinatorMocks)) mock.mockReset();
+
+    protocolMocks.decodeState.mockImplementation((state: unknown) => state);
+    protocolMocks.encodeState.mockImplementation((state: unknown) => String(state));
+    protocolMocks.groupCreatorPubkey.mockReturnValue(null);
+    protocolMocks.sanitizeChatEnvelopeHostBadge.mockImplementation((envelope: unknown) => envelope);
+    protocolMocks.signChatEnvelope.mockImplementation(async (envelope: unknown) => ({
+      ...(envelope as object),
+      auth: { id: "signed-event-id", sig: "signed-event-signature" },
+    }));
+    coordinatorMocks.fetchMessages.mockResolvedValue([]);
+    coordinatorMocks.fetchJoinRequests.mockResolvedValue([]);
+    coordinatorMocks.fetchWelcomes.mockResolvedValue([]);
+    coordinatorMocks.postGroupMessage.mockResolvedValue({ cursor: 1, gid: "room-id", at: 1 });
+    coordinatorMocks.close.mockResolvedValue(undefined);
+  });
+
+  it("serializes concurrent sends so each encryption advances from the previous MLS state", async () => {
+    const firstEncryption = deferred<void>();
+    const secondEncryption = deferred<void>();
+    const gates = [firstEncryption, secondEncryption];
+    const inputStates: unknown[] = [];
+    let activeEncryptions = 0;
+    let maximumConcurrentEncryptions = 0;
+
+    protocolMocks.encryptMessage.mockImplementation(async (state: unknown, event: { content: string }) => {
+      const callIndex = inputStates.length;
+      inputStates.push(state);
+      activeEncryptions += 1;
+      maximumConcurrentEncryptions = Math.max(maximumConcurrentEncryptions, activeEncryptions);
+      await gates[callIndex].promise;
+      activeEncryptions -= 1;
+      return {
+        state: `${String(state)}>${event.content}`,
+        opaqueBase64: `opaque-${event.content}`,
+      };
+    });
+
+    const session = connectedSession();
+    const firstSend = session.send("first");
+    const secondSend = session.send("second");
+
+    await vi.waitFor(() => expect(protocolMocks.encryptMessage).toHaveBeenCalledTimes(1));
+    expect(maximumConcurrentEncryptions).toBe(1);
+
+    firstEncryption.resolve(undefined);
+    await vi.waitFor(() => expect(protocolMocks.encryptMessage).toHaveBeenCalledTimes(2));
+    expect(maximumConcurrentEncryptions).toBe(1);
+
+    secondEncryption.resolve(undefined);
+    await Promise.all([firstSend, secondSend]);
+
+    expect(inputStates).toEqual(["state-0", "state-0>first"]);
+    expect(protocolMocks.signChatEnvelope).toHaveBeenCalledTimes(2);
+    expect(protocolMocks.encryptMessage).toHaveBeenNthCalledWith(1, "state-0", expect.objectContaining({
+      content: "first",
+      auth: { id: "signed-event-id", sig: "signed-event-signature" },
+    }));
+    expect(session.room.stateBase64).toBe("state-0>first>second");
+    expect(session.room.messages.map((message) => message.content)).toEqual(["first", "second"]);
+  });
+
+  it("waits for an active message pull before encrypting a send", async () => {
+    const activePull = deferred<Array<{ cursor: number; msg_64: string }>>();
+    const order: string[] = [];
+
+    coordinatorMocks.fetchMessages
+      .mockImplementationOnce(async () => {
+        order.push("pull:start");
+        const messages = await activePull.promise;
+        order.push("pull:end");
+        return messages;
+      })
+      .mockResolvedValue([]);
+    protocolMocks.decryptMessage.mockImplementation(async () => ({
+      state: "state-after-pull",
+      envelope: {
+        type: "message",
+        id: "remote-message",
+        sender: "b".repeat(64),
+        name: "Remote",
+        content: "arrived first",
+        createdAt: 1,
+      },
+    }));
+    protocolMocks.encryptMessage.mockImplementation(async (state: unknown, event: { content: string }) => {
+      order.push("encrypt");
+      return {
+        state: `${String(state)}>${event.content}`,
+        opaqueBase64: `opaque-${event.content}`,
+      };
+    });
+
+    const session = connectedSession();
+    const syncing = session.sync();
+    await vi.waitFor(() => expect(coordinatorMocks.fetchMessages).toHaveBeenCalledTimes(1));
+
+    const sending = session.send("sent after pull");
+    await Promise.resolve();
+
+    expect(protocolMocks.encryptMessage).not.toHaveBeenCalled();
+    expect(order).toEqual(["pull:start"]);
+
+    activePull.resolve([{ cursor: 1, msg_64: "remote-ciphertext" }]);
+    await Promise.all([syncing, sending]);
+
+    expect(protocolMocks.encryptMessage).toHaveBeenCalledTimes(1);
+    expect(protocolMocks.encryptMessage.mock.calls[0][0]).toBe("state-after-pull");
+    expect(order).toEqual(["pull:start", "pull:end", "encrypt"]);
+    expect(session.room.stateBase64).toBe("state-after-pull>sent after pull");
+  });
+
+  it("cannot resurrect a discarded room when an in-flight sync finishes", async () => {
+    const activePull = deferred<Array<{ cursor: number; msg_64: string }>>();
+    coordinatorMocks.fetchMessages.mockImplementationOnce(() => activePull.promise);
+    const room = storedRoom();
+    saveRoom(room);
+    const session = connectedSession(room);
+
+    const syncing = session.sync();
+    await vi.waitFor(() => expect(coordinatorMocks.fetchMessages).toHaveBeenCalledOnce());
+
+    session.discard();
+    removeStoredRoom(room);
+    activePull.resolve([]);
+    await syncing;
+
+    expect(loadRoom(room.id, room.coordinatorPubkey)).toBeNull();
+  });
+
+  it.each([
+    {
+      scenario: "matching invite host",
+      inviteHost: { name: "Ada", pubkey: "b".repeat(64), avatar: "https://images.example/ada.png" },
+      expected: { name: "Ada", pubkey: "b".repeat(64), avatar: "https://images.example/ada.png" },
+    },
+    {
+      scenario: "mismatched invite host",
+      inviteHost: { name: "Mallory", pubkey: "d".repeat(64), avatar: "https://images.example/mallory.png" },
+      expected: { name: "Unknown host", pubkey: "b".repeat(64) },
+    },
+    {
+      scenario: "legacy invite without a host",
+      inviteHost: undefined,
+      expected: { name: "Unknown host", pubkey: "b".repeat(64) },
+    },
+  ])("reconciles $scenario with the MLS creator after admission", async ({ inviteHost, expected }) => {
+    const room = storedRoom();
+    room.joinRequestSent = true;
+    room.host = inviteHost;
+    coordinatorMocks.fetchWelcomes.mockResolvedValue([{
+      kp_ref: room.keyPackage.reference,
+      welcome_64: "welcome",
+      after: 0,
+    }]);
+    protocolMocks.joinWelcome.mockResolvedValue("joined-state");
+    protocolMocks.groupId.mockReturnValue(room.id);
+    protocolMocks.groupCreatorPubkey.mockReturnValue("b".repeat(64));
+
+    await connectedSession(room).sync();
+
+    expect(room.joinRequestSent).toBe(false);
+    expect(room.host).toEqual(expected);
+  });
+});

@@ -57,7 +57,7 @@ export interface SingleInstanceAcquireInput {
 }
 
 export interface InstanceLease {
-  release(): void;
+  release(): void | Promise<void>;
 }
 
 export interface NostrInstanceNetwork {
@@ -193,7 +193,7 @@ export class SimplePoolNostrInstanceNetwork implements NostrInstanceNetwork {
 }
 
 export class SingleInstanceGuard {
-  private readonly releases: Array<() => void> = [];
+  private readonly releases: Array<() => void | Promise<void>> = [];
   private readonly token: string;
 
   constructor(private readonly deps: SingleInstanceGuardDeps = {}) {
@@ -212,7 +212,7 @@ export class SingleInstanceGuard {
       this.startNostrHeartbeat(input, input.debug);
       input.debug?.("info", "single instance guard acquired", shortKey(input.publicKeyHex));
     } catch (error) {
-      this.release();
+      await this.release();
       throw error;
     }
 
@@ -232,8 +232,9 @@ export class SingleInstanceGuard {
     const holdLock = new Promise<void>((resolve) => {
       releaseLock = resolve;
     });
+    let requestComplete: Promise<void> = Promise.resolve();
     const granted = new Promise<boolean>((resolve) => {
-      void locks.request(`cordn:${publicKeyHex}`, { ifAvailable: true, mode: "exclusive" }, async (lock) => {
+      requestComplete = locks.request(`cordn:${publicKeyHex}`, { ifAvailable: true, mode: "exclusive" }, async (lock) => {
         resolve(Boolean(lock));
         if (!lock) {
           return;
@@ -248,7 +249,10 @@ export class SingleInstanceGuard {
       throw new CordnAlreadyRunningError();
     }
 
-    this.releases.push(releaseLock);
+    this.releases.push(async () => {
+      releaseLock();
+      await requestComplete;
+    });
     debug?.("info", "web lock acquired", shortKey(publicKeyHex));
   }
 
@@ -377,10 +381,9 @@ export class SingleInstanceGuard {
     this.releases.push(() => heartbeat.release());
   }
 
-  release(): void {
-    for (const release of this.releases.splice(0).reverse()) {
-      release();
-    }
+  async release(): Promise<void> {
+    const pending = this.releases.splice(0).reverse().map((release) => Promise.resolve(release()));
+    await Promise.allSettled(pending);
   }
 
   private getStorage(): Storage | null {

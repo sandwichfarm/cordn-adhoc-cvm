@@ -26,6 +26,7 @@ export interface RemoteJoinRequest {
   pk: string;
   kp_ref: string;
   at: number;
+  invite_token?: string;
 }
 
 /** Minimal ContextVM client for the public coordinator contract. */
@@ -54,8 +55,12 @@ export class ChatCoordinatorClient {
     await this.call("kp_publish", { kp_ref: reference, kp_64: keyPackageBase64 });
   }
 
-  async storeJoinRequest(groupId: string, keyPackageReference: string): Promise<void> {
-    await this.call("join_request_store", { gid: groupId, kp_ref: keyPackageReference });
+  async storeJoinRequest(groupId: string, keyPackageReference: string, inviteToken?: string): Promise<void> {
+    await this.call("join_request_store", {
+      gid: groupId,
+      kp_ref: keyPackageReference,
+      ...(inviteToken ? { invite_token: inviteToken } : {}),
+    });
   }
 
   async fetchWelcomes(): Promise<RemoteWelcome[]> {

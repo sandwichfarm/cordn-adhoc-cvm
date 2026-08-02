@@ -30,6 +30,35 @@ describe("ConfigStore runtime limits", () => {
     expect(new ConfigStore().autostart).toBe(true);
   });
 
+  test("defaults to invisible and persists offline sleep state", () => {
+    const store = new ConfigStore();
+    expect(store.presenceState).toBe("invisible");
+
+    store.setPresenceState("offline");
+    expect(new ConfigStore().presenceState).toBe("offline");
+
+    store.resetToDefaults();
+    expect(store.presenceState).toBe("invisible");
+  });
+
+  test("persists coordinator and anonymous user names without requiring a runtime restart", () => {
+    const store = new ConfigStore();
+    store.setCoordinatorName("Madeira node");
+    store.setUserName("River");
+    store.setHostBadgeLabel("guide");
+    store.setHostBadgeEmoji("🦉");
+
+    expect(store.runtimeRevision).toBe(0);
+    const reloaded = new ConfigStore();
+    expect(reloaded.coordinatorName).toBe("Madeira node");
+    expect(reloaded.userName).toBe("River");
+    expect(reloaded.hostBadgeLabel).toBe("guide");
+    expect(reloaded.hostBadgeEmoji).toBe("🦉");
+
+    store.setAnnouncement(true);
+    expect(store.runtimeRevision).toBe(1);
+  });
+
   test("always includes the local WebSocket relay in the active pool", () => {
     const store = new ConfigStore();
     store.removeRelay(store.relays[0].id);

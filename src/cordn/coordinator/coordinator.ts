@@ -15,6 +15,7 @@ import type {
   WelcomeQueueRecord,
 } from "./types";
 import type { CoordinatorStorage } from "./storage/storage";
+import { ROOM_DELETED_BY_HOST_ERROR } from "./storage/storage";
 import { InMemoryCoordinatorStorage } from "./storage/inMemoryStorage";
 import { isLastResortKeyPackage } from "../lastResortKeyPackage";
 
@@ -301,6 +302,7 @@ export class Coordinator {
       groupId: input.groupId,
       requesterStablePubkey: input.requesterStablePubkey,
       keyPackageRef: input.keyPackageRef,
+      inviteToken: input.inviteToken,
       createdAt: this.now(),
       readAt: null,
     };
@@ -328,10 +330,16 @@ export class Coordinator {
     );
   }
 
+  deleteGroup(groupId: string): void {
+    this.storage.deleteGroup(groupId);
+    this.closeSubscribersForGroup(groupId);
+  }
+
   close(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
     }
+    this.storage.close?.();
   }
 
   postGroupMessage(input: PostGroupMessageInput): GroupMessageRecord {
@@ -383,6 +391,7 @@ export class Coordinator {
   subscribeGroupMessages(
     input: SubscribeGroupMessagesInput,
   ): GroupMessageSubscription {
+    this.assertGroupAvailable(input.groupId);
     const queue = new AsyncMessageQueue();
     const subscriber: GroupMessageSubscriber = queue;
 
@@ -400,6 +409,10 @@ export class Coordinator {
   subscribeManyGroupMessages(
     input: SubscribeManyGroupMessagesInput,
   ): GroupMessageSubscription {
+    for (const group of input.groups) {
+      this.assertGroupAvailable(group.groupId);
+    }
+
     const queue = new AsyncMessageQueue();
     const cursorsByGroup = new Map<string, number>();
     const liveBuffer: GroupMessageRecord[] = [];
@@ -492,6 +505,30 @@ export class Coordinator {
 
     for (const subscriber of subscribers) {
       subscriber.push(record);
+    }
+  }
+
+  private closeSubscribersForGroup(groupId: string): void {
+    const deletedGroupSubscribers = this.groupSubscribers.get(groupId);
+    if (!deletedGroupSubscribers) {
+      return;
+    }
+
+    this.groupSubscribers.delete(groupId);
+    for (const subscriber of deletedGroupSubscribers) {
+      subscriber.close();
+      for (const [subscribedGroupId, subscribers] of this.groupSubscribers) {
+        subscribers.delete(subscriber);
+        if (subscribers.size === 0) {
+          this.groupSubscribers.delete(subscribedGroupId);
+        }
+      }
+    }
+  }
+
+  private assertGroupAvailable(groupId: string): void {
+    if (this.storage.isGroupDeleted(groupId)) {
+      throw new Error(ROOM_DELETED_BY_HOST_ERROR);
     }
   }
 

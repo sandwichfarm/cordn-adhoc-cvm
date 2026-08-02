@@ -8,6 +8,7 @@ import {
 const SQLITE_DB_NAME = ":localStorage:";
 const SNAPSHOT_KEY = "cordn:v1:coordinator-snapshot";
 const FALLBACK_STORAGE_KEY = "cordn:v1:coordinator-snapshot:fallback";
+const DELETED_GROUPS_STORAGE_PREFIX = "cordn:v1:deleted-groups:";
 const KVVFS_LOCAL_PREFIX = "kvvfs-local-";
 
 type SqliteModule = Awaited<ReturnType<typeof sqlite3InitModule>>;
@@ -106,21 +107,84 @@ async function createSnapshotPersistence(): Promise<SnapshotPersistence> {
   }
 }
 
-export async function createBrowserCoordinatorStorage(
-  persistent: boolean,
-): Promise<InMemoryCoordinatorStorage> {
-  if (!persistent) {
-    return new InMemoryCoordinatorStorage();
+function deletedGroupsStorageKey(coordinatorPubkey: string): string {
+  return `${DELETED_GROUPS_STORAGE_PREFIX}${coordinatorPubkey.toLowerCase()}`;
+}
+
+function loadDeletedGroups(coordinatorPubkey: string): string[] {
+  if (!("localStorage" in globalThis)) {
+    return [];
   }
 
-  const persistence = await createSnapshotPersistence();
-  const storage = new InMemoryCoordinatorStorage(persistence.load(), (snapshot) => {
-    persistence.save(snapshot);
+  try {
+    const raw = localStorage.getItem(deletedGroupsStorageKey(coordinatorPubkey));
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((groupId): groupId is string => typeof groupId === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedGroups(coordinatorPubkey: string, groupIds: string[]): void {
+  if (!("localStorage" in globalThis)) {
+    return;
+  }
+
+  const key = deletedGroupsStorageKey(coordinatorPubkey);
+  if (groupIds.length === 0) {
+    localStorage.removeItem(key);
+    return;
+  }
+
+  localStorage.setItem(key, JSON.stringify([...new Set(groupIds)].sort()));
+}
+
+function mergeDeletedGroups(
+  snapshot: CoordinatorStorageSnapshot | null,
+  deletedGroups: string[],
+): CoordinatorStorageSnapshot | null {
+  // The registry is authoritative here because it is scoped to the current
+  // coordinator pubkey. The full snapshot predates identity scoping and may
+  // belong to a different coordinator after a local identity change.
+  const mergedDeletedGroups = [...new Set(deletedGroups)].sort();
+  if (!snapshot && mergedDeletedGroups.length === 0) {
+    return null;
+  }
+
+  return {
+    version: 1,
+    keyPackages: [],
+    welcomes: [],
+    joinRequests: [],
+    groups: [],
+    ...snapshot,
+    deletedGroups: mergedDeletedGroups,
+  };
+}
+
+export async function createBrowserCoordinatorStorage(
+  persistent: boolean,
+  coordinatorPubkey: string,
+): Promise<InMemoryCoordinatorStorage> {
+  const persistence = persistent ? await createSnapshotPersistence() : null;
+  const snapshot = mergeDeletedGroups(
+    persistence?.load() ?? null,
+    loadDeletedGroups(coordinatorPubkey),
+  );
+  if (snapshot?.deletedGroups) {
+    saveDeletedGroups(coordinatorPubkey, snapshot.deletedGroups);
+  }
+
+  const storage = new InMemoryCoordinatorStorage(snapshot, (nextSnapshot) => {
+    saveDeletedGroups(coordinatorPubkey, nextSnapshot.deletedGroups ?? []);
+    persistence?.save(nextSnapshot);
   });
   const closeStorage = storage.close.bind(storage);
   storage.close = () => {
     closeStorage();
-    persistence.close();
+    persistence?.close();
   };
 
   return storage;
@@ -137,7 +201,10 @@ export async function clearPersistedCoordinatorState(): Promise<void> {
   persistence.close();
   for (let index = localStorage.length - 1; index >= 0; index -= 1) {
     const key = localStorage.key(index);
-    if (key?.startsWith(KVVFS_LOCAL_PREFIX)) {
+    if (
+      key?.startsWith(KVVFS_LOCAL_PREFIX) ||
+      key?.startsWith(DELETED_GROUPS_STORAGE_PREFIX)
+    ) {
       localStorage.removeItem(key);
     }
   }

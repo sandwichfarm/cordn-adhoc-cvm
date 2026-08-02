@@ -1,20 +1,82 @@
 <script lang="ts">
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
+  import { listRooms } from "../chat/room-store";
 
   interface Props {
     coordinator: CoordinatorStore;
+    onOpenChats: () => void;
   }
 
-  let { coordinator }: Props = $props();
+  let { coordinator, onOpenChats }: Props = $props();
   let passphrase = $state("");
+  const hasJoinedChats = listRooms().some((room) => !room.isHost);
 </script>
 
-<main class="operator-field h-[100dvh] max-h-[100dvh] overflow-hidden text-[#dfffe7]">
-  <div class="mx-auto grid h-full max-w-[1600px] grid-rows-[auto_minmax(0,1fr)] border-x border-[#21352a] bg-[#070c09]/80">
-    <header class="border-b border-[#21352a] px-4 py-3 sm:px-6"><p class="text-[10px] uppercase tracking-[0.2em] text-[#77917f]">Cordn / coordinator workspace</p><p class="mt-1 text-lg font-semibold text-[#effff2]">Ad-hoc MLS</p></header>
-    <section class="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,34rem)]">
-      <div class="flex min-h-0 items-center border-b border-[#21352a] p-6 sm:p-10 lg:border-r lg:border-b-0"><div class="max-w-xl"><p class="text-[11px] uppercase tracking-[0.2em] text-[#7cf59d]">Encrypted coordinator key found</p><h1 class="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-5xl">Unlock Cordn Ad-Hoc</h1><p class="mt-5 max-w-lg text-sm leading-6 text-[#91a59a] sm:text-base">Your browser has a saved, encrypted identity. Unlock it to return to the same coordinator workspace and keep serving your rooms.</p></div></div>
-      <div class="flex min-h-0 items-center p-4 sm:p-8"><div class="w-full"><p class="text-xs uppercase tracking-[0.16em] text-[#cfe2d4]">Passphrase</p><form class="mt-3 grid gap-3" onsubmit={(event) => { event.preventDefault(); void coordinator.loadFromPassphrase(passphrase); }}><input class="w-full border border-[#34433b] bg-[#090d0b] px-4 py-3 text-[#effff2] outline-none placeholder:text-[#617767] focus:border-[#7cf59d]" type="password" autocomplete="current-password" placeholder="passphrase" bind:value={passphrase} />{#if coordinator.passphraseError}<p class="text-sm text-[#ffaaa3]" data-testid="passphrase-error">{coordinator.passphraseError}</p>{/if}<button class="border border-[#7cf59d] bg-[#7cf59d] px-5 py-3 font-medium text-[#08110b] hover:bg-[#c5ffcf]" type="submit">Unlock</button></form><div class="mt-8 border-t border-[#293832] pt-5"><p class="text-xs leading-5 text-[#82958a]">If the key is no longer needed, create a new coordinator identity. This cannot be undone.</p><button class="mt-3 w-full border border-[#7a3939] px-5 py-3 text-sm text-[#ffaaa3] hover:border-[#ffaaa3]" type="button" onclick={() => coordinator.generateFreshKey()}>Generate a new key instead</button></div></div></div>
+<main class="operator-field unlock-page">
+  <div class="unlock-shell">
+    <header class="unlock-bar"><strong>Cordn</strong><span>Ad-Hoc MLS</span></header>
+    <section class="unlock-stage">
+      <div class="unlock-card">
+        <p class="unlock-kicker">Coordinator locked</p>
+        <h1>Unlock Cordn Ad-Hoc</h1>
+        <p class="unlock-copy">Unlock your saved identity only when you want to manage or run this coordinator.</p>
+        <form onsubmit={(event) => { event.preventDefault(); void coordinator.loadFromPassphrase(passphrase); }}>
+          <label for="coordinator-passphrase">Passphrase</label>
+          <input id="coordinator-passphrase" type="password" autocomplete="current-password" placeholder="passphrase" bind:value={passphrase} />
+          {#if coordinator.passphraseError}<p class="unlock-error" data-testid="passphrase-error">{coordinator.passphraseError}</p>{/if}
+          <button class="unlock-primary" type="submit">Unlock coordinator</button>
+        </form>
+
+        {#if hasJoinedChats}
+          <button class="chat-escape" data-testid="open-chats" type="button" onclick={onOpenChats}>
+            <span><strong>Open chats</strong><small>Keep this coordinator locked and offline</small></span>
+            <span aria-hidden="true">→</span>
+          </button>
+        {/if}
+
+        <details class="reset-key">
+          <summary>Coordinator recovery</summary>
+          <p>Create a new coordinator identity only if this key is no longer needed. This cannot be undone.</p>
+          <button type="button" onclick={() => coordinator.generateFreshKey()}>Generate a new key instead</button>
+        </details>
+      </div>
     </section>
   </div>
 </main>
+
+<style>
+  .unlock-page { width: 100%; height: 100dvh; max-height: 100dvh; overflow: hidden; color: #dfffe7; }
+  .unlock-shell { display: grid; width: min(70rem, 100%); height: 100%; margin-inline: auto; grid-template-rows: auto minmax(0, 1fr); border-inline: 1px solid #21352a; background: rgb(7 12 9 / .82); }
+  .unlock-bar { display: flex; align-items: baseline; gap: .75rem; border-bottom: 1px solid #21352a; padding: .75rem 1rem; }
+  .unlock-bar strong { color: #f0fff3; font-size: 1.05rem; }
+  .unlock-bar span { color: #718277; font-size: .58rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+  .unlock-stage { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: clamp(.75rem, 4vw, 2rem); }
+  .unlock-card { width: min(30rem, 100%); margin: clamp(0rem, 8vh, 5rem) auto 0; border: 1px solid #293832; background: #080d0a; padding: clamp(1rem, 4vw, 1.6rem); }
+  .unlock-kicker { color: #7cf59d; font-size: .58rem; font-weight: 750; letter-spacing: .18em; text-transform: uppercase; }
+  h1 { margin-top: .55rem; color: #f2fff5; font-size: clamp(1.45rem, 5vw, 2.15rem); font-weight: 650; letter-spacing: -.035em; }
+  .unlock-copy { margin-top: .65rem; color: #82958a; font-size: .7rem; line-height: 1.6; }
+  form { display: grid; gap: .55rem; margin-top: 1.25rem; }
+  label { color: #cfe2d4; font-size: .6rem; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+  input { width: 100%; min-height: 2.85rem; border: 1px solid #34433b; background: #050906; padding: .7rem .8rem; color: #effff2; outline: none; }
+  input:focus { border-color: #7cf59d; box-shadow: 0 0 0 2px rgb(124 245 157 / .1); }
+  .unlock-error { color: #ffaaa3; font-size: .68rem; }
+  .unlock-primary { min-height: 2.85rem; border: 1px solid #7cf59d; background: #7cf59d; color: #08110b; font-size: .72rem; font-weight: 700; }
+  .unlock-primary:hover { background: #c5ffcf; }
+  .chat-escape { display: flex; width: 100%; min-height: 3.3rem; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .7rem; border: 1px solid #3c5544; padding: .65rem .75rem; color: #bfeac8; text-align: left; }
+  .chat-escape:hover { border-color: #7cf59d; background: #101a13; }
+  .chat-escape strong, .chat-escape small { display: block; }
+  .chat-escape strong { font-size: .72rem; }
+  .chat-escape small { margin-top: .2rem; color: #718277; font-size: .55rem; font-weight: 400; }
+  .chat-escape > span:last-child { color: #7cf59d; }
+  .reset-key { margin-top: .8rem; border-top: 1px solid #202d25; padding-top: .7rem; }
+  .reset-key summary { cursor: pointer; color: #718277; font-size: .58rem; }
+  .reset-key p { margin-top: .65rem; color: #66786d; font-size: .58rem; line-height: 1.55; }
+  .reset-key button { width: 100%; margin-top: .55rem; border: 1px solid #613838; padding: .65rem; color: #d88f8a; font-size: .62rem; }
+  .reset-key button:hover { border-color: #ffaaa3; color: #ffaaa3; }
+
+  @media (max-height: 620px) {
+    .unlock-card { margin-top: 0; }
+    .unlock-copy { display: none; }
+    form { margin-top: .8rem; }
+  }
+</style>

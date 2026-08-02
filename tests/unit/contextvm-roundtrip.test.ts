@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
 import { KeyManager } from "../../src/crypto/key-manager";
-import { transportFactory, type RunningTransport } from "../../src/lib/transport";
+import {
+  transportFactory,
+  type RunningTransport,
+  type TransportStartupPhase,
+} from "../../src/lib/transport";
 import { startMockRelay, type MockRelay } from "../e2e/mock-relay";
 
 describe("ContextVM client round trip", () => {
@@ -26,18 +30,25 @@ describe("ContextVM client round trip", () => {
   test("responds to a client initialize and tools/list request over Nostr", async () => {
     const keyManager = KeyManager.generate();
     const diagnostics: string[] = [];
+    const startupPhases: TransportStartupPhase[] = [];
     running = await transportFactory.create(
       keyManager.getSecretKeyBytes(),
       [relay.url],
       { announce: false, maxUsers: 64 },
       false,
       {
+        onStartupPhase: ({ phase }) => startupPhases.push(phase),
         onNostrEvent: ({ summary }) => diagnostics.push(`raw:${summary}`),
         onInboundMessage: ({ method, summary }) => diagnostics.push(`inbound:${method}:${summary}`),
         onNostrPublish: ({ phase, summary }) => diagnostics.push(`publish:${phase}:${summary}`),
         onOutboundMessage: ({ type, summary }) => diagnostics.push(`outbound:${type}:${summary}`),
       },
     );
+    expect(startupPhases).toEqual([
+      "opening-storage",
+      "preparing-runtime",
+      "connecting-relays",
+    ]);
 
     const clientTransport = new NostrClientTransport({
       signer: new BrowserNostrSigner(KeyManager.generate().getSecretKeyBytes()),

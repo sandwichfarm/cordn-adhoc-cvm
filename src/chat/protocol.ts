@@ -1,3 +1,5 @@
+import type { NostrSigner } from "@contextvm/sdk/core";
+import { verifyEvent, type EventTemplate, type NostrEvent } from "nostr-tools";
 import {
   base64ToBytes,
   bytesToBase64,
@@ -8,6 +10,8 @@ import {
   encode,
   generateKeyPackage,
   getCiphersuiteImpl,
+  getGroupMembers,
+  isDefaultCredential,
   joinGroup,
   keyPackageDecoder,
   keyPackageEncoder,
@@ -28,6 +32,7 @@ import {
 } from "ts-mls";
 
 const CIPHER_SUITE = "MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519";
+const CHAT_ENVELOPE_AUTH_KIND = 24_242;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -36,8 +41,15 @@ export interface ChatEnvelope {
   id: string;
   sender: string;
   name: string;
+  avatar?: string;
+  badgeLabel?: string;
+  badgeEmoji?: string;
   content: string;
   createdAt: number;
+  auth?: {
+    id: string;
+    sig: string;
+  };
 }
 
 export interface LocalKeyPackage {
@@ -66,6 +78,22 @@ export function decodeState(value: string): ClientState {
 
 export function groupId(state: ClientState): string {
   return textDecoder.decode(state.groupContext.groupId);
+}
+
+/**
+ * The creator occupies the first non-blank leaf in a newly joined MLS tree.
+ * Read its BasicCredential identity so invite metadata can be checked against
+ * membership authenticated by the Welcome rather than coordinator metadata.
+ */
+export function groupCreatorPubkey(state: ClientState): string | null {
+  const creator = getGroupMembers(state)[0];
+  if (!creator) return null;
+  const credential = creator.credential;
+  if (!isDefaultCredential(credential)
+    || credential.credentialType !== defaultCredentialTypes.basic
+    || !("identity" in credential)) return null;
+  const pubkey = textDecoder.decode(credential.identity).trim();
+  return /^[0-9a-f]{64}$/i.test(pubkey) ? pubkey : null;
 }
 
 export async function createKeyPackage(stablePubkey: string): Promise<{ keyPackage: KeyPackage; privateKeyPackage: PrivateKeyPackage; stored: LocalKeyPackage }> {
@@ -146,7 +174,56 @@ export async function encryptMessage(state: ClientState, envelope: ChatEnvelope)
   return { state: result.newState, opaqueBase64: bytesToBase64(encode(mlsMessageEncoder, result.message)) };
 }
 
-export async function decryptMessage(state: ClientState, opaqueBase64: string): Promise<{ state: ClientState; envelope?: ChatEnvelope }> {
+/** Sign all user-controlled presentation fields without embedding a full Nostr event. */
+export async function signChatEnvelope(envelope: ChatEnvelope, signer: NostrSigner): Promise<ChatEnvelope> {
+  const signed = await signer.signEvent(chatEnvelopeAuthTemplate(envelope));
+  const authenticated = { ...envelope, auth: { id: signed.id, sig: signed.sig } };
+  if (signed.pubkey !== envelope.sender || !hasValidChatEnvelopeAuth(authenticated)) {
+    throw new Error("The chat signer returned an invalid message signature");
+  }
+  return authenticated;
+}
+
+/**
+ * Validate the compact Nostr proof over every user-controlled envelope field.
+ * New messages always carry this proof; unsigned legacy messages remain valid
+ * chat history but their presentation must not be treated as authoritative.
+ */
+export function hasValidChatEnvelopeAuth(envelope: ChatEnvelope): boolean {
+  if (!envelope.auth || !/^[0-9a-f]{64}$/i.test(envelope.sender)) return false;
+  try {
+    const event: NostrEvent = {
+      ...chatEnvelopeAuthTemplate(envelope),
+      pubkey: envelope.sender,
+      id: envelope.auth.id,
+      sig: envelope.auth.sig,
+    };
+    return verifyEvent(event);
+  } catch {
+    return false;
+  }
+}
+
+/** Remove invalid proofs and role presentation not signed by the MLS-verified host. */
+export function sanitizeChatEnvelopeHostBadge<T extends ChatEnvelope>(envelope: T, expectedHostPubkey?: string): T {
+  const authenticated = hasValidChatEnvelopeAuth(envelope);
+  const hasAuthorizedBadge = expectedHostPubkey
+    && envelope.sender.toLowerCase() === expectedHostPubkey.toLowerCase()
+    && authenticated;
+  const stripsBadge = Boolean((envelope.badgeLabel || envelope.badgeEmoji) && !hasAuthorizedBadge);
+  if ((!envelope.auth || authenticated) && !stripsBadge) return envelope;
+  const sanitized = { ...envelope };
+  // The signature covers the badge fields. Once role presentation is removed,
+  // its proof no longer describes the returned envelope and must go with it.
+  if (!authenticated || stripsBadge) delete sanitized.auth;
+  if (stripsBadge) {
+    delete sanitized.badgeLabel;
+    delete sanitized.badgeEmoji;
+  }
+  return sanitized;
+}
+
+export async function decryptMessage(state: ClientState, opaqueBase64: string, options: { expectedHostPubkey?: string } = {}): Promise<{ state: ClientState; envelope?: ChatEnvelope }> {
   const message = decodeExact(base64ToBytes(opaqueBase64), mlsMessageDecoder, "MLS message");
   const result = await processMessage({
     context: { cipherSuite: await cipherSuite(), authService: unsafeTestingAuthenticationService },
@@ -160,5 +237,27 @@ export async function decryptMessage(state: ClientState, opaqueBase64: string): 
   if (candidate.type !== "message" || !candidate.id || !candidate.sender || !candidate.name || typeof candidate.content !== "string") {
     throw new Error("Received an invalid chat message");
   }
-  return { state: result.newState, envelope: candidate as ChatEnvelope };
+  return {
+    state: result.newState,
+    envelope: sanitizeChatEnvelopeHostBadge(candidate as ChatEnvelope, options.expectedHostPubkey),
+  };
+}
+
+function chatEnvelopeAuthTemplate(envelope: ChatEnvelope): EventTemplate {
+  return {
+    kind: CHAT_ENVELOPE_AUTH_KIND,
+    created_at: Math.floor(envelope.createdAt / 1_000),
+    tags: [["d", envelope.id]],
+    content: JSON.stringify({
+      type: envelope.type,
+      id: envelope.id,
+      sender: envelope.sender,
+      name: envelope.name,
+      avatar: envelope.avatar ?? null,
+      badgeLabel: envelope.badgeLabel ?? null,
+      badgeEmoji: envelope.badgeEmoji ?? null,
+      content: envelope.content,
+      createdAt: envelope.createdAt,
+    }),
+  };
 }

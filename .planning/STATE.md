@@ -2,16 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
+current_phase: 14
+current_phase_name: Completion Audit
 status: complete
 stopped_at: Phase 14 completion audit recorded; live nsite publish still requires repository secrets
-last_updated: "2026-06-23T07:38:00.000Z"
-last_activity: 2026-06-23 - Completion audit separates proven objective items from live deploy-secret blocker
+last_updated: "2026-08-02T10:13:49.786Z"
+last_activity: 2026-08-02
+last_activity_desc: Completed in-session paste and QR invite redemption
 progress:
   total_phases: 14
   completed_phases: 14
-  total_plans: 21
-  completed_plans: 21
-  percent: 100
+  total_plans: 14
+  completed_plans: 14
 ---
 
 # Project State
@@ -28,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 Phase: 14 of 14 (Completion Audit)
 Plan: 1 of 1 in current phase
 Status: Complete locally, broader objective incomplete
-Last activity: 2026-06-23 - Completion audit separates proven objective items from live deploy-secret blocker
+Last activity: 2026-08-02 - Completed in-session paste and QR invite redemption
 
 Progress: [██████████] 100%
 
@@ -82,6 +84,13 @@ None yet.
 
 - Production nsite publication requires repository secrets. The deploy workflow currently succeeds as a guarded skip.
 - Authoritative active user count is not yet derived from real Cordn group membership.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260802-f3u | Add in-session invite redemption by paste or camera scan without disrupting the local coordinator | 2026-08-02 | uncommitted | [260802-f3u](./quick/260802-f3u-add-in-session-invite-redemption-by-past/) |
+| 2 | Add a camel emoji to the left of CAHMLS | 2026-08-02 | uncommitted | — |
 
 ## Deferred Items
 

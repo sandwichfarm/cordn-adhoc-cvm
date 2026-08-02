@@ -3,7 +3,7 @@
   import { generate } from "lean-qr";
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import { createInviteUrl } from "../chat/invite";
-  import { ChatRoomSession, createHostedRoom, signerForStoredRoom, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createHostedRoom, hostIdentityForRoom, signerForStoredRoom, type StoredRoom } from "../chat/room-store";
 
   let { coordinatorPubkey, relayUrls }: { coordinatorPubkey: string; relayUrls: string[] } = $props();
 
@@ -46,6 +46,8 @@
         coordinatorPubkey,
         relayUrls,
         title: created.title,
+        inviteToken: created.inviteToken,
+        host: hostIdentityForRoom(created),
       });
       qrUrl = toSvgDataURL(generate(inviteUrl), { on: "#103e32", off: "#f5fbf8", pad: 2, scale: 4 });
       openHostChat(created);

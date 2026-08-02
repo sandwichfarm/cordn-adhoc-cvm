@@ -24,7 +24,10 @@ export interface RunningTransport {
   close: () => void;
 }
 
+export type TransportStartupPhase = "opening-storage" | "preparing-runtime" | "connecting-relays";
+
 export interface TransportDiagnostics {
+  onStartupPhase?: (details: { phase: TransportStartupPhase }) => void;
   onStarted?: (details: { publicKeyHex: string; relayUrls: string[] }) => void;
   onNostrEvent?: (details: { summary: string }) => void;
   onInboundMessage?: (details: { method: string; clientPubkey: string; summary: string }) => void;
@@ -81,12 +84,16 @@ export class TransportFactory {
     }
 
     const signer = new BrowserNostrSigner(privateKey);
+    const coordinatorPubkey = await signer.getPublicKey();
     const server = new McpServer({
       name: "cordn-browser",
       version: "0.1.0",
     });
+    diagnostics?.onStartupPhase?.({ phase: "opening-storage" });
+    const storage = await createBrowserCoordinatorStorage(persistent, coordinatorPubkey);
+    diagnostics?.onStartupPhase?.({ phase: "preparing-runtime" });
     const coordinator = createCoordinator({
-      storage: await createBrowserCoordinatorStorage(persistent),
+      storage,
     });
 
     const relayHandler = createInstrumentedRelayHandler(websocketPool, diagnostics);
@@ -148,9 +155,10 @@ export class TransportFactory {
 
     registerCoordinatorMethods(server, adapter);
 
+    diagnostics?.onStartupPhase?.({ phase: "connecting-relays" });
     await server.connect(transport);
     diagnostics?.onStarted?.({
-      publicKeyHex: await signer.getPublicKey(),
+      publicKeyHex: coordinatorPubkey,
       relayUrls: websocketPool,
     });
 

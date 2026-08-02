@@ -7,8 +7,11 @@ import {
   createRoomState,
   decryptMessage,
   encryptMessage,
+  groupCreatorPubkey,
   groupId,
+  hasValidChatEnvelopeAuth,
   joinWelcome,
+  signChatEnvelope,
 } from "../../src/chat/protocol";
 
 describe("Feature: encrypted ad-hoc chat", () => {
@@ -22,17 +25,97 @@ describe("Feature: encrypted ad-hoc chat", () => {
     const admitted = await addMember(hostInitialState, guestKeyPackage.stored.publicBase64);
     const guestState = await joinWelcome(admitted.welcomeBase64, guestKeyPackage.stored);
     expect(groupId(guestState)).toBe(groupId(admitted.state));
+    expect(groupCreatorPubkey(guestState)).toBe(await hostSigner.getPublicKey());
 
     const outbound = await encryptMessage(guestState, {
       type: "message",
       id: "message-1",
       sender: await guestSigner.getPublicKey(),
       name: "River",
+      badgeLabel: "host",
+      badgeEmoji: "★",
       content: "Hello from the invite link",
       createdAt: 1,
     });
     const received = await decryptMessage(admitted.state, outbound.opaqueBase64);
 
     expect(received.envelope).toMatchObject({ name: "River", content: "Hello from the invite link" });
+    expect(received.envelope).not.toHaveProperty("badgeLabel");
+    expect(received.envelope).not.toHaveProperty("badgeEmoji");
+
+    const signedHostEnvelope = await signChatEnvelope({
+      type: "message",
+      id: "message-2",
+      sender: await hostSigner.getPublicKey(),
+      name: "Ada",
+      badgeLabel: "captain",
+      badgeEmoji: "★",
+      content: "Authenticated host message",
+      createdAt: 2_000,
+    }, hostSigner);
+    expect(hasValidChatEnvelopeAuth(signedHostEnvelope)).toBe(true);
+    const hostOutbound = await encryptMessage(received.state, signedHostEnvelope);
+    const guestReceived = await decryptMessage(outbound.state, hostOutbound.opaqueBase64, {
+      expectedHostPubkey: await hostSigner.getPublicKey(),
+    });
+
+    expect(guestReceived.envelope).toMatchObject({
+      badgeLabel: "captain",
+      badgeEmoji: "★",
+    });
+
+    const forgedPresentation = {
+      ...signedHostEnvelope,
+      badgeLabel: "administrator",
+    };
+    const forgedOutbound = await encryptMessage(hostOutbound.state, forgedPresentation);
+    const forgedReceived = await decryptMessage(guestReceived.state, forgedOutbound.opaqueBase64, {
+      expectedHostPubkey: await hostSigner.getPublicKey(),
+    });
+    expect(forgedReceived.envelope).toMatchObject({ content: "Authenticated host message" });
+    expect(forgedReceived.envelope).not.toHaveProperty("auth");
+    expect(forgedReceived.envelope).not.toHaveProperty("badgeLabel");
+    expect(forgedReceived.envelope).not.toHaveProperty("badgeEmoji");
+
+    const signedGuestEnvelope = await signChatEnvelope({
+      type: "message",
+      id: "message-3",
+      sender: await guestSigner.getPublicKey(),
+      name: "River",
+      badgeLabel: "host",
+      badgeEmoji: "!",
+      content: "Signed by a member, not the host",
+      createdAt: 3_000,
+    }, guestSigner);
+    const signedGuestOutbound = await encryptMessage(forgedReceived.state, signedGuestEnvelope);
+    const hostReceivedGuest = await decryptMessage(forgedOutbound.state, signedGuestOutbound.opaqueBase64, {
+      expectedHostPubkey: await hostSigner.getPublicKey(),
+    });
+
+    expect(hostReceivedGuest.envelope).toMatchObject({ content: "Signed by a member, not the host" });
+    expect(hostReceivedGuest.envelope).not.toHaveProperty("auth");
+    expect(hostReceivedGuest.envelope).not.toHaveProperty("badgeLabel");
+    expect(hostReceivedGuest.envelope).not.toHaveProperty("badgeEmoji");
+
+    const ordinarySignedGuestEnvelope = await signChatEnvelope({
+      type: "message",
+      id: "message-4",
+      sender: await guestSigner.getPublicKey(),
+      name: "River",
+      avatar: "https://images.example/river.png",
+      content: "An authenticated ordinary message",
+      createdAt: 4_000,
+    }, guestSigner);
+    const ordinarySignedGuestOutbound = await encryptMessage(signedGuestOutbound.state, ordinarySignedGuestEnvelope);
+    const hostReceivedOrdinaryGuest = await decryptMessage(hostReceivedGuest.state, ordinarySignedGuestOutbound.opaqueBase64, {
+      expectedHostPubkey: await hostSigner.getPublicKey(),
+    });
+
+    expect(hostReceivedOrdinaryGuest.envelope).toMatchObject({
+      name: "River",
+      avatar: "https://images.example/river.png",
+      content: "An authenticated ordinary message",
+    });
+    expect(hasValidChatEnvelopeAuth(hostReceivedOrdinaryGuest.envelope!)).toBe(true);
   });
 });

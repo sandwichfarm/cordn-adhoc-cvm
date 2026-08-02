@@ -3,22 +3,148 @@ import { createInviteUrl, parseInviteUrl } from "../../src/chat/invite";
 
 describe("Feature: self-contained chat invitations", () => {
   test("Scenario: a guest follows a copied link and learns the exact coordinator and relay", () => {
-    const url = createInviteUrl("https://adhoc.example/", {
+    const url = createInviteUrl("http://localhost:4173/", {
       groupId: "group-α",
       coordinatorPubkey: "a".repeat(64),
       relayUrls: ["wss://one.example", "wss://two.example"],
       title: "Friday plans",
+      coordinatorOrigin: "https://ADHOC.example:443/coordinator/path",
+      host: {
+        name: "Ada",
+        pubkey: "f".repeat(64),
+        avatar: "https://images.example/ada.png",
+      },
     });
+
+    expect(new URL(url).origin).toBe("http://localhost:4173");
 
     expect(parseInviteUrl(url)).toEqual({
       groupId: "group-α",
       coordinatorPubkey: "a".repeat(64),
       relayUrls: ["wss://one.example", "wss://two.example"],
       title: "Friday plans",
+      coordinatorOrigin: "https://adhoc.example",
+      host: {
+        name: "Ada",
+        pubkey: "f".repeat(64),
+        avatar: "https://images.example/ada.png",
+      },
     });
   });
 
   test("Scenario: a malformed invite never silently routes a guest to another coordinator", () => {
     expect(parseInviteUrl("https://adhoc.example/chat/group-1?c=not-a-profile")).toBeNull();
   });
+
+  test("Scenario: an older invite without coordinator metadata uses the link origin", () => {
+    const url = new URL(createInviteUrl("https://legacy.example:443", {
+      groupId: "legacy-room",
+      coordinatorPubkey: "c".repeat(64),
+      relayUrls: ["wss://relay.example"],
+      title: "Legacy room",
+    }));
+    url.searchParams.set("m", Buffer.from(JSON.stringify({ title: "Legacy room" })).toString("base64url"));
+
+    expect(parseInviteUrl(url.toString())).toMatchObject({
+      coordinatorOrigin: "https://legacy.example",
+    });
+    expect(parseInviteUrl(url.toString())?.host).toBeUndefined();
+  });
+
+  test.each([
+    "data:image/svg+xml;base64,PHN2Zy8+",
+    "blob:https://adhoc.example/avatar",
+    `https://images.example/${"x".repeat(2_100)}`,
+  ])("Scenario: unsafe avatar metadata is never embedded in an invite (%s)", (avatar) => {
+    const url = createInviteUrl("https://adhoc.example", {
+      groupId: "safe-avatar-room",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: [],
+      host: {
+        name: "Ada",
+        pubkey: "b".repeat(64),
+        avatar,
+      },
+    });
+
+    expect(parseInviteUrl(url)?.host).toEqual({
+      name: "Ada",
+      pubkey: "b".repeat(64),
+    });
+    expect(decodeMetadata(url)).not.toContain(avatar);
+  });
+
+  test("Scenario: malformed optional host metadata does not invalidate an otherwise valid invite", () => {
+    const url = new URL(createInviteUrl("https://adhoc.example", {
+      groupId: "old-room",
+      coordinatorPubkey: "c".repeat(64),
+      relayUrls: [],
+      title: "Old room",
+    }));
+    url.searchParams.set("m", Buffer.from(JSON.stringify({
+      title: "Old room",
+      coordinatorOrigin: "https://adhoc.example",
+      host: { name: "Ada", pubkey: "not-a-pubkey" },
+    })).toString("base64url"));
+
+    expect(parseInviteUrl(url.toString())).toEqual({
+      groupId: "old-room",
+      coordinatorPubkey: "c".repeat(64),
+      relayUrls: [],
+      title: "Old room",
+      coordinatorOrigin: "https://adhoc.example",
+    });
+  });
+
+  test("Scenario: a malformed avatar is ignored while valid host identity remains", () => {
+    const url = new URL(createInviteUrl("https://adhoc.example", {
+      groupId: "safe-room",
+      coordinatorPubkey: "c".repeat(64),
+      relayUrls: [],
+    }));
+    url.searchParams.set("m", Buffer.from(JSON.stringify({
+      title: "Safe room",
+      coordinatorOrigin: "https://adhoc.example",
+      host: { name: "Ada", pubkey: "d".repeat(64), avatar: "javascript:alert(1)" },
+    })).toString("base64url"));
+
+    expect(parseInviteUrl(url.toString())?.host).toEqual({
+      name: "Ada",
+      pubkey: "d".repeat(64),
+    });
+  });
+
+  test("Scenario: invite origins reject non-web protocols", () => {
+    expect(() => createInviteUrl("file:///tmp/shell", {
+      groupId: "group-1",
+      coordinatorPubkey: "d".repeat(64),
+      relayUrls: [],
+    })).toThrow(/http or https/);
+
+    expect(() => createInviteUrl("https://shell.example", {
+      groupId: "group-1",
+      coordinatorPubkey: "d".repeat(64),
+      relayUrls: [],
+      coordinatorOrigin: "ws://coordinator.example",
+    })).toThrow(/http or https/);
+  });
+
+  test("Scenario: a rotated invite carries its admission capability through the URL", () => {
+    const url = createInviteUrl("https://adhoc.example", {
+      groupId: "group-1",
+      coordinatorPubkey: "b".repeat(64),
+      relayUrls: ["wss://relay.example"],
+      title: "Rotated room",
+      inviteToken: "fresh-capability",
+    });
+
+    expect(new URL(url).searchParams.get("i")).toBe("fresh-capability");
+    expect(parseInviteUrl(url)?.inviteToken).toBe("fresh-capability");
+  });
 });
+
+function decodeMetadata(inviteUrl: string): string {
+  const encoded = new URL(inviteUrl).searchParams.get("m");
+  if (!encoded) throw new Error("Invite metadata is missing");
+  return Buffer.from(encoded, "base64url").toString("utf8");
+}
