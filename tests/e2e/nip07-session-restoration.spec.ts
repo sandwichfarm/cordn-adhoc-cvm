@@ -226,18 +226,22 @@ test("keeps the unified root shell while an established anonymous identity opens
   await page.goto("/");
   const initialIdentity = await page.evaluate(() => {
     const profile = document.querySelector('[data-testid="user-profile"]');
+    const record = JSON.parse(localStorage.getItem("cordn:v1:anonymous-identity") ?? "null") as { version?: unknown; secretKeyHex?: unknown } | null;
     return {
-      key: localStorage.getItem("cordn:v1:anonymous-identity"),
+      identityVersion: record?.version,
+      hasCredential: typeof record?.secretKeyHex === "string",
       avatar: profile?.querySelector("img")?.getAttribute("src"),
     };
   });
-  expect(initialIdentity.key).toBeTruthy();
+  expect(initialIdentity.hasCredential).toBe(true);
   expect(initialIdentity.avatar).toBeTruthy();
   await page.reload();
   const restoredIdentity = await page.evaluate(() => {
     const profile = document.querySelector('[data-testid="user-profile"]');
+    const record = JSON.parse(localStorage.getItem("cordn:v1:anonymous-identity") ?? "null") as { version?: unknown; secretKeyHex?: unknown } | null;
     return {
-      key: localStorage.getItem("cordn:v1:anonymous-identity"),
+      identityVersion: record?.version,
+      hasCredential: typeof record?.secretKeyHex === "string",
       avatar: profile?.querySelector("img")?.getAttribute("src"),
     };
   });

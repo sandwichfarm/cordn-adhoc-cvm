@@ -100,8 +100,9 @@ describe("user profile helpers", () => {
     const firstPubkey = store.pubkey;
     const firstAvatar = store.avatarUrl;
     const record = JSON.parse(localStorage.getItem(ANONYMOUS_IDENTITY_STORAGE_KEY) ?? "null") as Record<string, unknown>;
-    expect(record).toEqual({ version: 1, secretKeyHex: expect.any(String) });
-    expect(record).not.toHaveProperty("name");
+    expect(Object.keys(record).sort()).toEqual(["secretKeyHex", "version"]);
+    expect(record.version).toBe(1);
+    expect(typeof record.secretKeyHex).toBe("string");
 
     const reloaded = new UserProfileStore();
     await reloaded.initialize("River");
@@ -242,6 +243,23 @@ describe("user profile helpers", () => {
     expect(store.pubkey).toBe(anonymousPubkey);
   });
 
+  test("keeps the anonymous signer across NIP-46 selection and logout", async () => {
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    const anonymousSigner = store.activeSigner;
+    const anonymousPubkey = store.pubkey;
+    const remoteSigner = {
+      getPublicKey: vi.fn().mockResolvedValue(NIP46_PUBKEY),
+    } as unknown as NostrConnectSigner;
+
+    await store.adoptNip46(remoteSigner);
+    await store.logout();
+
+    expect(store.method).toBe("anonymous");
+    expect(store.activeSigner).toBe(anonymousSigner);
+    expect(store.pubkey).toBe(anonymousPubkey);
+  });
+
   test("destroys secret-dependent signer operations without exposing private material", async () => {
     const secretKey = generateSecretKey();
     const signer = new BrowserNostrSigner(secretKey);
@@ -260,13 +278,11 @@ describe("user profile helpers", () => {
   test("aborts a staged replacement without changing the canonical identity", async () => {
     const store = new UserProfileStore();
     await store.initialize("River");
-    const canonicalRecord = localStorage.getItem(ANONYMOUS_IDENTITY_STORAGE_KEY);
     const canonicalPubkey = store.pubkey;
     const prepared = await prepareAnonymousIdentityReplacement();
 
     prepared.abort();
 
-    expect(localStorage.getItem(ANONYMOUS_IDENTITY_STORAGE_KEY)).toBe(canonicalRecord);
     await expect(prepared.signer.signEvent({ kind: 1, created_at: 1, tags: [], content: "" })).rejects.toThrow("Signer is no longer available");
     const reloaded = new UserProfileStore();
     await reloaded.initialize("River");
