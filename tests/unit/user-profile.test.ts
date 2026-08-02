@@ -38,10 +38,30 @@ import {
   prepareAnonymousIdentityReplacement,
 } from "../../src/identity/anonymous-identity";
 import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
+import { loadRoom, saveRoom, type StoredRoom } from "../../src/chat/room-store";
 
 const NIP07_SESSION_STORAGE_KEY = "cordn:v1:nip07-session";
 const NIP07_PUBKEY = "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0";
 const NIP46_PUBKEY = "4646464646464646464646464646464646464646464646464646464646464646";
+
+function anonymousRoom(stablePubkey: string, coordinatorPubkey = "a".repeat(64)): StoredRoom {
+  return {
+    version: 1,
+    id: "rotation-room",
+    title: "Rotation room",
+    coordinatorPubkey,
+    relayUrls: ["wss://relay.example"],
+    name: "River",
+    stablePubkey,
+    stateBase64: "authority",
+    keyPackage: { publicBase64: "public", privateBase64: "private" },
+    messages: [{ type: "message", id: "cached", sender: coordinatorPubkey, name: "Host", content: "Preserve history", createdAt: 1 }],
+    pending: [],
+    isHost: false,
+    anonymousSecretKey: "legacy-authority",
+    inviteToken: "invite-authority",
+  };
+}
 
 describe("user profile helpers", () => {
   beforeEach(() => {
@@ -320,5 +340,43 @@ describe("user profile helpers", () => {
     expect(store.activeSigner).not.toBeNull();
     expect(store.hasIdentity).toBe(true);
     expect(localStorage.getItem("cordn:v1:anonymous-identity-recovery")).toBeNull();
+  });
+
+  test("retires matching local room authority and every live session before publishing a replacement", async () => {
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    const oldPubkey = store.pubkey;
+    const retired = vi.fn();
+    const restored = vi.fn();
+    saveRoom(anonymousRoom(oldPubkey));
+    store.registerAnonymousSession({ stablePubkey: oldPubkey, retire: retired, restore: restored });
+
+    await store.rotateAnonymousIdentity();
+
+    const room = loadRoom("rotation-room", "a".repeat(64));
+    expect(retired).toHaveBeenCalledTimes(1);
+    expect(restored).not.toHaveBeenCalled();
+    expect(room).toMatchObject({ membershipStatus: "retired", messages: [expect.objectContaining({ id: "cached" })] });
+    expect(room?.anonymousSecretKey).toBeUndefined();
+    expect(room?.stateBase64).toBe("");
+    expect(room?.keyPackage.privateBase64).toBe("");
+    expect(store.pubkey).not.toBe(oldPubkey);
+  });
+
+  test("rolls back session and room retirement when a lifecycle fails before the durable boundary", async () => {
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    const oldPubkey = store.pubkey;
+    const retired = vi.fn().mockRejectedValue(new Error("session retirement failed"));
+    const restored = vi.fn();
+    saveRoom(anonymousRoom(oldPubkey));
+    store.registerAnonymousSession({ stablePubkey: oldPubkey, retire: retired, restore: restored });
+
+    await expect(store.rotateAnonymousIdentity()).rejects.toThrow("Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.");
+
+    expect(store.pubkey).toBe(oldPubkey);
+    expect(store.recoveryRequired).toBe(false);
+    expect(loadRoom("rotation-room", "a".repeat(64))).toMatchObject({ stateBase64: "authority", anonymousSecretKey: "legacy-authority" });
+    expect(restored).not.toHaveBeenCalled();
   });
 });
