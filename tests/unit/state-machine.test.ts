@@ -12,6 +12,7 @@ describe("transitionCoordinator", () => {
     ["idle", "start", "starting"],
     ["starting", "started", "running"],
     ["running", "stop", "stopping"],
+    ["starting", "stop", "stopping"],
     ["stopping", "stopped", "idle"],
     ["starting", "error", "idle"],
     ["stopping", "error", "idle"],
@@ -25,7 +26,6 @@ describe("transitionCoordinator", () => {
   test.each([
     ["idle", "stop"],
     ["running", "start"],
-    ["starting", "stop"],
     ["stopping", "start"],
   ] satisfies Array<[CoordinatorStatus, CoordinatorEvent]>)(
     "rejects invalid transition %s + %s",

@@ -2,7 +2,7 @@ import type { CoordinatorEvent, CoordinatorStatus } from "./types";
 
 const transitions: Record<CoordinatorStatus, Partial<Record<CoordinatorEvent, CoordinatorStatus>>> = {
   idle: { start: "starting" },
-  starting: { started: "running", error: "idle" },
+  starting: { started: "running", stop: "stopping", error: "idle" },
   running: { stop: "stopping" },
   stopping: { stopped: "idle", error: "idle" },
 };

@@ -4,6 +4,7 @@
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import type { CoordinatorIdentity } from "../crypto/key-manager";
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
+  import type { HostedRoomRecoveryAdapter, HostedRoomRecoveryTarget } from "../coordinator/types";
   import type { ConfigStore } from "../config/config.svelte";
   import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
@@ -106,8 +107,8 @@
   let reachabilityProbeGeneration = 0;
   let reachabilityTimer: number | null = null;
   let reachabilityTargetsSignature = "";
-  let hostRoomRestoreReady = $state(false);
-  let hostRoomRestoreStarted = false;
+  let unregisterHostedRoomRecovery: (() => void) | null = null;
+  let pendingRecoverySession: ChatRoomSession | null = null;
   let browserOnline = $state(typeof navigator === "undefined" ? true : navigator.onLine);
   let lastSyncedRouteContext = "";
   let unreadAnnouncement = $state("");
@@ -177,7 +178,11 @@
   ));
   const embeddedChatActive = $derived(hasChatIntent && !intentTargetsCurrentHostedRoom);
   const localRoomReady = $derived(
-    coordinator.status === "running" && room !== null && session !== null && roomConnection === "connected"
+    coordinator.status === "running"
+      && coordinator.startupProgress.roomRecovery.state === "complete"
+      && room !== null
+      && session !== null
+      && roomConnection === "connected"
   );
   const localCoordinatorStatus = $derived<CoordinatorReachability>(
     !browserOnline
@@ -197,20 +202,6 @@
 
   $effect(() => {
     if (revision >= 0) void tick().then(() => messageList?.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" }));
-  });
-
-  $effect(() => {
-    if (!identityReady || !hostRoomRestoreReady || hostRoomRestoreStarted) return;
-    hostRoomRestoreStarted = true;
-    const intendedHostedRoom = activeIntentInvite
-      ? hostedRooms.find((entry) => sameRoomIdentity(entry.room, {
-        id: activeIntentInvite.groupId,
-        coordinatorPubkey: activeIntentInvite.coordinatorPubkey,
-      }))
-      : undefined;
-    if (intendedHostedRoom) void selectRoom(intendedHostedRoom);
-    else void restoreHostChat();
-    if (activeIntentInvite && !intendedHostedRoom) selectedServerPubkey = activeIntentInvite.coordinatorPubkey;
   });
 
   $effect(() => {
@@ -312,7 +303,7 @@
     if (roomUnreadCount(activeSession.room) > 0) activeSession.markRead();
   }
 
-  async function openHostChat(nextRoom: StoredRoom) {
+  async function openHostChat(nextRoom: StoredRoom, recoveredSession: ChatRoomSession | undefined = undefined): Promise<void> {
     const signer = userProfileStore.activeSigner;
     if (!signer) throw new Error("The host chat signer is unavailable");
     await requireRoomSigner(nextRoom, signer);
@@ -323,7 +314,7 @@
     knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
     room = nextRoom;
     pendingJoinRequests = [];
-    session = new ChatRoomSession(nextRoom, signer);
+    session = recoveredSession ?? new ChatRoomSession(nextRoom, signer);
     const attachedSession = session;
     roomConnection = session.status.connection;
     roomConnectionDetail = session.status.detail;
@@ -356,32 +347,45 @@
     update();
   }
 
-  async function restoreHostChat(): Promise<void> {
-    const remembered = loadRememberedHostRoom(coordinatorPubkey);
-    const candidates = remembered
-      ? [remembered, ...hostedRooms.map((entry) => entry.room).filter((candidate) => candidate.id !== remembered.id || candidate.coordinatorPubkey !== remembered.coordinatorPubkey)]
-      : hostedRooms.map((entry) => entry.room);
-
-    for (const candidate of candidates) {
-      const latest = loadRoom(candidate.id, candidate.coordinatorPubkey) ?? candidate;
-      const signer = userProfileStore.activeSigner;
-      if (!signer) return;
-      try {
+  function hostedRoomRecoveryAdapter(): HostedRoomRecoveryAdapter {
+    return {
+      listTargets: () => listRooms()
+        .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
+        .map((storedRoom): HostedRoomRecoveryTarget => ({
+          coordinatorPubkey: storedRoom.coordinatorPubkey,
+          roomId: storedRoom.id,
+          roomName: storedRoom.title,
+          roomIdentityKey: roomIdentityKey(storedRoom),
+        })),
+      recover: async (target, signal) => {
+        if (signal.aborted) throw new DOMException("Recovery cancelled", "AbortError");
+        const latest = loadRoom(target.roomId, target.coordinatorPubkey);
+        const signer = userProfileStore.activeSigner;
+        if (!latest || !latest.isHost || latest.coordinatorPubkey !== coordinatorPubkey || !signer) {
+          throw new Error("Hosted room recovery is unavailable");
+        }
         await requireRoomSigner(latest, signer);
-      } catch {
-        if (candidate.id === remembered?.id) forgetRememberedHostRoom(coordinatorPubkey);
-        continue;
-      }
-      try {
+        if (signal.aborted) throw new DOMException("Recovery cancelled", "AbortError");
+        pendingRecoverySession?.discard();
+        const candidate = new ChatRoomSession(latest, signer);
+        pendingRecoverySession = candidate;
+        await candidate.start();
+        if (signal.aborted || candidate.status.connection !== "connected") {
+          candidate.discard();
+          if (pendingRecoverySession === candidate) pendingRecoverySession = null;
+          throw new Error("Hosted room recovery is unavailable");
+        }
+        await openHostChat(latest, candidate);
+        if (pendingRecoverySession === candidate) pendingRecoverySession = null;
         const entry = buildHostedRoomEntry(latest);
-        await openHostChat(entry.room);
         inviteUrl = entry.inviteUrl;
         qrUrl = entry.qrUrl;
-        return;
-      } catch {
-        // A transient session failure must not discard a remembered room.
-      }
-    }
+      },
+      discard: () => {
+        pendingRecoverySession?.discard();
+        pendingRecoverySession = null;
+      },
+    };
   }
 
   function buildHostedRoomEntry(nextRoom: StoredRoom): HostedRoomEntry {
@@ -894,6 +898,8 @@
     unsubscribeSession?.();
     unregisterAnonymousSession?.();
     unregisterAnonymousSession = null;
+    unregisterHostedRoomRecovery?.();
+    pendingRecoverySession?.discard();
     session?.stop();
   });
   onMount(() => {
@@ -914,7 +920,7 @@
       .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
       .map(buildHostedRoomEntry);
     refreshRemoteRooms();
-    hostRoomRestoreReady = true;
+    unregisterHostedRoomRecovery = coordinator.registerHostedRoomRecovery(hostedRoomRecoveryAdapter());
     if (!locked && config.autostart && config.presenceState !== "offline" && coordinator.status === "idle") void coordinator.start();
     const compactQuery = window.matchMedia("(max-width: 900px)");
     const markCoordinatorOnline = (event: Event) => handleCoordinatorReachabilityEvent(event, "online");
@@ -1391,26 +1397,55 @@
                 <section class="startup-progress-panel" data-testid="startup-progress-panel" aria-label="Coordinator startup">
                   <header>
                     <div>
-                      <span>Current operation</span>
-                      <strong data-testid="startup-current-status">{coordinator.startupProgress.label}</strong>
+                      <span>{coordinator.startupProgress.phase === "restoring-rooms" ? "Restoring rooms" : "Current operation"}</span>
+                      <strong data-testid="startup-current-status">{coordinator.startupProgress.phase === "restoring-rooms"
+                        ? coordinator.startupProgress.roomRecovery.state === "exhausted"
+                          ? `Couldn’t restore # ${coordinator.startupProgress.roomRecovery.roomName}`
+                          : coordinator.startupProgress.roomRecovery.state === "retrying"
+                            ? `Reconnecting to # ${coordinator.startupProgress.roomRecovery.roomName}`
+                            : coordinator.startupProgress.roomRecovery.total === 0
+                              ? "No rooms to restore"
+                              : `Restoring # ${coordinator.startupProgress.roomRecovery.roomName}`
+                        : coordinator.startupProgress.label}</strong>
                     </div>
-                    <span class="startup-progress-value" data-testid="startup-progress-value" aria-hidden="true">{coordinator.startupProgress.percent}%</span>
+                    <span class="startup-progress-value" data-testid="startup-progress-value" aria-hidden="true">{coordinator.startupProgress.phase === "restoring-rooms"
+                      ? `${coordinator.startupProgress.roomRecovery.completed}/${coordinator.startupProgress.roomRecovery.total}`
+                      : `${coordinator.startupProgress.percent}%`}</span>
                   </header>
                   <div
                     class="startup-progress-track"
                     role="progressbar"
-                    aria-label="Coordinator startup progress"
+                    aria-label={coordinator.startupProgress.phase === "restoring-rooms" ? "Hosted room recovery progress" : "Coordinator startup progress"}
                     aria-valuemin="0"
                     aria-valuemax="100"
-                    aria-valuenow={coordinator.startupProgress.percent}
-                    aria-valuetext={`${coordinator.startupProgress.label}, step ${coordinator.startupProgress.step} of ${coordinator.startupProgress.totalSteps}`}
+                    aria-valuenow={coordinator.startupProgress.phase === "restoring-rooms"
+                      ? coordinator.startupProgress.roomRecovery.total === 0 ? 100 : Math.round((coordinator.startupProgress.roomRecovery.completed / coordinator.startupProgress.roomRecovery.total) * 100)
+                      : coordinator.startupProgress.percent}
+                    aria-valuetext={coordinator.startupProgress.phase === "restoring-rooms"
+                      ? `${coordinator.startupProgress.roomRecovery.completed} of ${coordinator.startupProgress.roomRecovery.total} rooms restored`
+                      : `${coordinator.startupProgress.label}, step ${coordinator.startupProgress.step} of ${coordinator.startupProgress.totalSteps}`}
                   >
-                    <span style={`--startup-progress: ${coordinator.startupProgress.percent}%`}></span>
+                    <span style={`--startup-progress: ${coordinator.startupProgress.phase === "restoring-rooms"
+                      ? coordinator.startupProgress.roomRecovery.total === 0 ? 100 : Math.round((coordinator.startupProgress.roomRecovery.completed / coordinator.startupProgress.roomRecovery.total) * 100)
+                      : coordinator.startupProgress.percent}%`}></span>
                   </div>
                   <footer>
-                    <span role="status" aria-live="polite">{coordinator.startupProgress.detail}</span>
-                    <span>{coordinator.startupProgress.step}/{coordinator.startupProgress.totalSteps}</span>
+                    <span role="status" aria-live="polite">{coordinator.startupProgress.phase === "restoring-rooms"
+                      ? coordinator.startupProgress.roomRecovery.state === "exhausted"
+                        ? `Couldn’t restore # ${coordinator.startupProgress.roomRecovery.roomName}. Check your connection, then retry recovery.`
+                        : coordinator.startupProgress.roomRecovery.state === "retrying"
+                          ? "Trying again…"
+                          : coordinator.startupProgress.roomRecovery.diagnostic || `${coordinator.startupProgress.roomRecovery.completed} of ${coordinator.startupProgress.roomRecovery.total} rooms restored`
+                      : coordinator.startupProgress.detail}</span>
+                    {#if coordinator.startupProgress.phase === "restoring-rooms"}
+                      <span>{coordinator.startupProgress.roomRecovery.completed} of {coordinator.startupProgress.roomRecovery.total} rooms restored</span>
+                    {:else}
+                      <span>{coordinator.startupProgress.step}/{coordinator.startupProgress.totalSteps}</span>
+                    {/if}
                   </footer>
+                  {#if coordinator.startupProgress.phase === "restoring-rooms" && coordinator.startupProgress.roomRecovery.state === "exhausted"}
+                    <button class="startup-primary" type="button" disabled={coordinator.startupProgress.roomRecovery.state === "retrying"} onclick={() => void coordinator.retryRoomRecovery()}>Retry recovery</button>
+                  {/if}
                 </section>
               {:else if coordinator.status === "running" && room && session}
                 <section class="startup-progress-panel room-connection-panel" data-testid="room-connection-panel" aria-label="Local room connection">

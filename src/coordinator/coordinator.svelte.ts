@@ -13,11 +13,15 @@ import { transportFactory, type RunningTransport } from "../lib/transport";
 import { resourceMonitor } from "./resource-monitor.svelte";
 import { INSTANCE_RUNNING_MESSAGE, SingleInstanceGuard, type InstanceLease } from "./single-instance-guard";
 import { isConfigLocked, transitionCoordinator } from "./state-machine";
+import { createHostedRoomRecoveryProgress } from "./types";
 import type {
   CoordinatorLoadState,
   CoordinatorStartupPhase,
   CoordinatorStartupProgress,
   CoordinatorStatus,
+  HostedRoomRecoveryAdapter,
+  HostedRoomRecoveryProgress,
+  HostedRoomRecoveryTarget,
   RelayConnectionStatus,
 } from "./types";
 
@@ -30,6 +34,57 @@ export interface DebugLogEntry {
   details?: string;
 }
 
+export const ROOM_RECOVERY_POLICY = {
+  maxAttempts: 3,
+  attemptTimeoutMs: 4_000,
+  retryDelayMs: [250, 750] as const,
+} as const;
+
+export interface RoomRecoveryRuntime {
+  wait(milliseconds: number, signal: AbortSignal): Promise<void>;
+  runAttempt(operation: (signal: AbortSignal) => Promise<void>, timeoutMs: number, signal: AbortSignal): Promise<void>;
+}
+
+function abortError(): DOMException {
+  return new DOMException("Recovery cancelled", "AbortError");
+}
+
+const defaultRoomRecoveryRuntime: RoomRecoveryRuntime = {
+  wait(milliseconds, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) return reject(abortError());
+      const timer = window.setTimeout(resolve, milliseconds);
+      signal.addEventListener("abort", () => {
+        window.clearTimeout(timer);
+        reject(abortError());
+      }, { once: true });
+    });
+  },
+  async runAttempt(operation, timeoutMs, signal) {
+    if (signal.aborted) throw abortError();
+    const attemptController = new AbortController();
+    const abort = () => attemptController.abort();
+    signal.addEventListener("abort", abort, { once: true });
+    try {
+      await Promise.race([
+        operation(attemptController.signal),
+        new Promise<never>((_, reject) => {
+          const timer = window.setTimeout(() => {
+            attemptController.abort();
+            reject(new Error("Hosted room recovery timed out"));
+          }, timeoutMs);
+          signal.addEventListener("abort", () => {
+            window.clearTimeout(timer);
+            reject(abortError());
+          }, { once: true });
+        }),
+      ]);
+    } finally {
+      signal.removeEventListener("abort", abort);
+    }
+  },
+};
+
 const debugTimeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
   minute: "2-digit",
@@ -39,7 +94,7 @@ const debugTimeFormatter = new Intl.DateTimeFormat("en-US", {
 
 const STARTUP_TOTAL_STEPS = 5;
 
-const STARTUP_PHASE_COPY: Record<CoordinatorStartupPhase, Omit<CoordinatorStartupProgress, "phase" | "detail"> & { detail: string }> = {
+const STARTUP_PHASE_COPY: Record<CoordinatorStartupPhase, Omit<CoordinatorStartupProgress, "phase" | "detail" | "roomRecovery"> & { detail: string }> = {
   idle: {
     step: 0,
     totalSteps: STARTUP_TOTAL_STEPS,
@@ -75,9 +130,16 @@ const STARTUP_PHASE_COPY: Record<CoordinatorStartupPhase, Omit<CoordinatorStartu
     label: "Connecting relay paths",
     detail: "Subscribing for coordinator requests.",
   },
-  online: {
+  "restoring-rooms": {
     step: 5,
-    totalSteps: STARTUP_TOTAL_STEPS,
+    totalSteps: 6,
+    percent: 85,
+    label: "Restoring rooms",
+    detail: "Restoring local hosted rooms.",
+  },
+  online: {
+    step: 6,
+    totalSteps: 6,
     percent: 100,
     label: "Coordinator online",
     detail: "Encrypted room delivery is ready.",
@@ -94,8 +156,9 @@ const STARTUP_PHASE_COPY: Record<CoordinatorStartupPhase, Omit<CoordinatorStartu
 function startupProgress(
   phase: CoordinatorStartupPhase,
   detail = STARTUP_PHASE_COPY[phase].detail,
+  roomRecovery = createHostedRoomRecoveryProgress({ state: "idle", completed: 0, total: 0 }),
 ): CoordinatorStartupProgress {
-  return { phase, ...STARTUP_PHASE_COPY[phase], detail };
+  return { phase, ...STARTUP_PHASE_COPY[phase], detail, roomRecovery };
 }
 
 export class CoordinatorStore {
@@ -113,8 +176,16 @@ export class CoordinatorStore {
   private running: RunningTransport | null = null;
   private instanceLease: InstanceLease | null = null;
   private pagehideRelease: (() => void) | null = null;
+  private hostedRoomRecovery: HostedRoomRecoveryAdapter | null = null;
+  private recoveryTargets: readonly HostedRoomRecoveryTarget[] = [];
+  private recoveryCompleted = new Set<string>();
+  private startupGeneration = 0;
+  private startupController: AbortController | null = null;
+  private startupPromise: Promise<void> | null = null;
+  private readonly roomRecoveryRuntime: RoomRecoveryRuntime;
 
-  constructor() {
+  constructor(roomRecoveryRuntime: RoomRecoveryRuntime = defaultRoomRecoveryRuntime) {
+    this.roomRecoveryRuntime = roomRecoveryRuntime;
     if (keyStorage.hasPersisted()) {
       this.loadState = "prompting";
       this.persistenceEnabled = true;
@@ -233,7 +304,26 @@ export class CoordinatorStore {
     this.persistenceError = null;
   }
 
+  registerHostedRoomRecovery(adapter: HostedRoomRecoveryAdapter): () => void {
+    this.hostedRoomRecovery = adapter;
+    return () => {
+      if (this.hostedRoomRecovery === adapter) this.hostedRoomRecovery = null;
+    };
+  }
+
   async start(): Promise<void> {
+    if (this.startupPromise) return this.startupPromise;
+    const generation = ++this.startupGeneration;
+    const controller = new AbortController();
+    this.startupController = controller;
+    const transaction = this.startGeneration(generation, controller.signal);
+    this.startupPromise = transaction.finally(() => {
+      if (this.startupGeneration === generation) this.startupPromise = null;
+    });
+    return this.startupPromise;
+  }
+
+  private async startGeneration(generation: number, signal: AbortSignal): Promise<void> {
     this.status = transitionCoordinator(this.status, "start");
     this.setStartupProgress("checking-instance");
     configStore.lock();
@@ -244,15 +334,20 @@ export class CoordinatorStore {
     try {
       const keyManager = this.requireKeyManager();
       const instanceGuard = new SingleInstanceGuard();
-      this.instanceLease = await instanceGuard.acquire({
+      const lease = await instanceGuard.acquire({
         publicKeyHex: keyManager.identity.publicKeyHex,
         relayUrls: configStore.enabledRelayUrls,
         getSecretKeyBytes: () => keyManager.getSecretKeyBytes(),
         debug: (level, message, details) => this.addDebugLog(level, message, details),
       });
-      this.registerPagehideRelease();
+      if (!this.ownsGeneration(generation, signal)) {
+        await lease.release();
+        return;
+      }
+      this.instanceLease = lease;
+      this.registerPagehideRelease(generation);
 
-      this.running = await transportFactory.create(
+      const running = await transportFactory.create(
         keyManager.getSecretKeyBytes(),
         configStore.enabledRelayUrls,
         configStore.coordinatorOptions,
@@ -266,13 +361,10 @@ export class CoordinatorStore {
               : phase === "connecting-relays"
                 ? `Opening ${configStore.enabledRelayUrls.length} configured relay ${configStore.enabledRelayUrls.length === 1 ? "path" : "paths"}.`
                 : undefined;
-            this.setStartupProgress(phase, detail);
+            if (this.ownsGeneration(generation, signal)) this.setStartupProgress(phase, detail);
           },
           onStarted: ({ publicKeyHex, relayUrls }) => {
-            this.setStartupProgress(
-              "online",
-              `Listening across ${relayUrls.length} relay ${relayUrls.length === 1 ? "path" : "paths"}.`,
-            );
+            if (!this.ownsGeneration(generation, signal)) return;
             this.addDebugLog(
               "info",
               "nostr transport subscribed",
@@ -307,12 +399,20 @@ export class CoordinatorStore {
           },
         },
       );
+      if (!this.ownsGeneration(generation, signal)) {
+        running.close();
+        return;
+      }
+      this.running = running;
       this.setEnabledRelayStatuses("connected");
+      const recovered = await this.recoverHostedRooms(generation, signal);
+      if (!recovered || !this.ownsGeneration(generation, signal)) return;
       this.status = transitionCoordinator(this.status, "started");
       this.appliedConfigRevision = configStore.runtimeRevision;
       resourceMonitor.start(this.running);
       this.addDebugLog("info", "coordinator started", keyManager.identity.npub);
     } catch (error) {
+      if (!this.ownsGeneration(generation, signal)) return;
       this.running = null;
       await this.releaseInstanceLease();
       resourceMonitor.stop();
@@ -330,6 +430,11 @@ export class CoordinatorStore {
 
   async stop(): Promise<void> {
     this.addDebugLog("info", "coordinator stop requested");
+    this.startupGeneration += 1;
+    this.startupController?.abort();
+    this.startupController = null;
+    const activeStartup = this.startupPromise;
+    if (activeStartup) await activeStartup;
     this.status = transitionCoordinator(this.status, "stop");
     await this.stopSync();
     this.relayStatuses = {};
@@ -339,7 +444,7 @@ export class CoordinatorStore {
   }
 
   async restart(): Promise<void> {
-    if (this.status !== "running") return;
+    if (this.status !== "running" && this.status !== "starting") return;
     this.addDebugLog("info", "coordinator restart requested", "applying updated settings");
     await this.stop();
     await this.start();
@@ -387,6 +492,114 @@ export class CoordinatorStore {
     this.running?.close();
     this.running = null;
     await this.releaseInstanceLease();
+  }
+
+  private async recoverHostedRooms(generation: number, signal: AbortSignal): Promise<boolean> {
+    const adapter = this.hostedRoomRecovery;
+    if (!adapter) {
+      this.recoveryTargets = [];
+      this.recoveryCompleted.clear();
+      this.setRoomRecoveryProgress("complete", 0, 0, null, 0);
+      return true;
+    }
+
+    if (this.recoveryTargets.length === 0) {
+      const listed = await adapter.listTargets();
+      if (!this.ownsGeneration(generation, signal)) return false;
+      const unique = new Map<string, HostedRoomRecoveryTarget>();
+      for (const target of listed) {
+        if (!target.roomIdentityKey || !target.coordinatorPubkey || !target.roomId || !target.roomName) continue;
+        unique.set(target.roomIdentityKey, target);
+      }
+      this.recoveryTargets = [...unique.values()].sort((left, right) => left.roomIdentityKey.localeCompare(right.roomIdentityKey));
+      this.recoveryCompleted.clear();
+    }
+
+    const total = this.recoveryTargets.length;
+    if (total === 0) {
+      this.setRoomRecoveryProgress("complete", 0, 0, null, 0, "No rooms to restore");
+      // Keep the approved zero-room completion visible long enough to be perceived before ready.
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 150));
+      if (!this.ownsGeneration(generation, signal)) return false;
+      return true;
+    }
+
+    for (const target of this.recoveryTargets) {
+      if (this.recoveryCompleted.has(target.roomIdentityKey)) continue;
+      let succeeded = false;
+      for (let attempt = 1; attempt <= ROOM_RECOVERY_POLICY.maxAttempts; attempt += 1) {
+        if (!this.ownsGeneration(generation, signal)) return false;
+        this.setRoomRecoveryProgress(attempt === 1 ? "restoring" : "retrying", this.recoveryCompleted.size, total, target.roomName, attempt);
+        try {
+          await this.roomRecoveryRuntime.runAttempt(
+            (attemptSignal) => adapter.recover(target, attemptSignal),
+            ROOM_RECOVERY_POLICY.attemptTimeoutMs,
+            signal,
+          );
+          if (!this.ownsGeneration(generation, signal)) {
+            await adapter.discard?.(target);
+            return false;
+          }
+          this.recoveryCompleted.add(target.roomIdentityKey);
+          this.setRoomRecoveryProgress("restoring", this.recoveryCompleted.size, total, target.roomName, attempt);
+          succeeded = true;
+          break;
+        } catch (error) {
+          if (!this.ownsGeneration(generation, signal)) {
+            await adapter.discard?.(target);
+            return false;
+          }
+          if (attempt === ROOM_RECOVERY_POLICY.maxAttempts) {
+            this.setRoomRecoveryProgress("exhausted", this.recoveryCompleted.size, total, target.roomName, attempt, "Check your connection, then retry recovery.");
+            return false;
+          }
+          this.setRoomRecoveryProgress("retrying", this.recoveryCompleted.size, total, target.roomName, attempt, "Trying again…");
+          await this.roomRecoveryRuntime.wait(ROOM_RECOVERY_POLICY.retryDelayMs[attempt - 1]!, signal);
+        }
+      }
+      if (!succeeded) return false;
+    }
+
+    this.setRoomRecoveryProgress("complete", this.recoveryCompleted.size, total, null, 0);
+    return true;
+  }
+
+  private setRoomRecoveryProgress(
+    state: HostedRoomRecoveryProgress["state"],
+    completed: number,
+    total: number,
+    roomName: string | null,
+    attempt: number,
+    diagnostic?: string,
+  ): void {
+    const roomRecovery = createHostedRoomRecoveryProgress({ state, completed, total, roomName, attempt, diagnostic });
+    this.startupProgress = startupProgress(
+      state === "complete" && total > 0 ? "online" : "restoring-rooms",
+      state === "complete" ? undefined : roomRecovery.diagnostic || `Restoring # ${roomName ?? "room"}`,
+      roomRecovery,
+    );
+  }
+
+  private ownsGeneration(generation: number, signal: AbortSignal): boolean {
+    return this.startupGeneration === generation && !signal.aborted;
+  }
+
+  async retryRoomRecovery(): Promise<void> {
+    if (this.startupPromise) return this.startupPromise;
+    if (this.status !== "starting" || this.startupProgress.roomRecovery.state !== "exhausted" || !this.running) return;
+    const generation = ++this.startupGeneration;
+    const controller = new AbortController();
+    this.startupController = controller;
+    const transaction = this.recoverHostedRooms(generation, controller.signal).then((recovered) => {
+      if (!recovered || !this.ownsGeneration(generation, controller.signal)) return;
+      this.status = transitionCoordinator(this.status, "started");
+      this.appliedConfigRevision = configStore.runtimeRevision;
+      resourceMonitor.start(this.running!);
+    });
+    this.startupPromise = transaction.finally(() => {
+      if (this.startupGeneration === generation) this.startupPromise = null;
+    });
+    return this.startupPromise;
   }
 
   dismissError(): void {
@@ -466,10 +679,12 @@ export class CoordinatorStore {
     await lease?.release();
   }
 
-  private registerPagehideRelease(): void {
+  private registerPagehideRelease(generation: number): void {
     this.pagehideRelease?.();
 
     const handler = (): void => {
+      if (this.startupGeneration !== generation) return;
+      this.startupController?.abort();
       this.addDebugLog("info", "page unloading; releasing coordinator instance lease");
       void this.releaseInstanceLease();
     };
