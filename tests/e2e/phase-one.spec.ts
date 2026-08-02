@@ -258,9 +258,79 @@ test("unread badge lifecycle projects exact room and coordinator counts", async 
   await coordinatorMenu.getByRole("menuitem", { name: /Coordinator aaaaaa/ }).click();
   const rail = page.getByTestId("invite-panel");
   await expect(rail.getByRole("button", { name: /Open room Unread one/ })).toBeVisible();
-  await expect(rail.getByLabel("100 unread messages")).toHaveText("99+");
+  const unreadBadge = rail.getByLabel("100 unread messages");
+  await expect(unreadBadge).toHaveText("99+");
   await expect(rail.getByLabel("101 unread messages for this coordinator")).toHaveText("99+");
+  expect(await unreadBadge.evaluate((element) => ({
+    tag: element.tagName,
+    tabIndex: (element as HTMLElement).tabIndex,
+    height: Math.round(element.getBoundingClientRect().height),
+  }))).toEqual({ tag: "SPAN", tabIndex: -1, height: 16 });
+
+  const targetRow = rail.locator(".channel-row").filter({ hasText: "Unread one" });
+  const targetMenu = targetRow.getByRole("button", { name: "More actions for # Unread one" });
+  const activeRoomBefore = await page.locator(".channel-row.active").getAttribute("data-room-key");
+  const urlBefore = page.url();
+  await targetMenu.focus();
+  await targetMenu.click();
+  await expect(page).toHaveURL(urlBefore);
+  await expect(page.locator(".channel-row.active")).toHaveAttribute("data-room-key", activeRoomBefore ?? "");
+  await expect(unreadBadge).toHaveText("99+");
+  await page.keyboard.press("Escape");
+  await expect(targetMenu).toBeFocused();
+  await expect(unreadBadge).toHaveText("99+");
   expect(pageErrors).toEqual([]);
+});
+
+test("unread zero transition announces once from the page-level owner", async ({ page }) => {
+  await page.goto("/");
+  const coordinatorPubkey = "c".repeat(64);
+  await seedJoinedRoom(page, "Announced room", coordinatorPubkey);
+  await page.reload();
+  await page.evaluate(({ coordinatorPubkey }) => {
+    const roomId = "announced-room";
+    window.dispatchEvent(new CustomEvent("cordn:room-unread-changed", {
+      detail: { coordinatorPubkey, roomId, previousCount: 0, unreadCount: 1 },
+    }));
+  }, { coordinatorPubkey });
+  const announcement = page.locator('[aria-live="polite"]').filter({ hasText: "New messages in # Announced room" });
+  await expect(announcement).toHaveCount(1);
+  await page.evaluate(({ coordinatorPubkey }) => {
+    window.dispatchEvent(new CustomEvent("cordn:room-unread-changed", {
+      detail: { coordinatorPubkey, roomId: "announced-room", previousCount: 1, unreadCount: 2 },
+    }));
+  }, { coordinatorPubkey });
+  await expect(announcement).toHaveCount(1);
+});
+
+test("long room navigation stays operable and contained", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto("/");
+  const coordinatorPubkey = "d".repeat(64);
+  for (let index = 0; index < 24; index += 1) {
+    await seedJoinedRoom(page, `Room ${String(index).padStart(2, "0")} ${"extremely-long-label-".repeat(3)}`, coordinatorPubkey);
+  }
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.reload();
+    if (viewport.width <= 900) await page.getByRole("button", { name: "Open room browser" }).click();
+    await page.locator(".channel-context-button").click();
+    await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem", { name: /Coordinator dddddd/ }).click();
+    if (viewport.width <= 900) await page.getByRole("button", { name: "Open room browser" }).click();
+    const rail = page.getByTestId("invite-panel");
+    await expect(rail.locator(".channel-row")).toHaveCount(24);
+    expect(await rail.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+    const firstRow = rail.locator(".channel-row").first();
+    const label = firstRow.locator(".truncate");
+    const action = firstRow.getByRole("button", { name: /More actions for/ });
+    expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    expect(await Promise.all([label.boundingBox(), action.boundingBox()]).then(([labelBox, actionBox]) => Boolean(
+      labelBox && actionBox && labelBox.x + labelBox.width <= actionBox.x,
+    ))).toBe(true);
+    await rail.locator(".channel-row").last().scrollIntoViewIfNeeded();
+    await expect(rail.locator(".channel-row").last()).toBeVisible();
+    await expectViewportOwned(page, viewport);
+  }
 });
 
 test("generates copyable identity on first load", async ({ page }) => {

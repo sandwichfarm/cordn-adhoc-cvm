@@ -169,6 +169,8 @@
   function acknowledgeVisibleRoom(): void {
     const activeRoom = room;
     if (!activeRoom || document.visibilityState !== "visible") return;
+    const routedInvite = parseInviteUrl(currentUrl);
+    if (routedInvite && (routedInvite.groupId !== activeRoom.id || routedInvite.coordinatorPubkey !== activeRoom.coordinatorPubkey)) return;
     if (connection !== "connected" && connection !== "cached" && connection !== "offline") return;
     if (roomUnreadCount(activeRoom) === 0) return;
     if (session && sameRoomIdentity(session.room, activeRoom)) session.markRead();

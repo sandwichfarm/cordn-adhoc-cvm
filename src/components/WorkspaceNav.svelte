@@ -67,10 +67,6 @@
   let removalRoom = $state<StoredRoom | null>(null);
   let removalTarget = $state<RoomTarget | null>(null);
   let removalOrigin = $state<HTMLButtonElement | null>(null);
-  let unreadAnnouncement = $state("");
-  // Previous values are bookkeeping for announcements, not render state. Keeping
-  // this outside Svelte reactivity prevents the effect from rescheduling itself.
-  let observedUnreadCounts: Record<string, number> = {};
 
   const invite = $derived(parseInviteUrl(currentUrl));
   const storedRooms = $derived(readRooms(roomsRevision));
@@ -200,18 +196,6 @@
   function coordinatorUnreadCount(coordinatorPubkey: string): number {
     return coordinatorUnreadTotal(storedRooms, coordinatorPubkey);
   }
-
-  $effect(() => {
-    const next: Record<string, number> = {};
-    for (const room of storedRooms) {
-      const key = roomIdentityKey(room.coordinatorPubkey, room.id);
-      const count = roomUnreadCount(room);
-      const previous = observedUnreadCounts[key];
-      if (previous === 0 && count > 0) unreadAnnouncement = `New messages in # ${room.title}`;
-      next[key] = count;
-    }
-    observedUnreadCounts = next;
-  });
 
   function hostIdentityForInvite(nextInvite: ChatInvite): RoomHostIdentity {
     const host = nextInvite.host ?? { name: "Unknown host", pubkey: "" };
@@ -448,7 +432,7 @@
     <span class="server-notice embedded-notice" aria-hidden="true" data-testid="server-online-notice"></span>
   {/if}
   <InviteRedeemer onNavigate={navigate} />
-  <span class="sr-only" aria-live="polite">{unreadAnnouncement || (serverNotice ? "A coordinator is online" : "")}</span>
+  <span class="sr-only" aria-live="polite">{serverNotice ? "A coordinator is online" : ""}</span>
 
   {#if showRoomBrowser && open}
     <button class="nav-scrim" type="button" aria-label="Close room switcher" onclick={() => open = false}></button>
@@ -478,14 +462,14 @@
         {:else}
           <div class="room-list">
             {#each homeRooms as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
-              <div class:active={isActive(room)} class="room-row">
+              <div class:active={isActive(room)} class="room-row" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)}>
               <button class="room-row-primary" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
-              {#if room.unreadCount > 0}<span class="unread-badge" title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
+              {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
               <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode={room.isHost ? "delete" : "leave"} onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
@@ -505,14 +489,14 @@
           </div>
           <div class="room-list">
             {#each previousLocalSessions as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
-              <div class:active={isActive(room)} class="room-row">
+              <div class:active={isActive(room)} class="room-row" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)}>
               <button class="room-row-primary" type="button" aria-label={`Open previous local session ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
-              {#if room.unreadCount > 0}<span class="unread-badge" title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
+              {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
               <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
@@ -534,14 +518,14 @@
           </div>
           <div class="room-list">
             {#each server.rooms as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
-              <div class:active={isActive(room)} class="room-row">
+              <div class:active={isActive(room)} class="room-row" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)}>
               <button class="room-row-primary" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
-              {#if room.unreadCount > 0}<span class="unread-badge" title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
+              {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
               <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}

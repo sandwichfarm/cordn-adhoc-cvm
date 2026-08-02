@@ -296,7 +296,7 @@
   }
 
   function acknowledgeVisibleHostRoom(): void {
-    if (document.visibilityState !== "visible" || roomConnection === "connecting") return;
+    if (document.visibilityState !== "visible" || roomConnection !== "connected") return;
     const activeRoom = room;
     const activeSession = session;
     if (!activeRoom || !activeSession || !sameRoomIdentity(activeSession.room, activeRoom)) return;
@@ -1327,26 +1327,26 @@
               {:else if selectedServerIsHome}
                 <div class="channel-list">
                   {#each hostedRooms as entry (roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id))}
-                    <div class:active={!embeddedChatActive && Boolean(room && sameRoomIdentity(entry.room, room))} class="channel-row">
+                    <div class:active={!embeddedChatActive && Boolean(room && sameRoomIdentity(entry.room, room))} class="channel-row" data-room-key={roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)}>
                       <button class="channel-row-primary" type="button" aria-label={`Open room ${entry.room.title}, hosted by ${hostIdentityForRoom(entry.room).name}`} onclick={() => selectRoom(entry)}>
                         <span class="channel-active-mark" aria-hidden="true"></span>
                         <span class="channel-hash" aria-hidden="true">#</span>
                         <span class="truncate" title={entry.room.title}>{entry.room.title}</span>
                         <RoomHostBadge host={hostIdentityForRoom(entry.room)} compact />
                       </button>
-                      {#if roomUnreadCount(entry.room) > 0}<span class="unread-badge" title={`${roomUnreadCount(entry.room)} unread messages`} aria-label={`${roomUnreadCount(entry.room)} unread messages`}>{displayUnreadCount(roomUnreadCount(entry.room))}</span>{/if}
+                      {#if roomUnreadCount(entry.room) > 0}<span class="unread-badge" data-room-key={roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)} data-testid={`room-unread-${roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)}`} title={`${roomUnreadCount(entry.room)} unread messages`} aria-label={`${roomUnreadCount(entry.room)} unread messages`}>{displayUnreadCount(roomUnreadCount(entry.room))}</span>{/if}
                       <RoomActionsMenu sidebar roomTitle={entry.room.title} {soundsEnabled} removalMode="delete" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(entry.room, origin)} />
                     </div>
                   {/each}
                   {#each homeJoinedRooms as joinedRoom (`${joinedRoom.coordinatorPubkey}:${joinedRoom.id}`)}
-                    <div class:active={embeddedChatActive && activeIntentInvite?.groupId === joinedRoom.id && activeIntentInvite?.coordinatorPubkey === joinedRoom.coordinatorPubkey} class="channel-row">
+                    <div class:active={embeddedChatActive && activeIntentInvite?.groupId === joinedRoom.id && activeIntentInvite?.coordinatorPubkey === joinedRoom.coordinatorPubkey} class="channel-row" data-room-key={roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)}>
                     <button class="channel-row-primary" type="button" aria-label={`Open joined room ${joinedRoom.title}, hosted by ${hostIdentityForRoom(joinedRoom).name}`} onclick={() => openStoredRoomFromRail(joinedRoom)}>
                       <span class="channel-active-mark" aria-hidden="true"></span>
                       <span class="channel-hash" aria-hidden="true">#</span>
                       <span class="truncate">{joinedRoom.title}</span>
                       <RoomHostBadge host={hostIdentityForRoom(joinedRoom)} compact />
                     </button>
-                    {#if roomUnreadCount(joinedRoom) > 0}<span class="unread-badge" title={`${roomUnreadCount(joinedRoom)} unread messages`} aria-label={`${roomUnreadCount(joinedRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(joinedRoom))}</span>{/if}
+                    {#if roomUnreadCount(joinedRoom) > 0}<span class="unread-badge" data-room-key={roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)} data-testid={`room-unread-${roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)}`} title={`${roomUnreadCount(joinedRoom)} unread messages`} aria-label={`${roomUnreadCount(joinedRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(joinedRoom))}</span>{/if}
                     <RoomActionsMenu sidebar roomTitle={joinedRoom.title} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(joinedRoom, origin)} />
                     </div>
                   {/each}
@@ -1357,7 +1357,7 @@
                     <p class="channel-previous-guidance">This session belongs to a previous local coordinator key. Open it to leave its saved copy; the current coordinator cannot delete it.</p>
                   {/if}
                   {#each selectedExternalServer.rooms as remoteRoom (`${remoteRoom.coordinatorPubkey}:${remoteRoom.id}`)}
-                      <div class:active={embeddedChatActive && activeIntentInvite?.groupId === remoteRoom.id && activeIntentInvite?.coordinatorPubkey === remoteRoom.coordinatorPubkey} class="channel-row">
+                      <div class:active={embeddedChatActive && activeIntentInvite?.groupId === remoteRoom.id && activeIntentInvite?.coordinatorPubkey === remoteRoom.coordinatorPubkey} class="channel-row" data-room-key={roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)}>
                       <button class="channel-row-primary" type="button"
                         aria-label={selectedServerIsPreviousLocal
                           ? `Open previous local session ${remoteRoom.title}, hosted by ${hostIdentityForRoom(remoteRoom).name}`
@@ -1369,7 +1369,7 @@
                         <span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>
                         <RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact />
                       </button>
-                      {#if roomUnreadCount(remoteRoom) > 0}<span class="unread-badge" title={`${roomUnreadCount(remoteRoom)} unread messages`} aria-label={`${roomUnreadCount(remoteRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(remoteRoom))}</span>{/if}
+                      {#if roomUnreadCount(remoteRoom) > 0}<span class="unread-badge" data-room-key={roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)} data-testid={`room-unread-${roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)}`} title={`${roomUnreadCount(remoteRoom)} unread messages`} aria-label={`${roomUnreadCount(remoteRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(remoteRoom))}</span>{/if}
                       <RoomActionsMenu sidebar roomTitle={remoteRoom.title} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(remoteRoom, origin)} />
                       </div>
                   {/each}
@@ -1930,15 +1930,16 @@
   }
 
   @media (max-width: 900px) {
-    .host-topbar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: .35rem; padding: .42rem .55rem; }
+    .host-topbar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0; padding: 0 .45rem; }
     .host-topbar :global(.workspace-nav) { width: 100%; min-width: 0; }
+    .host-topbar :global(.workspace-nav > a), .host-topbar :global(.workspace-nav > button) { min-height: 2.75rem; }
     .host-commandbar { display: grid; width: 100%; grid-template-columns: minmax(3.25rem, 1fr) auto auto auto; align-items: stretch; justify-content: stretch; }
-    .mobile-rail-toggle { display: grid; min-width: 0; height: 2.65rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .4rem; padding: 0 .55rem; color: #b9cbbf; text-align: left; font-size: .6rem; }
+    .mobile-rail-toggle { display: grid; min-width: 0; height: 2.75rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .4rem; padding: 0 .55rem; color: #b9cbbf; text-align: left; font-size: .6rem; }
     .mobile-rail-toggle:hover, .mobile-rail-toggle.active { background: #142018; color: #effff2; }
     .mobile-rail-toggle > span:first-child { color: #7cf59d; font-size: .78rem; }
     .mobile-rail-toggle > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mobile-rail-toggle strong { display: grid; min-width: 1.15rem; height: 1.15rem; place-items: center; background: #17241b; color: #9bf6b3; font-size: .52rem; font-weight: 600; }
-    .mobile-tools-toggle { display: grid; width: 2.65rem; height: 2.65rem; place-items: center; color: #82958a; font-size: .7rem; letter-spacing: .08em; }
+    .mobile-tools-toggle { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #82958a; font-size: .7rem; letter-spacing: .08em; }
     .mobile-tools-toggle:hover, .mobile-tools-toggle.active { background: #142018; color: #effff2; }
     .mobile-tools-scrim { position: fixed; z-index: 59; inset: 0; display: block; border: 0; background: rgb(0 0 0 / .38); cursor: default; backdrop-filter: blur(1px); }
     .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); grid-template-columns: minmax(0, 1fr) repeat(4, 2.65rem); border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
@@ -1963,11 +1964,11 @@
       overflow-y: auto;
       overscroll-behavior: contain;
     }
-    .host-commandbar :global(.compact-controls) { height: 2.65rem; gap: 0; border-inline: 1px solid #202d25; padding: 0; }
-    .host-commandbar :global(.lifecycle-status) { height: 2.65rem; gap: 0; padding: 0 .4rem; }
+    .host-commandbar :global(.compact-controls) { height: 2.75rem; gap: 0; border-inline: 1px solid #202d25; padding: 0; }
+    .host-commandbar :global(.lifecycle-status) { height: 2.75rem; gap: 0; padding: 0 .4rem; }
     .host-commandbar :global(.lifecycle-status > span:first-child) { display: none; }
-    .host-commandbar :global(.lifecycle-action) { height: 2.65rem; gap: .3rem; padding: 0 .52rem; }
-    .host-commandbar :global(.destroy-action) { width: 2.35rem; height: 2.65rem; }
+    .host-commandbar :global(.lifecycle-action) { height: 2.75rem; gap: .3rem; padding: 0 .52rem; }
+    .host-commandbar :global(.destroy-action) { width: 2.75rem; height: 2.75rem; }
     .manage-toggle { padding-inline: .58rem; }
     .host-layout, .host-layout:not(.management-open), .host-layout.management-open { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
     .host-rail { position: absolute; z-index: 30; inset: 0 auto 0 0; display: block !important; width: min(22rem, calc(100% - 2.65rem)); max-width: 100%; transform: translateX(-102%); border-right: 1px solid #3c5544; border-bottom: 0; padding: .65rem; box-shadow: 18px 0 42px rgb(0 0 0 / .52); opacity: 0; pointer-events: none; overscroll-behavior: contain; transition: transform .18s ease, opacity .18s ease; }
