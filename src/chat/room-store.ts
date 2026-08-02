@@ -1,6 +1,5 @@
 import type { NostrSigner } from "@contextvm/sdk/core";
-import { generateSecretKey } from "nostr-tools";
-import { bytesToHex, hexToBytes } from "nostr-tools/utils";
+import { hexToBytes } from "nostr-tools/utils";
 import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
 import { notificationCenter } from "../notifications/notification-center.svelte";
 import { normalizeRoomHostIdentity, type ChatInvite, type CoordinatorKeyMode, type RoomHostIdentity } from "./invite";
@@ -469,10 +468,8 @@ export class ChatRoomSession {
   }
 }
 
-export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity; coordinatorKeyMode?: CoordinatorKeyMode }): Promise<StoredRoom> {
-  const secret = generateSecretKey();
-  const signer = new BrowserNostrSigner(secret);
-  const stablePubkey = await signer.getPublicKey();
+export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; signer: NostrSigner; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity; coordinatorKeyMode?: CoordinatorKeyMode }): Promise<StoredRoom> {
+  const stablePubkey = await input.signer.getPublicKey();
   const key = await createKeyPackage(stablePubkey);
   const state = await createRoomState(key.keyPackage, key.privateKeyPackage);
   const name = input.identity?.name.trim() || "Host";
@@ -492,7 +489,6 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
     isHost: true,
     stateBase64: encodeState(state),
     keyPackage: key.stored,
-    anonymousSecretKey: bytesToHex(secret),
     lastCursor: 0,
     messages: [],
     pending: [],
@@ -507,7 +503,7 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
   return room;
 }
 
-export async function createJoiningRoom(input: { invite: ChatInvite; name: string; signer: NostrSigner; anonymousSecretKey?: string; avatar?: string }): Promise<StoredRoom> {
+export async function createJoiningRoom(input: { invite: ChatInvite; name: string; signer: NostrSigner; avatar?: string }): Promise<StoredRoom> {
   const stablePubkey = await input.signer.getPublicKey();
   const key = await createKeyPackage(stablePubkey);
   const room: StoredRoom = {
@@ -523,7 +519,6 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
     isHost: false,
     stateBase64: "",
     keyPackage: key.stored,
-    anonymousSecretKey: input.anonymousSecretKey,
     lastCursor: 0,
     messages: [],
     pending: [],
@@ -545,8 +540,30 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
   return room;
 }
 
-export function signerForStoredRoom(room: StoredRoom): BrowserNostrSigner | null {
-  return room.anonymousSecretKey ? new BrowserNostrSigner(hexToBytes(room.anonymousSecretKey)) : null;
+/** Reject every send-capable attachment whose signer does not own this room's immutable key. */
+export async function requireRoomSigner(room: Pick<StoredRoom, "stablePubkey">, signer: NostrSigner): Promise<NostrSigner> {
+  if (await signer.getPublicKey() !== room.stablePubkey) {
+    throw new Error("This signer does not match the identity that joined this room");
+  }
+  return signer;
+}
+
+/**
+ * Read legacy room-local credentials only for controlled migration/retirement.
+ * New rooms never write this field, and UI attachment always uses the active profile signer.
+ */
+export async function signerForStoredRoom(room: StoredRoom): Promise<BrowserNostrSigner | null> {
+  const encoded = room.anonymousSecretKey;
+  if (!encoded || !/^[0-9a-f]{64}$/i.test(encoded)) return null;
+  try {
+    const secret = hexToBytes(encoded);
+    if (secret.length !== 32) return null;
+    const signer = new BrowserNostrSigner(secret);
+    await requireRoomSigner(room, signer);
+    return signer;
+  } catch {
+    return null;
+  }
 }
 
 /** Resolve an explicit host, with deterministic fallbacks for legacy rooms. */

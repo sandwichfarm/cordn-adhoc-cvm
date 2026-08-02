@@ -4,13 +4,10 @@
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import type { NostrSigner } from "@contextvm/sdk/core";
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
-  import { generateSecretKey } from "nostr-tools";
-  import { bytesToHex } from "nostr-tools/utils";
   import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
-  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, saveRoom, signerForStoredRoom, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, saveRoom, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
-  import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import MessageAuthor from "./MessageAuthor.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
@@ -167,7 +164,9 @@
     revision += 1;
   }
 
-  function attach(nextRoom: StoredRoom, signer: NostrSigner) {
+  async function attach(nextRoom: StoredRoom, signer: NostrSigner) {
+    if (disposed) return;
+    await requireRoomSigner(nextRoom, signer);
     if (disposed) return;
     unsubscribeSession?.();
     session?.stop();
@@ -322,12 +321,6 @@
 
     const loaded = loadRoom(invite.groupId, invite.coordinatorPubkey);
     const stored = loaded ? mergeFreshInviteMetadata(loaded, invite) : null;
-    const signer = stored ? signerForStoredRoom(stored) : null;
-    if (stored && signer) {
-      attach(stored, signer);
-      routeInitializing = false;
-      return;
-    }
     if (stored) {
       room = stored;
       const activeSigner = userProfileStore.activeSigner;
@@ -344,7 +337,6 @@
     name = userProfileStore.displayName;
     const activeSigner = userProfileStore.activeSigner;
     if (activeSigner) await join(activeSigner);
-    else await joinAnonymous();
     routeInitializing = false;
   }
 
@@ -355,7 +347,6 @@
     name = userProfileStore.displayName;
     const activeSigner = userProfileStore.activeSigner;
     if (activeSigner) await join(activeSigner);
-    else await joinAnonymous();
     routeInitializing = false;
   }
 
@@ -371,7 +362,7 @@
     session?.stop();
   });
 
-  async function join(signer: NostrSigner, anonymousSecretKey: string | undefined = undefined) {
+  async function join(signer: NostrSigner) {
     if (!invite || disposed) return;
     joining = true;
     error = "";
@@ -380,11 +371,10 @@
         invite,
         name,
         signer,
-        anonymousSecretKey,
         avatar: userProfileStore.avatarUrl,
       });
       if (disposed) return;
-      attach(created, signer);
+      await attach(created, signer);
     } catch (cause) {
       if (!disposed) error = cause instanceof Error ? cause.message : "Unable to join this chat";
     } finally {
@@ -397,10 +387,9 @@
     signerConnecting = true;
     void enableSounds();
     try {
-      const secret = generateSecretKey();
-      const signer = new BrowserNostrSigner(secret);
-      userProfileStore.setAnonymous(await signer.getPublicKey(), name);
-      if (!disposed) await join(signer, bytesToHex(secret));
+      const signer = userProfileStore.activeSigner;
+      if (!signer) throw new Error("Local identity is not ready");
+      if (!disposed) await join(signer);
     } finally {
       if (!disposed) signerConnecting = false;
     }
@@ -487,20 +476,18 @@
   async function resume(signer: NostrSigner) {
     if (!room) return;
     const expectedRoom = room;
-    const signerPubkey = await signer.getPublicKey();
     if (disposed || room.id !== expectedRoom.id || room.coordinatorPubkey !== expectedRoom.coordinatorPubkey) return;
-    if (signerPubkey !== expectedRoom.stablePubkey) {
-      throw new Error("This signer does not match the identity that joined this room");
-    }
-    attach(expectedRoom, signer);
+    await requireRoomSigner(expectedRoom, signer);
+    if (disposed) return;
+    await attach(expectedRoom, signer);
   }
 
   async function resumeActiveSigner(expectedRoom: StoredRoom, signer: NostrSigner) {
     try {
-      const signerPubkey = await signer.getPublicKey();
-      if (disposed || signerPubkey !== expectedRoom.stablePubkey) return;
+      await requireRoomSigner(expectedRoom, signer);
+      if (disposed) return;
       if (room?.id !== expectedRoom.id || room.coordinatorPubkey !== expectedRoom.coordinatorPubkey) return;
-      attach(expectedRoom, signer);
+      await attach(expectedRoom, signer);
     } catch {
       // The cached room remains readable when the active signer is unavailable.
     }

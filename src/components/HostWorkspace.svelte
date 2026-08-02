@@ -8,7 +8,7 @@
   import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, removeStoredRoom, ROOMS_CHANGED_EVENT, rotateRoomInvite, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, signerForStoredRoom, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, removeStoredRoom, requireRoomSigner, ROOMS_CHANGED_EVENT, rotateRoomInvite, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import type { RemoteJoinRequest } from "../chat/coordinator-client";
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
@@ -270,9 +270,10 @@
     revision += 1;
   }
 
-  function openHostChat(nextRoom: StoredRoom) {
-    const signer = signerForStoredRoom(nextRoom);
+  async function openHostChat(nextRoom: StoredRoom) {
+    const signer = userProfileStore.activeSigner;
     if (!signer) throw new Error("The host chat signer is unavailable");
+    await requireRoomSigner(nextRoom, signer);
     unsubscribeSession?.();
     session?.stop();
     knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
@@ -288,17 +289,17 @@
     update();
   }
 
-  function restoreHostChat(): void {
+  async function restoreHostChat(): Promise<void> {
     const remembered = loadRememberedHostRoom(coordinatorPubkey);
     const candidates = remembered
-      ? [remembered, ...hostedRooms.map((entry) => entry.room).filter((candidate) => candidate.id !== remembered.id)]
+      ? [remembered, ...hostedRooms.map((entry) => entry.room).filter((candidate) => candidate.id !== remembered.id || candidate.coordinatorPubkey !== remembered.coordinatorPubkey)]
       : hostedRooms.map((entry) => entry.room);
 
     for (const candidate of candidates) {
       const latest = loadRoom(candidate.id, candidate.coordinatorPubkey) ?? candidate;
       try {
         const entry = buildHostedRoomEntry(latest);
-        openHostChat(entry.room);
+        await openHostChat(entry.room);
         inviteUrl = entry.inviteUrl;
         qrUrl = entry.qrUrl;
         return;
@@ -543,10 +544,11 @@
         coordinatorOrigin: window.location.origin,
         autoApprove: newRoomAutoApprove,
         identity: currentHostIdentity(),
+        signer: userProfileStore.activeSigner ?? (() => { throw new Error("Local identity is not ready"); })(),
         coordinatorKeyMode: coordinator.persistenceEnabled ? "persistent" : "ephemeral",
       });
       const entry = buildHostedRoomEntry(created);
-      openHostChat(created);
+      await openHostChat(created);
       hostedRooms = [entry, ...hostedRooms.filter((candidate) => candidate.room.id !== created.id)];
       inviteUrl = entry.inviteUrl;
       qrUrl = entry.qrUrl;
@@ -613,14 +615,14 @@
     await session?.setAutoApprove(enabled);
   }
 
-  function selectRoom(entry: HostedRoomEntry) {
+  async function selectRoom(entry: HostedRoomEntry) {
     shareDialogOpen = false;
     mobileRailOpen = false;
     mobileToolsOpen = false;
     selectedServerPubkey = coordinatorPubkey;
     const latest = loadRoom(entry.room.id, entry.room.coordinatorPubkey) ?? entry.room;
     const refreshedEntry = buildHostedRoomEntry(latest);
-    openHostChat(refreshedEntry.room);
+    await openHostChat(refreshedEntry.room);
     hostedRooms = hostedRooms.map((candidate) => (
       candidate.room.id === refreshedEntry.room.id
         && candidate.room.coordinatorPubkey === refreshedEntry.room.coordinatorPubkey
@@ -748,7 +750,7 @@
       pendingJoinRequests = [];
       roomConnection = "connecting";
       roomConnectionDetail = undefined;
-      if (remainingRooms[0]) selectRoom(remainingRooms[0]);
+      if (remainingRooms[0]) await selectRoom(remainingRooms[0]);
     }
   }
 
@@ -802,8 +804,8 @@
       ? hostedRooms.find((entry) => entry.room.id === activeIntentInvite?.groupId
         && entry.room.coordinatorPubkey === activeIntentInvite?.coordinatorPubkey)
       : undefined;
-    if (intendedHostedRoom) selectRoom(intendedHostedRoom);
-    else restoreHostChat();
+    if (intendedHostedRoom) void selectRoom(intendedHostedRoom);
+    else void restoreHostChat();
     if (activeIntentInvite && !intendedHostedRoom) selectedServerPubkey = activeIntentInvite.coordinatorPubkey;
     if (!locked && config.autostart && config.presenceState !== "offline" && coordinator.status === "idle") void coordinator.start();
     const compactQuery = window.matchMedia("(max-width: 900px)");

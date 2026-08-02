@@ -250,7 +250,7 @@ test("keeps a foreign host record as a leaveable previous local session after re
   })).toBeVisible();
 });
 
-test("opens a stale remote room from the unified sidebar as readable offline cache", async ({ page }) => {
+test("keeps a stale remote room readable without granting a mismatched signer session", async ({ page }) => {
   const remoteCoordinatorPubkey = "c".repeat(64);
   const roomId = "stale-remote-room";
   const title = "Remote archive";
@@ -291,9 +291,9 @@ test("opens a stale remote room from the unified sidebar as readable offline cac
   await expect(cachedView).toBeVisible();
   await expect(cachedView.getByText(cachedMessage, { exact: true })).toBeVisible();
   await expectEmbeddedChatFillsHostPane(page);
-  await expect(page.getByTestId("room-connection-offline-message")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("room-connection-offline-message")).toHaveCount(0);
   await expect(page.getByTestId("chat-composer").getByRole("textbox")).toBeDisabled();
-  await expect(page.getByTestId("chat-composer-status")).toContainText("cached messages are read-only");
+  await expect(page.getByTestId("chat-composer-status")).toContainText("Reconnect your signer to sync this room and send messages.");
   const roomActions = await openRoomActions(page, title);
   await expect(roomActions.getByRole("menuitem", { name: `Leave room ${title}` })).toBeVisible();
   await expect(roomActions.getByRole("menuitem", { name: `Delete room ${title}` })).toHaveCount(0);

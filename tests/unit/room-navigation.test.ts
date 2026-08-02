@@ -438,8 +438,6 @@ describe("room signer authority", () => {
         name: "Host",
         content: "Still readable",
         createdAt: 1,
-        pubkey: "f".repeat(64),
-        sig: "e".repeat(128),
       }],
     });
 

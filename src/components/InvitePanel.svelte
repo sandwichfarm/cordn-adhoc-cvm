@@ -3,7 +3,8 @@
   import { generate } from "lean-qr";
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import { createInviteUrl } from "../chat/invite";
-  import { ChatRoomSession, createHostedRoom, hostIdentityForRoom, signerForStoredRoom, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createHostedRoom, hostIdentityForRoom, requireRoomSigner, type StoredRoom } from "../chat/room-store";
+  import { userProfileStore } from "../identity/user-profile.svelte";
 
   let { coordinatorPubkey, relayUrls }: { coordinatorPubkey: string; relayUrls: string[] } = $props();
 
@@ -23,9 +24,10 @@
     revision += 1;
   }
 
-  function openHostChat(nextRoom: StoredRoom) {
-    const signer = signerForStoredRoom(nextRoom);
+  async function openHostChat(nextRoom: StoredRoom) {
+    const signer = userProfileStore.activeSigner;
     if (!signer) throw new Error("The host chat signer is unavailable");
+    await requireRoomSigner(nextRoom, signer);
     session?.stop();
     room = nextRoom;
     session = new ChatRoomSession(nextRoom, signer);
@@ -40,7 +42,9 @@
     busy = true;
     error = "";
     try {
-      const created = await createHostedRoom({ title, coordinatorPubkey, relayUrls, autoApprove });
+      const signer = userProfileStore.activeSigner;
+      if (!signer) throw new Error("Local identity is not ready");
+      const created = await createHostedRoom({ title, coordinatorPubkey, relayUrls, autoApprove, signer });
       inviteUrl = createInviteUrl(window.location.origin, {
         groupId: created.id,
         coordinatorPubkey,
@@ -50,7 +54,7 @@
         host: hostIdentityForRoom(created),
       });
       qrUrl = toSvgDataURL(generate(inviteUrl), { on: "#103e32", off: "#f5fbf8", pad: 2, scale: 4 });
-      openHostChat(created);
+      await openHostChat(created);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : "Could not create invite";
     } finally {
