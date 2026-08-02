@@ -32,11 +32,11 @@ and closes with repeatable delivery guidance and automated proof.
   3. From the identity menu, a user can choose to rotate identity and must explicitly confirm after seeing that existing room membership will not carry over.
   4. After confirmed rotation, the new identity cannot send with the retired identity's locally stored room credentials until it joins a room itself.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 - [x] 15-01-PLAN.md
 - [x] 15-02-PLAN.md
-- [ ] 15-03-PLAN.md
+- [x] 15-03-PLAN.md
 
 **UI hint**: yes
 
@@ -119,7 +119,7 @@ and closes with repeatable delivery guidance and automated proof.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 15. Identity Continuity & Membership Integrity | 2/3 | In Progress|  |
+| 15. Identity Continuity & Membership Integrity | 3/3 | In Progress|  |
 | 16. Resilient Rooms & Recovery | 0/TBD | Not started | - |
 | 17. Full-Viewport Startup Motion | 0/TBD | Not started | - |
 | 18. Unified Presence, Notifications & Controls | 0/TBD | Not started | - |

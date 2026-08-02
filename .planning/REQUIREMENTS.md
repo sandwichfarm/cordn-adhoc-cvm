@@ -8,7 +8,7 @@
 ### Identity Continuity & Membership Integrity
 
 - [x] **IDEN-01**: An anonymous identity, including its signing key and local profile, survives ordinary page reloads and browser restarts on the same device.
-- [ ] **IDEN-02**: An anonymous user can deliberately rotate to a fresh identity from the identity menu after a confirmation that explains the room-membership consequences.
+- [x] **IDEN-02**: An anonymous user can deliberately rotate to a fresh identity from the identity menu after a confirmation that explains the room-membership consequences.
 - [x] **IDEN-03**: Rotating an anonymous identity retires the old identity's active room credentials locally so the new identity cannot send to rooms it has not joined.
 - [x] **IDEN-04**: Reloading or restarting an ephemeral host does not create duplicate coordinator or room entries for participants; stored sessions are keyed and reconciled by stable coordinator and room identities.
 
@@ -80,7 +80,7 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | IDEN-01 | Phase 15 | Complete |
-| IDEN-02 | Phase 15 | Pending |
+| IDEN-02 | Phase 15 | Complete |
 | IDEN-03 | Phase 15 | Complete |
 | IDEN-04 | Phase 15 | Complete |
 | ROOM-01 | Phase 16 | Pending |

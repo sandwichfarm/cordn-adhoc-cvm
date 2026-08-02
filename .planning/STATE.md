@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Quality of Life & Polish
 current_phase: 15
 current_phase_name: Identity Continuity & Membership Integrity
-status: executing
-stopped_at: Completed 15-02-PLAN.md
-last_updated: "2026-08-02T16:12:14.760Z"
+status: verifying
+stopped_at: Completed 15-03-PLAN.md
+last_updated: "2026-08-02T16:25:56.690Z"
 last_activity: 2026-08-02
 last_activity_desc: Phase 15 execution started
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 
 Phase: 15 (Identity Continuity & Membership Integrity) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-02 — Phase 15 execution started
 
-Progress: [███████░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [███████░░░] 67%
 |------|----------|-------|-------|
 | Phase 15 P01 | 53m 39s | 2 tasks | 8 files |
 | Phase 15-identity-continuity-membership-integrity P02 | 10min | 2 tasks | 7 files |
+| Phase 15 P03 | 11min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,8 @@ Recent decisions affecting current work:
 - [Phase 15]: Retain the anonymous signer independently of NIP-07/NIP-46 and zeroize it on retirement.
 - [Phase 15]: New room authority always derives from an explicit active signer; room-local secrets are legacy-only migration material.
 - [Phase 15]: Composite (coordinatorPubkey, roomId) is the sole room identity, and retirement journals exact storage before commit.
+- [Phase ?]: The versioned non-secret recovery marker is the irreversible boundary: bootstrap honors it before examining canonical identity bytes.
+- [Phase ?]: Only matching anonymous session callbacks are retired; authenticated NIP-07 and NIP-46 selection remains outside rotation.
 
 ### Pending Todos
 
@@ -103,6 +106,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T16:12:14.755Z
-Stopped at: Completed 15-02-PLAN.md
-Resume file: .planning/phases/15-identity-continuity-membership-integrity/15-03-PLAN.md
+Last session: 2026-08-02T16:25:56.684Z
+Stopped at: Completed 15-03-PLAN.md
+Resume file: None
