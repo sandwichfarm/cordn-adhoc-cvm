@@ -11,7 +11,7 @@ and closes with repeatable delivery guidance and automated proof.
 
 ## Phases
 
-- [ ] **Phase 15: Identity Continuity & Membership Integrity** - Preserve anonymous identity across reloads and make deliberate rotation a safe privacy boundary.
+- [x] **Phase 15: Identity Continuity & Membership Integrity** - Preserve anonymous identity across reloads and make deliberate rotation a safe privacy boundary. (completed 2026-08-02)
 - [ ] **Phase 16: Resilient Rooms & Recovery** - Make room navigation, unread state, and coordinator-led room restoration accurate and actionable.
 - [ ] **Phase 17: Full-Viewport Startup Motion** - Turn truthful room-recovery progress into an accessible GSAP ASCII startup experience.
 - [ ] **Phase 18: Unified Presence, Notifications & Controls** - Consolidate personal presence and notifications while separating them from host lifecycle actions.
@@ -119,7 +119,7 @@ and closes with repeatable delivery guidance and automated proof.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 15. Identity Continuity & Membership Integrity | 3/3 | In Progress|  |
+| 15. Identity Continuity & Membership Integrity | 3/3 | Complete    | 2026-08-02 |
 | 16. Resilient Rooms & Recovery | 0/TBD | Not started | - |
 | 17. Full-Viewport Startup Motion | 0/TBD | Not started | - |
 | 18. Unified Presence, Notifications & Controls | 0/TBD | Not started | - |

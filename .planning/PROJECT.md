@@ -23,12 +23,11 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Anonymous identities and their authorized room memberships survive reloads without duplicating rooms — Phase 15
+- ✓ Anonymous users can deliberately rotate identity with clear consequences and confirmation — Phase 15
 
 ### Active
 
-- [ ] Anonymous identities and their authorized room memberships survive reloads without duplicating rooms
-- [ ] Anonymous users can deliberately rotate identity with clear consequences and confirmation
 - [ ] Room navigation exposes contextual leave actions and per-room unread counts
 - [ ] Coordinator startup recovers prior rooms as visible progress without transient false errors
 - [ ] Startup visuals fill the viewport and use GSAP-driven ASCII-masked motion with reduced-motion support
@@ -106,6 +105,9 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | Visual operator shell | A shell-level grid/rail treatment gives the minimal GUI a distinctive cypherpunk operator-console direction without adding controls | Pending |
 | Destroy Cache Storage proof | The destroy e2e seeds Cache Storage and verifies confirmed destroy removes it | Pending |
 | Completion audit | Requirement evidence is recorded with the deploy-secret blocker called out explicitly | Pending |
+| One durable anonymous signer | A strictly validated browser-local identity survives reloads independently of coordinator, NIP-07, and NIP-46 state | Shipped and verified in Phase 15 |
+| Composite room authority | `(coordinatorPubkey, roomId)` is the only room identity; every send-capable attachment must prove signer ownership | Shipped and verified in Phase 15 |
+| Transactional identity rotation | Rotation retires live/local authority and crosses a durable recovery boundary before publishing a replacement signer | Shipped and verified in Phase 15 |
 
 ## Evolution
 
@@ -125,4 +127,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-02 for milestone v1.1 Quality of Life & Polish*
+*Last updated: 2026-08-02 after Phase 15*

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Quality of Life & Polish
-current_phase: 15
-current_phase_name: Identity Continuity & Membership Integrity
-status: verifying
-stopped_at: Completed 15-03-PLAN.md
-last_updated: "2026-08-02T16:25:56.690Z"
+current_phase: 16
+current_phase_name: Resilient Rooms & Recovery
+status: planning
+stopped_at: Phase 15 complete, ready to plan Phase 16
+last_updated: "2026-08-02T17:46:29.422Z"
 last_activity: 2026-08-02
-last_activity_desc: Phase 15 execution started
+last_activity_desc: Phase 15 complete, transitioned to Phase 16
 progress:
-  total_phases: 1
+  total_phases: 6
   completed_phases: 1
   total_plans: 3
   completed_plans: 3
@@ -23,22 +23,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-02)
 
 **Core value:** A single browser tab acts as a fully functional, self-sovereign Cordn coordinator reachable over Nostr relays — no backend, no account, no installation.
-**Current focus:** Phase 15 — Identity Continuity & Membership Integrity
+**Current focus:** Phase 16 — Resilient Rooms & Recovery
 
 ## Current Position
 
-Phase: 15 (Identity Continuity & Membership Integrity) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-08-02 — Phase 15 execution started
+Phase: 16 — Resilient Rooms & Recovery
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-02 — Phase 15 complete, transitioned to Phase 16
 
-Progress: [██████████] 100%
+Progress: [████████████████████] 3/3 plans (100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 21
+- Total plans completed: 3
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -46,7 +46,7 @@ Progress: [██████████] 100%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 15 | 3 | - | - |
 
 **Recent Trend:** No data yet
 
@@ -66,18 +66,11 @@ Progress: [██████████] 100%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- Phase 10: `pnpm check:upstream` compares browser Cordn method keys against live upstream `src/server`.
-- Phase 11: The max-users edit floor is wired to active subscriptions and labeled as such, not as authoritative MLS membership.
-- Phase 12: The GUI has a screenshot-verified operator shell and a Playwright no-overflow guard for desktop/mobile viewports.
-- Phase 13: Confirmed destroy now has Playwright proof for Cache Storage cleanup in addition to localStorage cleanup.
-- Phase 14: `.planning/COMPLETION-AUDIT.md` records requirement evidence and the remaining live nsite deploy-secret blocker.
-- v1.1 roadmap: Deliver quality-of-life work in dependency order: identity integrity, room recovery, startup motion, unified controls, conversation presentation, then delivery proof.
-- [Phase 15]: Persist only version and 32-byte secret hex; malformed present records require recovery.
-- [Phase 15]: Retain the anonymous signer independently of NIP-07/NIP-46 and zeroize it on retirement.
-- [Phase 15]: New room authority always derives from an explicit active signer; room-local secrets are legacy-only migration material.
-- [Phase 15]: Composite (coordinatorPubkey, roomId) is the sole room identity, and retirement journals exact storage before commit.
-- [Phase ?]: The versioned non-secret recovery marker is the irreversible boundary: bootstrap honors it before examining canonical identity bytes.
-- [Phase ?]: Only matching anonymous session callbacks are retired; authenticated NIP-07 and NIP-46 selection remains outside rotation.
+- [Phase 15] Persist only a version and validated 32-byte secret hex; malformed present records require explicit recovery.
+- [Phase 15] Retain the anonymous signer independently of NIP-07/NIP-46 and zeroize it on retirement.
+- [Phase 15] Require the active signer for all new room authority; room-local secrets are legacy-only migration material.
+- [Phase 15] Treat `(coordinatorPubkey, roomId)` as the sole room identity and journal exact storage before retirement commit.
+- [Phase 15] Use the versioned non-secret recovery marker as the irreversible boundary before signer replacement is published.
 
 ### Pending Todos
 
@@ -106,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T16:25:56.684Z
-Stopped at: Completed 15-03-PLAN.md
+Last session: 2026-08-02T17:46:29.422Z
+Stopped at: Phase 15 complete, ready to plan Phase 16
 Resume file: None
