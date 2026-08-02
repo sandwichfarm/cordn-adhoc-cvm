@@ -8,7 +8,7 @@
   import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, removeStoredRoom, requireRoomSigner, ROOMS_CHANGED_EVENT, rotateRoomInvite, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, removeStoredRoom, requireRoomSigner, roomIdentityKey, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import type { RemoteJoinRequest } from "../chat/coordinator-client";
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
@@ -218,17 +218,17 @@
 
     activeSession.setIdentity(identity);
     const refreshedEntry = buildHostedRoomEntry(activeSession.room);
-    hostedRooms = hostedRooms.map((entry) => entry.room.id === activeSession.room.id ? refreshedEntry : entry);
+    hostedRooms = hostedRooms.map((entry) => sameRoomIdentity(entry.room, activeSession.room) ? refreshedEntry : entry);
     inviteUrl = refreshedEntry.inviteUrl;
     qrUrl = refreshedEntry.qrUrl;
   });
 
   $effect(() => {
     const identity = currentHostIdentity();
-    const activeRoomId = room?.id;
+    const activeRoom = room;
     let changed = false;
     const nextEntries = hostedRooms.map((entry) => {
-      if (entry.room.id === activeRoomId || roomIdentityMatches(entry.room, identity)) return entry;
+      if ((activeRoom && sameRoomIdentity(entry.room, activeRoom)) || roomIdentityMatches(entry.room, identity)) return entry;
       const updatedRoom: StoredRoom = {
         ...entry.room,
         name: identity.name,
@@ -264,7 +264,7 @@
       knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
       room = nextRoom;
       pendingJoinRequests = [...session.pendingJoinRequests];
-      hostedRooms = hostedRooms.map((entry) => entry.room.id === nextRoom.id ? { ...entry, room: nextRoom } : entry);
+      hostedRooms = hostedRooms.map((entry) => sameRoomIdentity(entry.room, nextRoom) ? { ...entry, room: nextRoom } : entry);
       if (receivedMessage) playIncomingTone();
     }
     revision += 1;
@@ -549,7 +549,7 @@
       });
       const entry = buildHostedRoomEntry(created);
       await openHostChat(created);
-      hostedRooms = [entry, ...hostedRooms.filter((candidate) => candidate.room.id !== created.id)];
+      hostedRooms = [entry, ...hostedRooms.filter((candidate) => !sameRoomIdentity(candidate.room, created))];
       inviteUrl = entry.inviteUrl;
       qrUrl = entry.qrUrl;
       createDialogOpen = false;
@@ -574,11 +574,7 @@
       const entry = buildHostedRoomEntry(room);
       room = entry.room;
       if (session) session.room.coordinatorKeyMode = entry.room.coordinatorKeyMode;
-      hostedRooms = hostedRooms.map((candidate) => (
-        candidate.room.id === entry.room.id && candidate.room.coordinatorPubkey === entry.room.coordinatorPubkey
-          ? entry
-          : candidate
-      ));
+      hostedRooms = hostedRooms.map((candidate) => sameRoomIdentity(candidate.room, entry.room) ? entry : candidate);
       inviteUrl = entry.inviteUrl;
       qrUrl = entry.qrUrl;
     }
@@ -601,7 +597,7 @@
     const refreshedRoom = rotateRoomInvite(session.room);
     const entry = buildHostedRoomEntry(refreshedRoom);
     room = { ...refreshedRoom };
-    hostedRooms = hostedRooms.map((candidate) => candidate.room.id === refreshedRoom.id ? entry : candidate);
+    hostedRooms = hostedRooms.map((candidate) => sameRoomIdentity(candidate.room, refreshedRoom) ? entry : candidate);
     inviteUrl = entry.inviteUrl;
     qrUrl = entry.qrUrl;
     refreshState = "refreshed";
@@ -623,12 +619,7 @@
     const latest = loadRoom(entry.room.id, entry.room.coordinatorPubkey) ?? entry.room;
     const refreshedEntry = buildHostedRoomEntry(latest);
     await openHostChat(refreshedEntry.room);
-    hostedRooms = hostedRooms.map((candidate) => (
-      candidate.room.id === refreshedEntry.room.id
-        && candidate.room.coordinatorPubkey === refreshedEntry.room.coordinatorPubkey
-        ? refreshedEntry
-        : candidate
-    ));
+    hostedRooms = hostedRooms.map((candidate) => sameRoomIdentity(candidate.room, refreshedEntry.room) ? refreshedEntry : candidate);
     inviteUrl = refreshedEntry.inviteUrl;
     qrUrl = refreshedEntry.qrUrl;
     if (hasChatIntent) onNavigate("/");
@@ -737,9 +728,7 @@
       session = null;
     }
     removeStoredRoom(target);
-    const remainingRooms = hostedRooms.filter((entry) => (
-      entry.room.id !== target.id || entry.room.coordinatorPubkey !== target.coordinatorPubkey
-    ));
+    const remainingRooms = hostedRooms.filter((entry) => !sameRoomIdentity(entry.room, target));
     hostedRooms = remainingRooms;
 
     if (deletingActiveRoom) {
@@ -801,8 +790,10 @@
       .map(buildHostedRoomEntry);
     refreshRemoteRooms();
     const intendedHostedRoom = activeIntentInvite
-      ? hostedRooms.find((entry) => entry.room.id === activeIntentInvite?.groupId
-        && entry.room.coordinatorPubkey === activeIntentInvite?.coordinatorPubkey)
+      ? hostedRooms.find((entry) => sameRoomIdentity(entry.room, {
+        id: activeIntentInvite.groupId,
+        coordinatorPubkey: activeIntentInvite.coordinatorPubkey,
+      }))
       : undefined;
     if (intendedHostedRoom) void selectRoom(intendedHostedRoom);
     else void restoreHostChat();
@@ -1132,9 +1123,9 @@
               </div>
               {#if selectedServerIsHome}
                 <div class="channel-list">
-                  {#each hostedRooms as entry (entry.room.id)}
+                  {#each hostedRooms as entry (roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id))}
                     <button
-                      class:active={!embeddedChatActive && entry.room.id === room?.id}
+                      class:active={!embeddedChatActive && Boolean(room && sameRoomIdentity(entry.room, room))}
                       class="channel-row"
                       type="button"
                       aria-label={`Open room ${entry.room.title}, hosted by ${hostIdentityForRoom(entry.room).name}`}

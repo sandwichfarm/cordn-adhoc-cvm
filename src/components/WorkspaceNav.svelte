@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { parseInviteUrl, type ChatInvite, type CoordinatorKeyMode, type RoomHostIdentity } from "../chat/invite";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { hostIdentityForRoom, listRooms, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type StoredRoom } from "../chat/room-store";
+  import { hostIdentityForRoom, listRooms, roomIdentityKey, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type StoredRoom } from "../chat/room-store";
   import InviteRedeemer from "./InviteRedeemer.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
 
@@ -108,7 +108,7 @@
             href: currentUrl,
           }],
         };
-      } else if (!group.rooms.some((room) => room.id === invite.groupId)) {
+      } else if (!group.rooms.some((room) => room.id === invite.groupId && room.coordinatorPubkey === invite.coordinatorPubkey)) {
         group.rooms.unshift({
           id: invite.groupId,
           title: invite.title || "Invited room",
@@ -393,7 +393,7 @@
           </button>
         {:else}
           <div class="room-list">
-            {#each homeRooms as room (`${room.coordinatorPubkey}:${room.id}`)}
+            {#each homeRooms as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
               <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
@@ -416,7 +416,7 @@
             <span class="server-kind previous">previous</span>
           </div>
           <div class="room-list">
-            {#each previousLocalSessions as room (`${room.coordinatorPubkey}:${room.id}`)}
+            {#each previousLocalSessions as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
               <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open previous local session ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
@@ -440,7 +440,7 @@
             <span class="server-kind">remote</span>
           </div>
           <div class="room-list">
-            {#each server.rooms as room (`${room.coordinatorPubkey}:${room.id}`)}
+            {#each server.rooms as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
               <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>

@@ -76,6 +76,8 @@ export interface StoredRoom {
   badgeLabel?: string;
   badgeEmoji?: string;
   stablePubkey: string;
+  /** Retired records retain display cache only and must never create a session. */
+  membershipStatus?: "active" | "retired";
   isHost: boolean;
   stateBase64: string;
   keyPackage: LocalKeyPackage;
@@ -92,6 +94,16 @@ export interface StoredRoom {
   joinRequestSent?: boolean;
   createdAt?: number;
   updatedAt?: number;
+}
+
+export interface AnonymousMembershipImpact {
+  count: number;
+}
+
+export interface MembershipRetirementJournal {
+  count: number;
+  commit(): void;
+  rollback(): void;
 }
 
 export interface RoomStatus {
@@ -541,7 +553,10 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
 }
 
 /** Reject every send-capable attachment whose signer does not own this room's immutable key. */
-export async function requireRoomSigner(room: Pick<StoredRoom, "stablePubkey">, signer: NostrSigner): Promise<NostrSigner> {
+export async function requireRoomSigner(room: Pick<StoredRoom, "stablePubkey" | "membershipStatus">, signer: NostrSigner): Promise<NostrSigner> {
+  if (room.membershipStatus === "retired") {
+    throw new Error("This room needs a fresh invite before it can reconnect");
+  }
   if (await signer.getPublicKey() !== room.stablePubkey) {
     throw new Error("This signer does not match the identity that joined this room");
   }
@@ -563,6 +578,99 @@ export async function signerForStoredRoom(room: StoredRoom): Promise<BrowserNost
     return signer;
   } catch {
     return null;
+  }
+}
+
+/** Count distinct composite room memberships that would lose anonymous authority. */
+export async function anonymousMembershipImpact(stablePubkey: string): Promise<AnonymousMembershipImpact> {
+  const identities = new Set<string>();
+  for (const { room } of storedRoomEntries()) {
+    if (await belongsToAnonymousMembership(room, stablePubkey)) {
+      identities.add(roomIdentityKey(room.coordinatorPubkey, room.id));
+    }
+  }
+  return { count: identities.size };
+}
+
+/**
+ * Retire local anonymous authority while retaining room presentation and decrypted cache.
+ * The returned journal can restore every exact raw storage value until its commit boundary.
+ */
+export async function retireAnonymousMemberships(stablePubkey: string): Promise<MembershipRetirementJournal> {
+  const originals = new Map<string, string | null>();
+  const matching = new Map<string, Array<{ key: string; room: StoredRoom }>>();
+  for (const entry of storedRoomEntries()) {
+    if (!await belongsToAnonymousMembership(entry.room, stablePubkey)) continue;
+    const identity = roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id);
+    const entries = matching.get(identity) ?? [];
+    entries.push(entry);
+    matching.set(identity, entries);
+  }
+
+  const capture = (key: string) => {
+    if (!originals.has(key)) originals.set(key, localStorage.getItem(key));
+  };
+  let count = 0;
+  for (const entries of matching.values()) {
+    const authoritative = entries.find(({ key, room }) => key === roomStorageKey(room.coordinatorPubkey, room.id)) ?? entries[0];
+    if (!authoritative) continue;
+    const targetKey = roomStorageKey(authoritative.room.coordinatorPubkey, authoritative.room.id);
+    capture(targetKey);
+    for (const { key } of entries) capture(key);
+
+    const retired: StoredRoom = {
+      ...authoritative.room,
+      membershipStatus: "retired",
+      anonymousSecretKey: undefined,
+      stateBase64: "",
+      keyPackage: { reference: "", publicBase64: "", privateBase64: "" },
+      pending: [],
+      inviteToken: undefined,
+      autoApprove: undefined,
+      joinRequestSent: undefined,
+      updatedAt: Date.now(),
+    };
+    localStorage.setItem(targetKey, JSON.stringify(retired));
+    const verified = readStoredRoom(localStorage.getItem(targetKey));
+    if (!sameRoomIdentity(verified, retired) || verified.membershipStatus !== "retired") continue;
+
+    for (const { key } of entries) {
+      if (key === targetKey) continue;
+      const source = readStoredRoom(localStorage.getItem(key));
+      if (sameRoomIdentity(source, retired)) localStorage.removeItem(key);
+    }
+    count += 1;
+  }
+
+  let closed = false;
+  return {
+    count,
+    commit() {
+      closed = true;
+      originals.clear();
+    },
+    rollback() {
+      if (closed) return;
+      for (const [key, raw] of originals) {
+        if (raw === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, raw);
+      }
+      closed = true;
+      window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, { detail: { action: "membership-rollback" } }));
+    },
+  };
+}
+
+async function belongsToAnonymousMembership(room: StoredRoom, stablePubkey: string): Promise<boolean> {
+  if (room.stablePubkey === stablePubkey) return true;
+  const encoded = room.anonymousSecretKey;
+  if (!encoded || !/^[0-9a-f]{64}$/i.test(encoded)) return false;
+  try {
+    const secret = hexToBytes(encoded);
+    if (secret.length !== 32) return false;
+    return await new BrowserNostrSigner(secret).getPublicKey() === stablePubkey;
+  } catch {
+    return false;
   }
 }
 
@@ -634,7 +742,7 @@ export function listRooms(): StoredRoom[] {
     for (const { key, raw } of entries) {
       const room = readStoredRoom(raw);
       if (!room) continue;
-      const identity = roomIdentity(room.coordinatorPubkey, room.id);
+      const identity = roomIdentityKey(room.coordinatorPubkey, room.id);
       const currentKey = key === roomStorageKey(room.coordinatorPubkey, room.id);
       const existing = rooms.get(identity);
       if (!existing) {
@@ -676,6 +784,22 @@ export function listRooms(): StoredRoom[] {
   });
 }
 
+/** Read every validated persisted alias; callers that mutate authority must not use deduplicated room lists. */
+function storedRoomEntries(): Array<{ key: string; room: StoredRoom }> {
+  const entries: Array<{ key: string; room: StoredRoom }> = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(ROOM_KEY_PREFIX)) continue;
+      const room = readStoredRoom(localStorage.getItem(key));
+      if (room) entries.push({ key, room });
+    }
+  } catch {
+    return [];
+  }
+  return entries;
+}
+
 export function rememberActiveHostRoom(room: StoredRoom): void {
   if (!room.isHost) return;
   try {
@@ -708,7 +832,10 @@ export function forgetRememberedHostRoom(coordinatorPubkey: string): void {
 
 export function saveRoom(room: StoredRoom): void {
   room.updatedAt = Date.now();
-  localStorage.setItem(roomStorageKey(room.coordinatorPubkey, room.id), JSON.stringify(room));
+  const currentKey = roomStorageKey(room.coordinatorPubkey, room.id);
+  localStorage.setItem(currentKey, JSON.stringify(room));
+  const verified = readStoredRoom(localStorage.getItem(currentKey));
+  if (!sameRoomIdentity(verified, room)) return;
   const legacyKey = `${ROOM_KEY_PREFIX}${room.id}`;
   const legacy = readStoredRoom(localStorage.getItem(legacyKey));
   if (legacy?.id === room.id && legacy.coordinatorPubkey === room.coordinatorPubkey) {
@@ -747,7 +874,8 @@ function createInviteToken(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function roomIdentity(coordinatorPubkey: string, id: string): string {
+/** The only authoritative room identity: coordinator public key plus room id. */
+export function roomIdentityKey(coordinatorPubkey: string, id: string): string {
   return `${coordinatorPubkey}\u0000${id}`;
 }
 
@@ -777,6 +905,12 @@ function readStoredRoom(raw: string | null): StoredRoom | null {
       || !Array.isArray(room.pending)
       || !room.pending.every(isPendingMessage)) return null;
     const stored = room as unknown as StoredRoom;
+    if (stored.membershipStatus !== "active" && stored.membershipStatus !== "retired") {
+      delete stored.membershipStatus;
+    }
+    if (stored.anonymousSecretKey !== undefined && (typeof stored.anonymousSecretKey !== "string" || !/^[0-9a-f]{64}$/i.test(stored.anonymousSecretKey))) {
+      delete stored.anonymousSecretKey;
+    }
     if (stored.coordinatorKeyMode !== "ephemeral" && stored.coordinatorKeyMode !== "persistent") {
       delete stored.coordinatorKeyMode;
     }
@@ -820,7 +954,7 @@ function migrateLegacyRoom(storageKey: string, room: StoredRoom): void {
   }
 }
 
-function sameRoomIdentity(left: StoredRoom | null, right: Pick<StoredRoom, "coordinatorPubkey" | "id">): left is StoredRoom {
+export function sameRoomIdentity(left: Pick<StoredRoom, "coordinatorPubkey" | "id"> | null | undefined, right: Pick<StoredRoom, "coordinatorPubkey" | "id">): left is StoredRoom {
   return left?.coordinatorPubkey === right.coordinatorPubkey && left.id === right.id;
 }
 
