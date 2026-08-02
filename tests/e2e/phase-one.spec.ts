@@ -339,8 +339,8 @@ test("generates copyable identity on first load", async ({ page }) => {
   await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByTestId("user-profile")).toContainText("anon");
   await expect(page.getByTestId("user-profile").locator("img")).toHaveAttribute("src", /^data:image\/svg\+xml/);
-  await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
-  await expect(page.getByTestId("startup-ascii-field").locator("pre").first()).toContainText(/[.:+*x01#/]/);
+  await expect(page.getByTestId("startup-ascii-field")).toHaveCount(0);
+  await expect(page.getByTestId("coordinator-empty-state")).toContainText("No rooms for this coordinator");
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   const settings = await openCoordinatorSettings(page);
   await expect(page.locator(".host-layout")).toHaveCSS("filter", "none");
@@ -711,7 +711,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId("host-chat")).toBeVisible();
   await expect(page.getByText("My coordinator", { exact: true })).toHaveCount(1);
   await expect(page.getByRole("navigation", { name: "Server and channel browser" })).toContainText(/\d+ relay paths?/);
-  await expect(page.getByText("No channel selected")).toBeVisible();
+  await expect(page.getByTestId("coordinator-empty-state")).toContainText("No rooms for this coordinator");
   await expect(page.getByRole("button", { name: "Rooms", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("invite-panel")).toBeVisible();
   await page.getByRole("button", { name: "Open management interface" }).click();
@@ -1729,10 +1729,10 @@ test("a persistent host can navigate home rooms while communicating on another c
     }
   });
   await home.reload();
-  await expect(home.getByTestId("chat-connection-status")).toHaveText("Room cached");
+  await expect(home.getByTestId("chat-connection-status")).toHaveText("Room synced", { timeout: 25_000 });
   await expect(home.getByTestId("guest-message-list")).toContainText("Back in the remote room");
-  await expect(home.getByPlaceholder("Reconnect your signer")).toBeDisabled();
-  await expect(home.getByTestId("reconnect-signer")).toContainText("Reconnect the signer that joined this room");
+  await expect(home.getByPlaceholder("Message")).toBeEnabled();
+  await expect(home.getByTestId("reconnect-signer")).toHaveCount(0);
 
   await homeContext.close();
   await remoteContext.close();
@@ -1976,7 +1976,11 @@ test("destroys persisted state after explicit confirmation", async ({ page }) =>
   await expect(destroyedSettings.getByTestId("persistence-state")).toHaveText("off");
   await closeCoordinatorSettings(destroyedSettings);
   expect(await readCoordinatorNpub(page)).not.toBe(initialNpub);
-  await expect.poll(() => page.evaluate(() => localStorage.length)).toBe(0);
+  await expect.poll(() => page.evaluate(() => Array.from(
+    { length: localStorage.length },
+    (_, index) => localStorage.key(index),
+  ).filter((key): key is string => Boolean(key)).sort())).toEqual(["cordn:v1:anonymous-identity"]);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:persistence"))).toBeNull();
   await expect.poll(() => page.evaluate(async () => (await caches.keys()).includes("cordn-test-cache"))).toBe(false);
 });
 
