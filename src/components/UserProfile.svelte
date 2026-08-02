@@ -158,7 +158,7 @@
 
 <div class="user-profile" data-testid="user-profile">
   <p class="sr-only" aria-live="polite">{completionAnnouncement}</p>
-  {#if !userProfileStore.recoveryRequired}
+  {#if userProfileStore.initialized && !userProfileStore.recoveryRequired}
   <button
     class="user-trigger"
     type="button"
@@ -310,29 +310,30 @@
 
 <style>
   .user-profile { position: relative; flex: 0 0 auto; }
-  .user-trigger { display: grid; height: 2.65rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .55rem; border: 1px solid transparent; padding: .25rem .45rem; color: #dfffe7; }
-  .user-trigger:hover, .user-trigger[aria-expanded="true"] { border-color: #34483a; background: #101713; }
+  .user-trigger { display: grid; height: 2.65rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid transparent; padding: 4px 8px; color: #dfffe7; }
+  .user-trigger:hover { border-color: #34483a; background: #101713; }
+  .user-profile > .user-trigger[aria-expanded="true"] { border: 1px solid #87ff9f; background: #101713; }
   .user-trigger img { width: 1.85rem; height: 1.85rem; object-fit: cover; image-rendering: pixelated; }
   .user-copy { display: none; min-width: 0; text-align: left; line-height: 1; }
-  .user-copy strong { display: block; max-width: 8rem; overflow: hidden; font-size: .68rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-  .user-copy small { display: block; margin-top: .28rem; color: #708177; font-size: .5rem; letter-spacing: .1em; text-transform: uppercase; }
-  .user-chevron { color: #64766a; font-size: .56rem; }
+  .user-copy strong { display: block; max-width: 8rem; overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+  .user-copy small { display: block; margin-top: 4px; color: #708177; font-size: 10px; font-weight: 400; line-height: 1.3; letter-spacing: .1em; text-transform: uppercase; }
+  .user-chevron { color: #64766a; font-size: 10px; }
   .user-scrim { position: fixed; z-index: 69; inset: 0; border: 0; background: transparent; cursor: default; }
-  .user-menu { position: absolute; z-index: 70; top: calc(100% + .55rem); right: 0; width: min(22rem, calc(100vw - 1.5rem)); border: 1px solid #496451; background: rgb(8 13 10 / .99); box-shadow: 0 20px 56px rgb(0 0 0 / .62); }
-  .user-menu > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .75rem; border-bottom: 1px solid #293832; padding: .85rem; }
+  .user-menu { position: absolute; z-index: 70; top: calc(100% + 8px); right: 0; width: min(22rem, calc(100vw - 1.5rem)); border: 1px solid #496451; background: rgb(8 13 10 / .99); box-shadow: 0 20px 56px rgb(0 0 0 / .62); }
+  .user-menu > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; border-bottom: 1px solid #293832; padding: 16px; }
   .user-menu > header img { width: 2.5rem; height: 2.5rem; object-fit: cover; image-rendering: pixelated; }
   .user-menu > header strong, .user-menu > header span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .user-menu > header strong { color: #effff2; font-size: .8rem; }
-  .user-menu > header div > span { margin-top: .25rem; color: #718277; font-size: .58rem; }
-  .auth-chip { border: 1px solid #34483a; padding: .25rem .35rem; color: #82958a; font-size: .5rem; letter-spacing: .08em; text-transform: uppercase; }
+  .user-menu > header strong { color: #effff2; font-size: 14px; font-weight: 650; line-height: 1.4; }
+  .user-menu > header div > span { margin-top: 4px; color: #718277; font-size: 10px; font-weight: 400; line-height: 1.3; }
+  .auth-chip { border: 1px solid #34483a; padding: 4px 8px; color: #82958a; font-size: 10px; font-weight: 400; line-height: 1.3; letter-spacing: .08em; text-transform: uppercase; }
   .auth-chip.authenticated { border-color: #477e57; color: #7cf59d; }
-  .user-menu-section { display: grid; gap: .65rem; border-bottom: 1px solid #202d25; padding: .85rem; }
+  .user-menu-section { display: grid; gap: 12px; border-bottom: 1px solid #202d25; padding: 16px; }
   .user-menu-section:last-of-type { border-bottom: 0; }
-  .user-menu-section label, .section-label { color: #83958a; font-size: .56rem; letter-spacing: .1em; text-transform: uppercase; }
-  .user-menu-section input { width: 100%; margin-top: .45rem; border: 1px solid #34433b; background: #070b08; padding: .65rem .7rem; color: #effff2; font-size: .72rem; outline: none; text-transform: none; }
+  .user-menu-section label, .section-label { color: #83958a; font-size: 10px; font-weight: 400; line-height: 1.3; letter-spacing: .1em; text-transform: uppercase; }
+  .user-menu-section input { width: 100%; margin-top: 8px; border: 1px solid #34433b; background: #070b08; padding: 12px; color: #effff2; font-size: 12px; font-weight: 400; line-height: 1.5; outline: none; text-transform: none; }
   .user-menu-section input:focus { border-color: #7cf59d; }
-  .user-menu-section p { color: #82958a; font-size: .65rem; line-height: 1.55; }
-  .rotate-identity { min-height: 2.75rem; border: 1px solid #7b4843; color: #ffaaa3; font-size: .68rem; text-align: left; padding: .65rem .7rem; }
+  .user-menu-section p { color: #82958a; font-size: 12px; font-weight: 400; line-height: 1.5; }
+  .rotate-identity { min-height: 44px; border: 1px solid #7b4843; padding: 12px; color: #ffaaa3; font-size: 12px; font-weight: 400; line-height: 1.5; text-align: left; }
   .rotate-identity:hover, .rotate-identity:focus-visible { border-color: #ffaaa3; background: #24100f; outline: 2px solid #87ff9f; outline-offset: 2px; }
   .connect-button { display: flex; align-items: center; justify-content: space-between; gap: .75rem; border: 1px solid #293832; padding: .65rem .7rem; color: #c6d7cb; text-align: left; font-size: .68rem; }
   .connect-button:hover { border-color: #7cf59d; background: #111a14; }
