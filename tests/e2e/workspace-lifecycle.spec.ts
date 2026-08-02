@@ -2027,6 +2027,11 @@ test("startup uses exactly three masked ASCII reveals", async ({ page }) => {
   await expect(stage).toHaveCSS("position", "absolute");
   await expectShellControlsUsable(page);
   await expectStartupMasks(page);
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-preference", "normal");
+  const bedTexture = page.getByTestId("startup-ascii-field").locator(".ascii-bed .ascii-texture");
+  const initialTransform = await bedTexture.evaluate((element) => getComputedStyle(element).transform);
+  await page.waitForTimeout(650);
+  await expect.poll(() => bedTexture.evaluate((element) => getComputedStyle(element).transform)).not.toBe(initialTransform);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-forward-target", /\d+/);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", /restoring|retrying|exhausted/);
   await expect(page.getByRole("progressbar")).toBeVisible();
