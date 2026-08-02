@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NostrSigner } from "@contextvm/sdk/core";
-import { anonymousMembershipImpact, ChatRoomSession, createHostedRoom, forgetLastOpenRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, reconcileRoomHostIdentity, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, retireAnonymousMemberships, roomIdentityKey, roomTargetFor, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../../src/chat/room-store";
+import { anonymousMembershipImpact, ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, forgetLastOpenRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, markRoomRead, reconcileRoomHostIdentity, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, retireAnonymousMemberships, roomIdentityKey, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../../src/chat/room-store";
 import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
 import { bytesToHex } from "nostr-tools/utils";
 
@@ -74,6 +74,51 @@ describe("room navigation persistence", () => {
     expect(listRooms()).toHaveLength(1);
     expect(listRooms()[0]).toMatchObject({ id: "saved-room", updatedAt: expect.any(Number) });
     window.removeEventListener(ROOMS_CHANGED_EVENT, listener);
+  });
+
+  it.each([
+    undefined,
+    null,
+    { version: 2, baselineEstablished: true, lastReadCursor: 0, unreadCount: 1 },
+    { version: 1, baselineEstablished: "yes", lastReadCursor: 0, unreadCount: 1 },
+    { version: 1, baselineEstablished: true, lastReadCursor: -1, unreadCount: 1 },
+    { version: 1, baselineEstablished: true, lastReadCursor: 1.5, unreadCount: 1 },
+    { version: 1, baselineEstablished: true, lastReadCursor: Number.POSITIVE_INFINITY, unreadCount: 1 },
+    { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: Number.MAX_SAFE_INTEGER + 1 },
+  ])("normalizes malformed optional read state without hiding the cached room", (readState) => {
+    const room = storedRoom({ id: "read-state", title: "Read state", coordinatorPubkey: "a".repeat(64), isHost: false });
+    localStorage.setItem(currentRoomKey(room), JSON.stringify({ ...room, readState }));
+
+    const loaded = loadRoom(room.id, room.coordinatorPubkey);
+
+    expect(loaded).toMatchObject({ id: room.id, title: room.title, messages: [] });
+    expect(roomUnreadCount(loaded!)).toBe(0);
+  });
+
+  it("keeps unread state isolated by the full room identity and clears only its target", () => {
+    const first = storedRoom({
+      id: "shared-id",
+      title: "First",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 4, unreadCount: 2 },
+    });
+    const second = storedRoom({
+      id: "shared-id",
+      title: "Second",
+      coordinatorPubkey: "b".repeat(64),
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 7, unreadCount: 3 },
+    });
+    saveRoom(first);
+    saveRoom(second);
+
+    markRoomRead(roomTargetFor(first));
+
+    expect(roomUnreadCount(loadRoom(first.id, first.coordinatorPubkey)!)).toBe(0);
+    expect(roomUnreadCount(loadRoom(second.id, second.coordinatorPubkey)!)).toBe(3);
+    expect(coordinatorUnreadTotal(listRooms(), first.coordinatorPubkey)).toBe(0);
+    expect(coordinatorUnreadTotal([second, first], second.coordinatorPubkey)).toBe(3);
   });
 
   it("retains explicit host identity in stored rooms", () => {

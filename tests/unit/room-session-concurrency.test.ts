@@ -45,7 +45,7 @@ vi.mock("../../src/notifications/notification-center.svelte", () => ({
   notificationCenter: { enqueue: vi.fn() },
 }));
 
-import { ChatRoomSession, loadRoom, removeStoredRoom, saveRoom } from "../../src/chat/room-store";
+import { ChatRoomSession, loadRoom, removeStoredRoom, roomUnreadCount, saveRoom } from "../../src/chat/room-store";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -224,6 +224,35 @@ describe("ChatRoomSession concurrency", () => {
     await syncing;
 
     expect(loadRoom(room.id, room.coordinatorPubkey)).toBeNull();
+  });
+
+  it("establishes a hydration baseline, then counts each unique remote message once", async () => {
+    const remote = (id: string, sender = "b".repeat(64)) => ({
+      type: "message" as const,
+      id,
+      sender,
+      name: "Remote",
+      content: id,
+      createdAt: 1,
+      auth: { id: `${id}-auth`, sig: "signature" },
+    });
+    const room = storedRoom();
+    protocolMocks.decryptMessage
+      .mockResolvedValueOnce({ state: "hydrated", envelope: remote("cached") })
+      .mockResolvedValueOnce({ state: "next", envelope: remote("new") })
+      .mockResolvedValueOnce({ state: "replay", envelope: remote("new") });
+    coordinatorMocks.fetchMessages
+      .mockResolvedValueOnce([{ cursor: 1, msg_64: "cached" }])
+      .mockResolvedValueOnce([{ cursor: 2, msg_64: "new" }])
+      .mockResolvedValueOnce([{ cursor: 3, msg_64: "replay" }]);
+    const session = connectedSession(room);
+
+    await session.sync();
+    expect(roomUnreadCount(session.room)).toBe(0);
+    await session.sync();
+    expect(roomUnreadCount(session.room)).toBe(1);
+    await session.sync();
+    expect(roomUnreadCount(session.room)).toBe(1);
   });
 
   it.each([
