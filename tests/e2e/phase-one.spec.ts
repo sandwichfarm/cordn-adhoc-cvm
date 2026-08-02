@@ -280,6 +280,20 @@ test("generates copyable identity on first load", async ({ page }) => {
   await closeCoordinatorSettings(settings);
 });
 
+test("hosted-room recovery progress shows zero rooms before the host workspace is ready", async ({ page }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+
+  const startup = page.getByTestId("startup-progress-panel");
+  await expect(startup).toContainText("Restoring rooms");
+  await expect(startup).toContainText("No rooms to restore");
+  await expect(startup).toContainText("0 of 0 rooms restored");
+  await expect(page.getByTestId("host-message-list")).toHaveCount(0);
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+});
+
 test("browses joined chats from the root shell without starting an unprotected local coordinator", async ({ page }) => {
   await page.goto("/");
   await seedJoinedRoom(page, "Elsewhere lounge");
