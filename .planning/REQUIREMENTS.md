@@ -27,7 +27,7 @@
 ### Startup Motion
 
 - [x] **MOTION-01**: The startup ASCII field fills the workspace content container edge to edge at every supported desktop size without leaving the right portion uncovered.
-- [ ] **MOTION-02**: Startup rings are true masks/reveals of the ASCII field and are animated with GSAP rather than independent static border circles.
+- [x] **MOTION-02**: Startup rings are true masks/reveals of the ASCII field and are animated with GSAP rather than independent static border circles.
 - [x] **MOTION-03**: Startup motion remains smooth, responds to progress state, and honors `prefers-reduced-motion` without hiding status or progress information.
 
 ### Presence, Invitations & Shell Controls
@@ -90,7 +90,7 @@
 | BOOT-02 | Phase 16 | Complete |
 | BOOT-03 | Phase 16 | Complete |
 | MOTION-01 | Phase 17 | Complete |
-| MOTION-02 | Phase 17 | Pending |
+| MOTION-02 | Phase 17 | Complete |
 | MOTION-03 | Phase 17 | Complete |
 | PRES-01 | Phase 18 | Pending |
 | PRES-02 | Phase 18 | Pending |

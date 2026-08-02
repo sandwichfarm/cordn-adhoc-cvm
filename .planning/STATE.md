@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Quality of Life & Polish
 current_phase: 17
 current_phase_name: Full-Viewport Startup Motion
-status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-08-02T23:05:26.868Z"
+status: verifying
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-08-02T23:27:09.851Z"
 last_activity: 2026-08-02
 last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 
 Phase: 17 (Full-Viewport Startup Motion) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-02 — Phase 17 execution started
 
-Progress: [███████░░░░░░░░░░░░░] 2/6 phases ([█████████░] 91%)
+Progress: [███████░░░░░░░░░░░░░] 2/6 phases ([██████████] 100%)
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [███████░░░░░░░░░░░░░] 2/6 pha
 | Phase 16-resilient-rooms-recovery P02 | 36min | 2 tasks | 7 files |
 | Phase 16 P03 | 16min | 3 tasks | 8 files |
 | Phase 17-full-viewport-startup-motion P01 | 54m 21s | 2 tasks | 5 files |
+| Phase 17-full-viewport-startup-motion P02 | 12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase 16]: Multi-room recovery preserves the remembered exact room as the active channel after every room is restored.
 - [Phase ?]: Startup is pane-scoped to host-chat; global header and rail remain usable.
 - [Phase ?]: Signal animation consumes a typed read-only projection of coordinator startup progress.
+- [Phase ?]: Startup motion owns only the positioned host-chat pane; header and rail remain usable.
+- [Phase ?]: One scoped GSAP context and media owner consumes immutable recovery projections and reverts on teardown.
+- [Phase ?]: Wide-pane content coverage requires a 512x256 deterministic ASCII texture plus rendered extent assertions.
 
 ### Pending Todos
 
@@ -112,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T23:05:26.862Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-08-02T23:27:09.845Z
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None
