@@ -294,6 +294,19 @@ test("hosted-room recovery progress shows zero rooms before the host workspace i
   await expect(page.getByTestId("status-badge")).toHaveText("running");
 });
 
+test("does not render disconnected local chat during recovery", async ({ page }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+
+  const startup = page.getByTestId("startup-progress-panel");
+  await expect(startup).toContainText("No rooms to restore");
+  await expect(page.getByTestId("host-message-list")).toHaveCount(0);
+  await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i)).toHaveCount(0);
+});
+
 test("browses joined chats from the root shell without starting an unprotected local coordinator", async ({ page }) => {
   await page.goto("/");
   await seedJoinedRoom(page, "Elsewhere lounge");
