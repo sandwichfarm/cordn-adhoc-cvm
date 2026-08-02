@@ -31,88 +31,106 @@
 
   const textures = [asciiField(3), asciiField(11), asciiField(19), asciiField(29)];
   let field: HTMLDivElement | undefined = $state();
+  let applySignal: ((nextSignal: StartupSignalPresentation) => void) | undefined;
+
+  type MotionPreference = "normal" | "reduced";
+
+  function motionState(nextSignal: StartupSignalPresentation): string {
+    return nextSignal.mode === "resting" ? "resting" : nextSignal.recoveryState;
+  }
+
+  function signalEnergy(nextSignal: StartupSignalPresentation): number {
+    if (nextSignal.mode === "resting" || nextSignal.recoveryState === "exhausted") return .32;
+    if (nextSignal.recoveryState === "retrying") return .52;
+    return .78;
+  }
+
+  function signalColor(nextSignal: StartupSignalPresentation): string {
+    if (nextSignal.recoveryState === "retrying") return "#e4e78d";
+    if (nextSignal.recoveryState === "exhausted") return "#779184";
+    return "#7cf59d";
+  }
+
+  const currentMotionState = $derived(motionState(signal));
+
+  $effect(() => {
+    applySignal?.(signal);
+  });
 
   onMount(() => {
     if (!field) return;
-    const media = gsap.matchMedia();
-    media.add("(prefers-reduced-motion: no-preference)", () => {
-      const context = gsap.context(() => {
+    let preference: MotionPreference = "reduced";
+    let ambient: gsap.core.Timeline | undefined;
+    const media = gsap.matchMedia(field);
+    const context = gsap.context(() => {
+      const updateTargets = (nextSignal: StartupSignalPresentation) => {
+        const energy = signalEnergy(nextSignal);
+        const forward = nextSignal.forwardPercent;
+        const state = motionState(nextSignal);
+        const targets = [field, ".ring-plane", ".ascii-ring"];
+        const values = {
+          "--signal-forward": forward,
+          "--signal-energy": energy,
+          "--signal-phase-color": signalColor(nextSignal),
+          "--signal-mask-offset": `${(forward - 85) * .12}%`,
+        };
+
+        gsap.killTweensOf(targets);
+        gsap.killTweensOf(ambient);
+        if (preference === "reduced") {
+          gsap.set(field, values);
+          gsap.set(".ring-plane", { rotation: (forward - 85) * .08, scale: .94 + energy * .06 });
+          gsap.set(".ascii-ring", { "--ring-energy": energy });
+          return;
+        }
+
+        gsap.to(field, { ...values, duration: .32, ease: "sine.out", overwrite: true });
+        gsap.to(".ring-plane", {
+          rotation: (forward - 85) * .08,
+          scale: .94 + energy * .06,
+          duration: state === "retrying" ? .4 : .28,
+          ease: "sine.out",
+          overwrite: true,
+        });
+        gsap.to(".ascii-ring", { "--ring-energy": energy, duration: .28, ease: "sine.out", overwrite: true });
+        if (ambient) gsap.to(ambient, { timeScale: energy, duration: .28, ease: "sine.out", overwrite: true });
+      };
+
+      media.add("(prefers-reduced-motion: reduce)", () => {
+        preference = "reduced";
+        gsap.killTweensOf([field, ".ring-plane", ".ascii-ring"]);
+        return () => {
+          ambient = undefined;
+        };
+      });
+      media.add("(prefers-reduced-motion: no-preference)", () => {
+        preference = "normal";
         gsap.set(".ascii-ring", { transformOrigin: "50% 50%" });
         gsap.set(".ascii-texture", { transformOrigin: "50% 50%" });
+        gsap.set(".ring-plane", { xPercent: -50, yPercent: -50 });
+        ambient = gsap.timeline({ repeat: -1, yoyo: true, defaults: { ease: "sine.inOut" } });
+        ambient
+          .to(".ascii-bed .ascii-texture", { xPercent: -.65, yPercent: .8, opacity: .8, duration: 15 }, 0)
+          .to(".ring-outer", { scale: 1.035, opacity: .72, duration: 8.5 }, 0)
+          .to(".ring-middle", { scale: .965, opacity: .58, duration: 6.2 }, 0)
+          .to(".ring-inner", { scale: 1.055, opacity: .68, duration: 4.8 }, 0)
+          .to(".ring-outer .ascii-texture", { xPercent: -1.8, yPercent: 1.1, rotation: 1.2, duration: 12 }, 0)
+          .to(".ring-middle .ascii-texture", { xPercent: 1.4, yPercent: -1.6, rotation: -1.4, duration: 9 }, 0)
+          .to(".ring-inner .ascii-texture", { xPercent: -1, yPercent: -1.2, rotation: .9, duration: 7 }, 0);
+        return () => {
+          ambient = undefined;
+        };
+      });
 
-        gsap.to(".ascii-bed .ascii-texture", {
-          xPercent: -.65,
-          yPercent: .8,
-          opacity: .8,
-          duration: 15,
-          ease: "sine.inOut",
-          repeat: -1,
-          yoyo: true,
-        });
+      applySignal = (nextSignal) => context.add(() => updateTargets(nextSignal));
+    }, field);
+    applySignal(signal);
 
-        gsap.to(".ring-outer", {
-          scale: 1.035,
-          opacity: .72,
-          duration: 8.5,
-          ease: "sine.inOut",
-          repeat: -1,
-          yoyo: true,
-        });
-        gsap.to(".ring-middle", {
-          scale: .965,
-          opacity: .58,
-          duration: 6.2,
-          ease: "sine.inOut",
-          repeat: -1,
-          yoyo: true,
-        });
-        gsap.to(".ring-inner", {
-          scale: 1.055,
-          opacity: .68,
-          duration: 4.8,
-          ease: "sine.inOut",
-          repeat: -1,
-          yoyo: true,
-        });
-        gsap.to(".ring-outer .ascii-texture", {
-          xPercent: -1.8,
-          yPercent: 1.1,
-          rotation: 1.2,
-          duration: 12,
-          ease: "sine.inOut",
-          repeat: -1,
-          yoyo: true,
-        });
-        gsap.to(".ring-middle .ascii-texture", {
-          xPercent: 1.4,
-          yPercent: -1.6,
-          rotation: -1.4,
-          duration: 9,
-          ease: "sine.inOut",
-          repeat: -1,
-          yoyo: true,
-        });
-        gsap.to(".ring-inner .ascii-texture", {
-          xPercent: -1,
-          yPercent: -1.2,
-          rotation: .9,
-          duration: 7,
-          ease: "sine.inOut",
-          repeat: -1,
-          yoyo: true,
-        });
-        gsap.to(".field-glow", {
-          scale: 1.12,
-          opacity: .8,
-          duration: 5.5,
-          ease: "sine.inOut",
-          repeat: -1,
-          yoyo: true,
-        });
-      }, field);
-      return () => context.revert();
-    });
-    return () => media.revert();
+    return () => {
+      applySignal = undefined;
+      media.revert();
+      context.revert();
+    };
   });
 </script>
 
@@ -123,11 +141,11 @@
   data-testid="startup-ascii-field"
   data-phase={signal.phase}
   data-recovery-state={signal.recoveryState}
+  data-motion-state={currentMotionState}
   data-forward-target={signal.forwardPercent}
   data-mode={signal.mode}
-  style={`--signal-forward-target: ${signal.forwardPercent}`}
+  style="--signal-forward: 0; --signal-energy: .78; --signal-phase-color: #7cf59d; --signal-mask-offset: 0%;"
 >
-  <div class="field-glow"></div>
   <div class="ascii-bed"><pre class="ascii-texture">{textures[0]}</pre></div>
   <div class="ring-plane">
     <div class="ascii-ring ring-outer"><pre class="ascii-texture">{textures[1]}</pre></div>
@@ -146,24 +164,11 @@
     contain: strict;
   }
 
-  .field-glow {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: min(44rem, 84vmin);
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgb(65 126 81 / .13), rgb(31 69 43 / .045) 48%, transparent 72%);
-    filter: blur(18px);
-    opacity: .52;
-    transform: translate(-50%, -50%);
-  }
-
   .ascii-bed {
     position: absolute;
     inset: -6%;
     overflow: hidden;
-    opacity: .17;
+    opacity: calc(.08 + var(--signal-energy) * .12);
     -webkit-mask-image: radial-gradient(ellipse at center, rgb(0 0 0 / .2) 0%, rgb(0 0 0 / .42) 34%, #000 68%, rgb(0 0 0 / .12) 100%);
     mask-image: radial-gradient(ellipse at center, rgb(0 0 0 / .2) 0%, rgb(0 0 0 / .42) 34%, #000 68%, rgb(0 0 0 / .12) 100%);
   }
@@ -175,17 +180,19 @@
     width: min(52rem, 96vmin);
     aspect-ratio: 1;
     transform: translate(-50%, -50%);
+    will-change: transform;
   }
 
   .ascii-ring {
     position: absolute;
     inset: 4%;
     overflow: hidden;
-    opacity: .52;
-    -webkit-mask-position: center;
+    --ring-energy: .78;
+    opacity: calc(.16 + var(--ring-energy) * .46);
+    -webkit-mask-position: calc(50% + var(--signal-mask-offset)) center;
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-size: 100% 100%;
-    mask-position: center;
+    mask-position: calc(50% + var(--signal-mask-offset)) center;
     mask-repeat: no-repeat;
     mask-size: 100% 100%;
   }
@@ -212,7 +219,7 @@
     height: 116%;
     overflow: hidden;
     margin: 0;
-    color: #6fbd82;
+    color: var(--signal-phase-color);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: clamp(5px, .82vmin, 8px);
     font-weight: 600;
@@ -228,6 +235,6 @@
   .ring-inner .ascii-texture { color: #82d895; }
 
   @media (prefers-reduced-motion: reduce) {
-    .ascii-ring, .ascii-texture, .field-glow { transform: none !important; }
+    .ascii-ring, .ascii-texture { transform: none !important; }
   }
 </style>

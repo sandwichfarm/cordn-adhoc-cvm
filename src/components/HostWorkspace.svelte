@@ -1528,7 +1528,7 @@
                               : `Restoring # ${coordinator.startupProgress.roomRecovery.roomName}`
                         : coordinator.startupProgress.label}</strong>
                     </div>
-                    <span class="startup-progress-value" data-testid="startup-progress-value" aria-hidden="true">{coordinator.startupProgress.phase === "restoring-rooms"
+                    <span class:retrying={coordinator.startupProgress.roomRecovery.state === "retrying"} class="startup-progress-value" data-testid="startup-progress-value" aria-hidden="true">{coordinator.startupProgress.phase === "restoring-rooms"
                       ? `${coordinator.startupProgress.roomRecovery.completed}/${coordinator.startupProgress.roomRecovery.total}`
                       : `${coordinator.startupProgress.percent}%`}</span>
                   </header>
@@ -1974,7 +1974,8 @@
   .startup-progress-panel header span, .startup-progress-panel header strong { display: block; overflow-wrap: anywhere; }
   .startup-progress-panel header span { color: #66786d; font-size: .48rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
   .startup-progress-panel header strong { margin-top: .28rem; color: #e8f5eb; font-size: .72rem; font-weight: 650; }
-  .startup-progress-value { flex: 0 0 auto; color: #e4e78d; font-size: .72rem; font-variant-numeric: tabular-nums; }
+  .startup-progress-value { flex: 0 0 auto; color: #e8f5eb; font-size: .72rem; font-variant-numeric: tabular-nums; }
+  .startup-progress-value.retrying { color: #e4e78d; }
   .startup-progress-value.error { color: #ffaaa3; }
   .startup-progress-track { position: relative; height: .28rem; margin-top: .7rem; overflow: hidden; background: #1a2820; }
   .startup-progress-track::after { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(20% - 1px), rgb(6 12 8 / .72) calc(20% - 1px) 20%); content: ""; }
