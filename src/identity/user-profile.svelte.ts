@@ -163,9 +163,17 @@ export class UserProfileStore {
     this.rotationInProgress = true;
     this.error = "";
     const candidate = await prepareAnonymousIdentityReplacement();
+    let journal: MembershipRetirementJournal | null = null;
+    let crossedBoundary = false;
     try {
+      // Recovery is an explicit consent boundary: the corrupt identity cannot
+      // prove ownership of pre-provenance rooms, so retire their local authority
+      // before any replacement signer is published.
+      journal = await retireAnonymousMemberships();
       if (!hasRecoveryMarker() && !writeRecoveryMarker()) throw new Error("Unable to set the local recovery boundary");
+      crossedBoundary = true;
       if (!candidate.commit()) throw new Error("Unable to write the new local identity");
+      journal.commit();
       this.anonymousSigner = candidate.signer;
       this.pubkey = candidate.pubkey;
       this.profile = null;
@@ -176,6 +184,7 @@ export class UserProfileStore {
       if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
     } catch {
       candidate.abort();
+      if (!crossedBoundary) journal?.rollback();
       this.enterRecovery("Unable to create a new local identity. No identity is active. Try again.");
       throw new Error(this.error);
     } finally {

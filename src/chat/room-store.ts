@@ -603,7 +603,12 @@ export async function anonymousMembershipImpact(stablePubkey: string): Promise<A
  * Retire local anonymous authority while retaining room presentation and decrypted cache.
  * The returned journal can restore every exact raw storage value until its commit boundary.
  */
-export async function retireAnonymousMemberships(stablePubkey: string): Promise<MembershipRetirementJournal> {
+/**
+ * Retire anonymous room authority. Recovery calls this without a public key only
+ * after the user explicitly accepts that ambiguous pre-provenance room access is
+ * removed; explicitly external records always remain untouched.
+ */
+export async function retireAnonymousMemberships(stablePubkey?: string): Promise<MembershipRetirementJournal> {
   const originals = new Map<string, string | null>();
   const matching = new Map<string, Array<{ key: string; room: StoredRoom }>>();
   for (const entry of storedRoomEntries()) {
@@ -668,8 +673,9 @@ export async function retireAnonymousMemberships(stablePubkey: string): Promise<
   };
 }
 
-async function belongsToAnonymousMembership(room: StoredRoom, stablePubkey: string): Promise<boolean> {
-  if (room.identityOwner) return room.identityOwner === "anonymous" && room.stablePubkey === stablePubkey;
+async function belongsToAnonymousMembership(room: StoredRoom, stablePubkey?: string): Promise<boolean> {
+  if (room.identityOwner) return room.identityOwner === "anonymous" && (!stablePubkey || room.stablePubkey === stablePubkey);
+  if (!stablePubkey) return true;
   const encoded = room.anonymousSecretKey;
   if (!encoded || !/^[0-9a-f]{64}$/i.test(encoded)) return false;
   try {

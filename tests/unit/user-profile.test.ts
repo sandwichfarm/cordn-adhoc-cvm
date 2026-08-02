@@ -344,6 +344,29 @@ describe("user profile helpers", () => {
     expect(localStorage.getItem("cordn:v1:anonymous-identity-recovery")).toBeNull();
   });
 
+  test("retires anonymous room authority before replacing a corrupt local identity", async () => {
+    localStorage.setItem(ANONYMOUS_IDENTITY_STORAGE_KEY, "{");
+    const stored = anonymousRoom("1".repeat(64));
+    stored.stateBase64 = "private-state";
+    stored.keyPackage = { reference: "private-ref", publicBase64: "public", privateBase64: "private" };
+    stored.pending = [{ id: "queued", opaqueBase64: "private-pending" }];
+    saveRoom(stored);
+    const store = new UserProfileStore();
+
+    await store.initialize("River");
+    await store.recoverAnonymousIdentity();
+
+    expect(loadRoom(stored.id, stored.coordinatorPubkey)).toMatchObject({
+      membershipStatus: "retired",
+      stateBase64: "",
+      keyPackage: { reference: "", publicBase64: "", privateBase64: "" },
+      pending: [],
+    });
+    expect(loadRoom(stored.id, stored.coordinatorPubkey)?.anonymousSecretKey).toBeUndefined();
+    expect(loadRoom(stored.id, stored.coordinatorPubkey)?.inviteToken).toBeUndefined();
+    expect(store.recoveryRequired).toBe(false);
+  });
+
   test("retires matching local room authority and every live session before publishing a replacement", async () => {
     const store = new UserProfileStore();
     await store.initialize("River");
