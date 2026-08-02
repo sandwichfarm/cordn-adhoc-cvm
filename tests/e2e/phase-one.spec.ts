@@ -235,6 +235,8 @@ async function seedJoinedRoom(
 }
 
 test("unread badge lifecycle projects exact room and coordinator counts", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/");
   const coordinatorPubkey = "a".repeat(64);
   await seedJoinedRoom(page, "Unread one", coordinatorPubkey);
@@ -250,11 +252,15 @@ test("unread badge lifecycle projects exact room and coordinator counts", async 
   });
   await page.reload();
 
-  await page.getByRole("button", { name: /Rooms, 2 available/ }).click();
-  const switcher = page.getByTestId("room-switcher");
-  await expect(switcher.getByRole("button", { name: /Open room Unread one/ })).toBeVisible();
-  await expect(switcher.getByLabel("100 unread messages")).toHaveText("99+");
-  await expect(switcher.getByTestId(`coordinator-unread-${coordinatorPubkey}`)).toHaveAttribute("aria-label", "101 unread messages for this coordinator");
+  await page.locator(".channel-context-button").click();
+  const coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
+  await expect(coordinatorMenu.getByRole("menuitem")).toHaveCount(2);
+  await coordinatorMenu.getByRole("menuitem", { name: /Coordinator aaaaaa/ }).click();
+  const rail = page.getByTestId("invite-panel");
+  await expect(rail.getByRole("button", { name: /Open room Unread one/ })).toBeVisible();
+  await expect(rail.getByLabel("100 unread messages")).toHaveText("99+");
+  await expect(rail.getByLabel("101 unread messages for this coordinator")).toHaveText("99+");
+  expect(pageErrors).toEqual([]);
 });
 
 test("generates copyable identity on first load", async ({ page }) => {

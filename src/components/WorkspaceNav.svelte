@@ -68,7 +68,9 @@
   let removalTarget = $state<RoomTarget | null>(null);
   let removalOrigin = $state<HTMLButtonElement | null>(null);
   let unreadAnnouncement = $state("");
-  let observedUnreadCounts = $state<Record<string, number>>({});
+  // Previous values are bookkeeping for announcements, not render state. Keeping
+  // this outside Svelte reactivity prevents the effect from rescheduling itself.
+  let observedUnreadCounts: Record<string, number> = {};
 
   const invite = $derived(parseInviteUrl(currentUrl));
   const storedRooms = $derived(readRooms(roomsRevision));
