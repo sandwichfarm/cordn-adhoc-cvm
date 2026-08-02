@@ -234,7 +234,7 @@ test("locks a confirmed rotation until the replacement identity succeeds", async
   expectLockedBoundary(snapshot, {
     title: "Rotate local identity?",
     primary: "Rotating…",
-    controls: 2,
+    controls: 3,
   });
   expect(snapshot.identityRaw).toBe(original.raw);
   expect(snapshot.avatar).toBe(original.avatar);
