@@ -53,6 +53,7 @@ status: complete
 - Added immutable `RoomTarget` creation and strictly parsed versioned composite last-open records, including legacy read migration only after exact-room validation.
 - Routed coordinator selection and remote rail navigation through valid remembered room identities.
 - Added Leave-only sidebar actions for participant, remote, retired, and previous-local records; matching active embedded sessions are discarded synchronously on removal.
+- Added the same frozen-target action flow to the standalone room switcher, with Delete restricted to the current local coordinator and Leave everywhere else.
 
 ## Task Commits
 
@@ -62,6 +63,7 @@ status: complete
 4. Task 3: `57f31ab` — coordinator last-open restoration.
 5. Task 2 completion: `dc0dcc1` — exact remote/previous-local leave and ChatRoute removal event handling.
 6. Task 2 browser coverage: `7aa79aa` — remote sidebar Leave action coverage.
+7. Standalone switcher completion: `f93198a` — contextual action controls, exact dialog mutation, and route-aware deletion handling.
 
 ## Verification
 
@@ -85,5 +87,5 @@ The combined overflow browser grep still has a pre-existing failing assertion: `
 
 ## Self-Check: PASSED
 
-- Confirmed all six task commits exist in git history.
+- Confirmed all seven task commits exist in git history.
 - Confirmed the modified source and test files exist.
