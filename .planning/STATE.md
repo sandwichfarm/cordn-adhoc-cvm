@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-current_phase: 14
-current_phase_name: Completion Audit
-status: complete
-stopped_at: Phase 14 completion audit recorded; live nsite publish still requires repository secrets
-last_updated: "2026-08-02T10:13:49.786Z"
+milestone: v1.1
+milestone_name: Quality of Life & Polish
+status: planning
+last_updated: "2026-08-02T13:55:11.875Z"
 last_activity: 2026-08-02
-last_activity_desc: Completed in-session paste and QR invite redemption
 progress:
-  total_phases: 14
-  completed_phases: 14
-  total_plans: 14
-  completed_plans: 14
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-23)
 
 ## Current Position
 
-Phase: 14 of 14 (Completion Audit)
-Plan: 1 of 1 in current phase
-Status: Complete locally, broader objective incomplete
-Last activity: 2026-08-02 - Completed in-session paste and QR invite redemption
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-08-02 — Milestone v1.1 started
 
 ## Performance Metrics
 
@@ -89,8 +84,11 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 260802-jj8 | Give every participant emoji shortcuts and authenticated persistent message reactions | 2026-08-02 | uncommitted | [260802-jj8](./quick/260802-jj8-give-every-participant-emoji-shortcuts-a/) |
+| 260802-i5b | Unify root and chat routes into one root workspace with exact room actions and truthful coordinator reachability | 2026-08-02 | uncommitted | [260802-i5b](./quick/260802-i5b-unify-root-and-chat-routes-into-one-root/) |
 | 260802-f3u | Add in-session invite redemption by paste or camera scan without disrupting the local coordinator | 2026-08-02 | uncommitted | [260802-f3u](./quick/260802-f3u-add-in-session-invite-redemption-by-past/) |
 | 2 | Add a camel emoji to the left of CAHMLS | 2026-08-02 | uncommitted | — |
+| 3 | Set the site title to CAHMLS | 2026-08-02 | ae42349 | — |
 
 ## Deferred Items
 

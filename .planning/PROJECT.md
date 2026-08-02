@@ -8,6 +8,17 @@ A ContextVM/Cordn coordinator that runs entirely in the browser — no server re
 
 A single browser tab acts as a fully functional, self-sovereign Cordn coordinator reachable over Nostr relays — no backend, no account, no installation.
 
+## Current Milestone: v1.1 Quality of Life & Polish
+
+**Goal:** Make identity, rooms, startup, notifications, and conversation handling feel coherent, durable, and trustworthy across reloads and daily use.
+
+**Target features:**
+- Persistent but explicitly rotatable anonymous identities with membership integrity
+- Reliable room navigation, unread state, startup recovery, and contextual actions
+- Consolidated presence, notification, invite, and coordinator controls
+- Full-viewport GSAP ASCII startup motion and modern grouped conversations/reactions
+- A repository-level agent SDLC contract centered on GSD planning, checking, execution, verification, and shipping
+
 ## Requirements
 
 ### Validated
@@ -15,6 +26,15 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 (None yet — ship to validate)
 
 ### Active
+
+- [ ] Anonymous identities and their authorized room memberships survive reloads without duplicating rooms
+- [ ] Anonymous users can deliberately rotate identity with clear consequences and confirmation
+- [ ] Room navigation exposes contextual leave actions and per-room unread counts
+- [ ] Coordinator startup recovers prior rooms as visible progress without transient false errors
+- [ ] Startup visuals fill the viewport and use GSAP-driven ASCII-masked motion with reduced-motion support
+- [ ] Presence, notification settings, in-app notifications, invites, and coordinator controls are logically consolidated
+- [ ] Chat messages group consecutive senders and reactions use a compact inline aggregate interaction
+- [ ] Root `AGENTS.md` defines the desired GSD-centered software delivery lifecycle
 
 - [ ] Browser-resident coordinator using `@contextvm/sdk` `NostrServerTransport`
 - [ ] Browser Cordn coordinator method surface registered on the MCP server
@@ -87,5 +107,22 @@ A single browser tab acts as a fully functional, self-sovereign Cordn coordinato
 | Destroy Cache Storage proof | The destroy e2e seeds Cache Storage and verifies confirmed destroy removes it | Pending |
 | Completion audit | Requirement evidence is recorded with the deploy-secret blocker called out explicitly | Pending |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `$gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `$gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-06-23 after Phase 14 completion audit*
+*Last updated: 2026-08-02 for milestone v1.1 Quality of Life & Polish*
