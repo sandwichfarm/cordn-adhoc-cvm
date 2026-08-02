@@ -1,4 +1,5 @@
 import { configStore } from "../config/config.svelte";
+import { SvelteSet } from "svelte/reactivity";
 import {
   clearPersistedCoordinatorState,
   createBrowserCoordinatorStorage,
@@ -180,7 +181,7 @@ export class CoordinatorStore {
   private pagehideRelease: (() => void) | null = null;
   private hostedRoomRecovery: HostedRoomRecoveryAdapter | null = null;
   private recoveryTargets: readonly HostedRoomRecoveryTarget[] = [];
-  private recoveryCompleted = new Set<string>();
+  private recoveryCompleted = new SvelteSet<string>();
   private startupGeneration = 0;
   private startupController: AbortController | null = null;
   private startupPromise: Promise<void> | null = null;
@@ -512,12 +513,12 @@ export class CoordinatorStore {
     if (this.recoveryTargets.length === 0) {
       const listed = await adapter.listTargets();
       if (!this.ownsGeneration(generation, signal)) return false;
-      const unique = new Map<string, HostedRoomRecoveryTarget>();
+      const unique: Record<string, HostedRoomRecoveryTarget> = {};
       for (const target of listed) {
         if (!target.roomIdentityKey || !target.coordinatorPubkey || !target.roomId || !target.roomName) continue;
-        unique.set(target.roomIdentityKey, target);
+        unique[target.roomIdentityKey] = target;
       }
-      this.recoveryTargets = [...unique.values()].sort((left, right) => left.roomIdentityKey.localeCompare(right.roomIdentityKey));
+      this.recoveryTargets = Object.values(unique).sort((left, right) => left.roomIdentityKey.localeCompare(right.roomIdentityKey));
       this.recoveryCompleted.clear();
     }
 
@@ -550,7 +551,7 @@ export class CoordinatorStore {
           this.setRoomRecoveryProgress("restoring", this.recoveryCompleted.size, total, target.roomName, attempt);
           succeeded = true;
           break;
-        } catch (error) {
+        } catch {
           await adapter.discard?.(target);
           if (!this.ownsGeneration(generation, signal)) {
             return false;

@@ -458,7 +458,7 @@ export class ChatRoomSession {
       if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
       this.client = null;
       this.status = { connection: "connecting" };
-      throw new Error("Hosted room recovery failed");
+      throw new Error("Hosted room recovery failed", { cause: error });
     }
   }
 
