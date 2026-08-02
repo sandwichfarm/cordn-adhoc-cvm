@@ -121,6 +121,36 @@ describe("room navigation persistence", () => {
     expect(coordinatorUnreadTotal([second, first], second.coordinatorPubkey)).toBe(3);
   });
 
+  it("uses exact safe counts and a saturating, order-independent coordinator total", () => {
+    const coordinatorPubkey = "a".repeat(64);
+    const first = storedRoom({
+      id: "first",
+      title: "First",
+      coordinatorPubkey,
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: Number.MAX_SAFE_INTEGER - 1 },
+    });
+    const second = storedRoom({
+      id: "second",
+      title: "Second",
+      coordinatorPubkey,
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: 99 },
+    });
+    const otherCoordinator = storedRoom({
+      id: "same-id",
+      title: "Elsewhere",
+      coordinatorPubkey: "b".repeat(64),
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: 1 },
+    });
+
+    expect(roomUnreadCount(first)).toBe(Number.MAX_SAFE_INTEGER - 1);
+    expect(coordinatorUnreadTotal([first, second, otherCoordinator], coordinatorPubkey)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(coordinatorUnreadTotal([otherCoordinator, second, first], coordinatorPubkey)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(coordinatorUnreadTotal([first, second, otherCoordinator], otherCoordinator.coordinatorPubkey)).toBe(1);
+  });
+
   it("retains explicit host identity in stored rooms", () => {
     const room = storedRoom({
       id: "known-host",

@@ -6,7 +6,7 @@
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
   import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
-  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, ROOMS_CHANGED_EVENT, saveRoom, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import MessageAuthor from "./MessageAuthor.svelte";
@@ -155,6 +155,7 @@
       const receivedMessage = nextRoom.messages.some((message) => !knownMessageIds.has(message.id) && message.sender !== nextRoom.stablePubkey);
       knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
       room = nextRoom;
+      acknowledgeVisibleRoom();
       if (receivedMessage && wasConnected) playIncomingTone();
       if (appendedMessage && followLatest) {
         void tick().then(() => {
@@ -163,6 +164,15 @@
       }
     }
     revision += 1;
+  }
+
+  function acknowledgeVisibleRoom(): void {
+    const activeRoom = room;
+    if (!activeRoom || document.visibilityState !== "visible") return;
+    if (connection !== "connected" && connection !== "cached" && connection !== "offline") return;
+    if (roomUnreadCount(activeRoom) === 0) return;
+    if (session && sameRoomIdentity(session.room, activeRoom)) session.markRead();
+    else markRoomRead(roomTargetFor(activeRoom));
   }
 
   async function attach(nextRoom: StoredRoom, signer: NostrSigner) {
@@ -397,7 +407,13 @@
       navigate("/");
     };
     window.addEventListener(ROOMS_CHANGED_EVENT, handleRoomsChanged);
-    return () => window.removeEventListener(ROOMS_CHANGED_EVENT, handleRoomsChanged);
+    const acknowledgeOnVisibility = () => acknowledgeVisibleRoom();
+    document.addEventListener("visibilitychange", acknowledgeOnVisibility);
+    acknowledgeVisibleRoom();
+    return () => {
+      window.removeEventListener(ROOMS_CHANGED_EVENT, handleRoomsChanged);
+      document.removeEventListener("visibilitychange", acknowledgeOnVisibility);
+    };
   });
   onDestroy(() => {
     disposed = true;

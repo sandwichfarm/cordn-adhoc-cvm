@@ -8,7 +8,7 @@
   import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import type { RemoteJoinRequest } from "../chat/coordinator-client";
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
@@ -110,6 +110,7 @@
   let hostRoomRestoreStarted = false;
   let browserOnline = $state(typeof navigator === "undefined" ? true : navigator.onLine);
   let lastSyncedRouteContext = "";
+  let unreadAnnouncement = $state("");
   const reachabilityProbe = new SimplePoolNostrInstanceNetwork(1_500);
 
   const dialogOpen = $derived(shareDialogOpen || createDialogOpen || roomRemovalTarget !== null);
@@ -297,6 +298,10 @@
 
   function displayUnreadCount(count: number): string {
     return count >= 100 ? "99+" : String(count);
+  }
+
+  function coordinatorUnreadCount(pubkey: string): number {
+    return coordinatorUnreadTotal(listRooms(), pubkey);
   }
 
   function acknowledgeVisibleHostRoom(): void {
@@ -938,6 +943,17 @@
     syncCompactViewport();
     compactQuery.addEventListener("change", syncCompactViewport);
     window.addEventListener(ROOMS_CHANGED_EVENT, refreshRemoteRooms);
+    const refreshUnread = (event: Event) => {
+      refreshRemoteRooms();
+      revision += 1;
+      const detail = event instanceof CustomEvent
+        ? event.detail as { coordinatorPubkey?: string; roomId?: string; previousCount?: number; unreadCount?: number }
+        : undefined;
+      if (!detail || detail.previousCount !== 0 || !detail.unreadCount || !detail.coordinatorPubkey || !detail.roomId) return;
+      const changedRoom = loadRoom(detail.roomId, detail.coordinatorPubkey);
+      if (changedRoom) unreadAnnouncement = `New messages in # ${changedRoom.title}`;
+    };
+    window.addEventListener("cordn:room-unread-changed", refreshUnread);
     window.addEventListener(SERVER_ONLINE_EVENT, markCoordinatorOnline);
     window.addEventListener(SERVER_OFFLINE_EVENT, markCoordinatorOffline);
     window.addEventListener("offline", markBrowserOffline);
@@ -952,6 +968,7 @@
       if (reachabilityTimer !== null) window.clearInterval(reachabilityTimer);
       reachabilityTimer = null;
       window.removeEventListener(ROOMS_CHANGED_EVENT, refreshRemoteRooms);
+      window.removeEventListener("cordn:room-unread-changed", refreshUnread);
       window.removeEventListener(SERVER_ONLINE_EVENT, markCoordinatorOnline);
       window.removeEventListener(SERVER_OFFLINE_EVENT, markCoordinatorOffline);
       window.removeEventListener("offline", markBrowserOffline);
@@ -1066,6 +1083,7 @@
         aria-hidden={compactViewport && !mobileRailOpen}
         inert={compactViewport && !mobileRailOpen}
       >
+        <span class="sr-only" aria-live="polite">{unreadAnnouncement}</span>
         <div class="flex min-h-full flex-col gap-4">
             <nav class="channel-browser" aria-label="Server and channel browser">
               <div class="channel-context">
@@ -1115,6 +1133,7 @@
                           : `${reachabilityLabel(externalCoordinatorReachability(selectedServerPubkey))} · ${serverHost(selectedRemoteServer?.origin ?? activeIntentInvite?.coordinatorOrigin)}`}</small>
                     </span>
                     <span class="channel-count" title={`${selectedServerRoomCount} ${selectedServerRoomCount === 1 ? "room" : "rooms"}`}>{selectedServerRoomCount}</span>
+                    {#if coordinatorUnreadCount(selectedServerPubkey || coordinatorPubkey) > 0}<span class="unread-badge" title={`${coordinatorUnreadCount(selectedServerPubkey || coordinatorPubkey)} unread messages for this coordinator`} aria-label={`${coordinatorUnreadCount(selectedServerPubkey || coordinatorPubkey)} unread messages for this coordinator`}>{displayUnreadCount(coordinatorUnreadCount(selectedServerPubkey || coordinatorPubkey))}</span>{/if}
                     <span class="channel-chevron" aria-hidden="true">{serverMenuOpen ? "↑" : "↓"}</span>
                   </button>
                   {#if selectedServerIsHome && !locked}
@@ -1152,6 +1171,7 @@
                       ></span>
                       <span><strong>{config.coordinatorName || "My coordinator"}</strong><small>{localCoordinatorStatusLabel}</small></span>
                       <span>{hostedRooms.length + homeJoinedRooms.length}</span>
+                      {#if coordinatorUnreadCount(coordinatorPubkey) > 0}<span class="unread-badge" title={`${coordinatorUnreadCount(coordinatorPubkey)} unread messages for this coordinator`} aria-label={`${coordinatorUnreadCount(coordinatorPubkey)} unread messages for this coordinator`}>{displayUnreadCount(coordinatorUnreadCount(coordinatorPubkey))}</span>{/if}
                     </button>
                     {#each remoteServers as server (server.pubkey)}
                       <button
@@ -1174,6 +1194,7 @@
                         ></span>
                         <span><strong>Coordinator {shortKey(server.pubkey)}</strong><small>{reachabilityLabel(externalCoordinatorReachability(server.pubkey))} · {serverHost(server.origin)}</small></span>
                         <span>{server.rooms.length}</span>
+                        {#if coordinatorUnreadCount(server.pubkey) > 0}<span class="unread-badge" title={`${coordinatorUnreadCount(server.pubkey)} unread messages for this coordinator`} aria-label={`${coordinatorUnreadCount(server.pubkey)} unread messages for this coordinator`}>{displayUnreadCount(coordinatorUnreadCount(server.pubkey))}</span>{/if}
                       </button>
                     {/each}
                     {#if activeIntentInvite
@@ -1224,6 +1245,7 @@
                           ></span>
                           <span><strong>Previous local {shortKey(server.pubkey)}</strong><small>{reachabilityLabel(externalCoordinatorReachability(server.pubkey))} · key changed; retained on this device.</small></span>
                           <span>{server.rooms.length}</span>
+                          {#if coordinatorUnreadCount(server.pubkey) > 0}<span class="unread-badge" title={`${coordinatorUnreadCount(server.pubkey)} unread messages for this coordinator`} aria-label={`${coordinatorUnreadCount(server.pubkey)} unread messages for this coordinator`}>{displayUnreadCount(coordinatorUnreadCount(server.pubkey))}</span>{/if}
                         </button>
                       {/each}
                     {/if}
@@ -1258,6 +1280,7 @@
                       <span class="truncate">{joinedRoom.title}</span>
                       <RoomHostBadge host={hostIdentityForRoom(joinedRoom)} compact />
                     </button>
+                    {#if roomUnreadCount(joinedRoom) > 0}<span class="unread-badge" title={`${roomUnreadCount(joinedRoom)} unread messages`} aria-label={`${roomUnreadCount(joinedRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(joinedRoom))}</span>{/if}
                     <RoomActionsMenu sidebar roomTitle={joinedRoom.title} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(joinedRoom, origin)} />
                     </div>
                   {/each}
@@ -1285,6 +1308,7 @@
                         <span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>
                         <RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact />
                       </button>
+                      {#if roomUnreadCount(remoteRoom) > 0}<span class="unread-badge" title={`${roomUnreadCount(remoteRoom)} unread messages`} aria-label={`${roomUnreadCount(remoteRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(remoteRoom))}</span>{/if}
                       <RoomActionsMenu sidebar roomTitle={remoteRoom.title} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(remoteRoom, origin)} />
                       </div>
                   {/each}

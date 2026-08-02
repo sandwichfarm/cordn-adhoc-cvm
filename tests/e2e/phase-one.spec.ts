@@ -234,15 +234,27 @@ async function seedJoinedRoom(
   }, { title, coordinatorPubkey, relayUrl: relay.url, privateFixture });
 }
 
-test("unread badge lifecycle starts at the zero baseline", async ({ page }) => {
+test("unread badge lifecycle projects exact room and coordinator counts", async ({ page }) => {
   await page.goto("/");
-  await seedJoinedRoom(page, "Unread baseline");
+  const coordinatorPubkey = "a".repeat(64);
+  await seedJoinedRoom(page, "Unread one", coordinatorPubkey);
+  await seedJoinedRoom(page, "Unread two", coordinatorPubkey);
+  await page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+      const room = JSON.parse(localStorage.getItem(key) ?? "{}");
+      room.readState = { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: room.title === "Unread one" ? 100 : 1 };
+      localStorage.setItem(key, JSON.stringify(room));
+    }
+  });
   await page.reload();
 
-  await page.getByRole("button", { name: /Rooms, 1 available/ }).click();
+  await page.getByRole("button", { name: /Rooms, 2 available/ }).click();
   const switcher = page.getByTestId("room-switcher");
-  await expect(switcher.getByRole("button", { name: /Open room Unread baseline/ })).toBeVisible();
-  await expect(switcher.getByLabel(/unread messages/)).toHaveCount(0);
+  await expect(switcher.getByRole("button", { name: /Open room Unread one/ })).toBeVisible();
+  await expect(switcher.getByLabel("100 unread messages")).toHaveText("99+");
+  await expect(switcher.getByTestId(`coordinator-unread-${coordinatorPubkey}`)).toHaveAttribute("aria-label", "101 unread messages for this coordinator");
 });
 
 test("generates copyable identity on first load", async ({ page }) => {

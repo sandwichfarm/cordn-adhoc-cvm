@@ -3,7 +3,7 @@
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
   import { parseInviteUrl, type ChatInvite, type CoordinatorKeyMode, type RoomHostIdentity } from "../chat/invite";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { hostIdentityForRoom, listRooms, loadRoom, removeStoredRoom, roomIdentityKey, roomTargetFor, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type RoomTarget, type StoredRoom } from "../chat/room-store";
+  import { coordinatorUnreadTotal, hostIdentityForRoom, listRooms, loadRoom, removeStoredRoom, roomIdentityKey, roomTargetFor, ROOM_UNREAD_CHANGED_EVENT, roomUnreadCount, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type RoomTarget, type StoredRoom } from "../chat/room-store";
   import InviteRedeemer from "./InviteRedeemer.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
@@ -34,6 +34,7 @@
     isHost: boolean;
     host: RoomHostIdentity;
     href: string;
+    unreadCount: number;
   }
 
   interface ServerGroup {
@@ -66,6 +67,8 @@
   let removalRoom = $state<StoredRoom | null>(null);
   let removalTarget = $state<RoomTarget | null>(null);
   let removalOrigin = $state<HTMLButtonElement | null>(null);
+  let unreadAnnouncement = $state("");
+  let observedUnreadCounts = new Map<string, number>();
 
   const invite = $derived(parseInviteUrl(currentUrl));
   const storedRooms = $derived(readRooms(roomsRevision));
@@ -184,8 +187,29 @@
       isHost: room.isHost,
       host: hostIdentityForRoom(room),
       href: createSameShellChatHref(window.location.origin, room),
+      unreadCount: roomUnreadCount(room),
     };
   }
+
+  function displayUnreadCount(count: number): string {
+    return count >= 100 ? "99+" : String(count);
+  }
+
+  function coordinatorUnreadCount(coordinatorPubkey: string): number {
+    return coordinatorUnreadTotal(storedRooms, coordinatorPubkey);
+  }
+
+  $effect(() => {
+    const next = new Map<string, number>();
+    for (const room of storedRooms) {
+      const key = roomIdentityKey(room.coordinatorPubkey, room.id);
+      const count = roomUnreadCount(room);
+      const previous = observedUnreadCounts.get(key);
+      if (previous === 0 && count > 0) unreadAnnouncement = `New messages in # ${room.title}`;
+      next.set(key, count);
+    }
+    observedUnreadCounts = next;
+  });
 
   function hostIdentityForInvite(nextInvite: ChatInvite): RoomHostIdentity {
     const host = nextInvite.host ?? { name: "Unknown host", pubkey: "" };
@@ -304,12 +328,14 @@
       }
     };
     window.addEventListener(ROOMS_CHANGED_EVENT, refresh);
+    window.addEventListener(ROOM_UNREAD_CHANGED_EVENT, refresh);
     window.addEventListener(SERVER_ONLINE_EVENT, announceServerOnline);
     window.addEventListener("storage", refresh);
     window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("pointerdown", primeNotificationAudio, { once: true });
     return () => {
       window.removeEventListener(ROOMS_CHANGED_EVENT, refresh);
+      window.removeEventListener(ROOM_UNREAD_CHANGED_EVENT, refresh);
       window.removeEventListener(SERVER_ONLINE_EVENT, announceServerOnline);
       window.removeEventListener("storage", refresh);
       window.removeEventListener("keydown", closeOnEscape);
@@ -404,7 +430,7 @@
     <span class="server-notice embedded-notice" aria-hidden="true" data-testid="server-online-notice"></span>
   {/if}
   <InviteRedeemer onNavigate={navigate} />
-  <span class="sr-only" aria-live="polite">{serverNotice ? "A coordinator is online" : ""}</span>
+  <span class="sr-only" aria-live="polite">{unreadAnnouncement || (serverNotice ? "A coordinator is online" : "")}</span>
 
   {#if showRoomBrowser && open}
     <button class="nav-scrim" type="button" aria-label="Close room switcher" onclick={() => open = false}></button>
@@ -424,6 +450,7 @@
             <strong>{homeCoordinatorName || "My coordinator"}</strong>
             <small class:online={coordinatorStatus === "running"}>{coordinatorStatus === "running" ? "online" : coordinatorStatus}</small>
           </span>
+          {#if coordinatorUnreadCount(effectiveHomeCoordinatorPubkey ?? "") > 0}<span class="unread-badge" data-testid={`coordinator-unread-${effectiveHomeCoordinatorPubkey}`} title={`${coordinatorUnreadCount(effectiveHomeCoordinatorPubkey ?? "")} unread messages for this coordinator`} aria-label={`${coordinatorUnreadCount(effectiveHomeCoordinatorPubkey ?? "")} unread messages for this coordinator`}>{displayUnreadCount(coordinatorUnreadCount(effectiveHomeCoordinatorPubkey ?? ""))}</span>{/if}
           <button class="workspace-link" type="button" onclick={() => navigate("/")}>Workspace</button>
         </div>
         {#if homeRooms.length === 0}
@@ -440,6 +467,7 @@
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
+              {#if room.unreadCount > 0}<span class="unread-badge" title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
               <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode={room.isHost ? "delete" : "leave"} onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
@@ -455,6 +483,7 @@
               <strong>Previous local sessions</strong>
               <small>Coordinator key changed; these rooms are retained on this device.</small>
             </span>
+            {#if coordinatorUnreadCount(room.coordinatorPubkey) > 0}<span class="unread-badge" data-testid={`coordinator-unread-${room.coordinatorPubkey}`} title={`${coordinatorUnreadCount(room.coordinatorPubkey)} unread messages for this coordinator`} aria-label={`${coordinatorUnreadCount(room.coordinatorPubkey)} unread messages for this coordinator`}>{displayUnreadCount(coordinatorUnreadCount(room.coordinatorPubkey))}</span>{/if}
             <span class="server-kind previous">previous</span>
           </div>
           <div class="room-list">
@@ -466,6 +495,7 @@
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
+              {#if room.unreadCount > 0}<span class="unread-badge" title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
               <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
@@ -482,6 +512,7 @@
               <strong>Coordinator {shortKey(server.pubkey)}</strong>
               <small>{serverHost(server.origin)}</small>
             </span>
+            {#if coordinatorUnreadCount(server.pubkey) > 0}<span class="unread-badge" data-testid={`coordinator-unread-${server.pubkey}`} title={`${coordinatorUnreadCount(server.pubkey)} unread messages for this coordinator`} aria-label={`${coordinatorUnreadCount(server.pubkey)} unread messages for this coordinator`}>{displayUnreadCount(coordinatorUnreadCount(server.pubkey))}</span>{/if}
             <span class="server-kind">remote</span>
           </div>
           <div class="room-list">
@@ -493,6 +524,7 @@
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
+              {#if room.unreadCount > 0}<span class="unread-badge" title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
               <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
@@ -573,7 +605,8 @@
   .server-kind.previous { border-color: #5d5b39; color: #e4e78d; }
   .room-list { display: grid; gap: .12rem; border: 1px solid #202d25; background: #090e0b; padding: .3rem; }
   .room-row, .empty-room { display: grid; width: 100%; align-items: center; border: 1px solid transparent; background: transparent; text-align: left; }
-  .room-row { grid-template-columns: minmax(0, 1fr) auto; color: #91a59a; }
+  .room-row { grid-template-columns: minmax(0, 1fr) auto auto; color: #91a59a; }
+  .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; border: 1px solid #3b5943; border-radius: 2px; background: #102216; color: #bfeac8; font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
   .room-row-primary { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: .6rem; padding: .62rem .65rem; color: inherit; text-align: left; }
   .room-row:hover .room-row-primary, .room-row:focus-within .room-row-primary { background: #111a14; color: #effff2; }
   .room-row.active { border-color: transparent; background: #17241b; color: #effff2; box-shadow: inset 3px 0 #7cf59d; }
