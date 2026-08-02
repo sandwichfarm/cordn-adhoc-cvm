@@ -73,8 +73,8 @@ Recent decisions affecting current work:
 - v1.1 roadmap: Deliver quality-of-life work in dependency order: identity integrity, room recovery, startup motion, unified controls, conversation presentation, then delivery proof.
 - [Phase 15]: Persist only version and 32-byte secret hex; malformed present records require recovery.
 - [Phase 15]: Retain the anonymous signer independently of NIP-07/NIP-46 and zeroize it on retirement.
-- [Phase ?]: Phase 15: New room authority always derives from an explicit active signer; room-local secrets are legacy-only migration material.
-- [Phase ?]: Phase 15: Composite (coordinatorPubkey, roomId) is the sole room identity, and retirement journals exact storage before commit.
+- [Phase 15]: New room authority always derives from an explicit active signer; room-local secrets are legacy-only migration material.
+- [Phase 15]: Composite (coordinatorPubkey, roomId) is the sole room identity, and retirement journals exact storage before commit.
 
 ### Pending Todos
 
