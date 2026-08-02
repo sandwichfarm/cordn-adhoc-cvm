@@ -45,13 +45,14 @@ status: complete
 
 # Phase 16 Plan 01: Exact Sidebar Room Actions Summary
 
-**Hosted sidebar room deletion now uses a sibling 44px action trigger, frozen composite identity, and strict composite last-open restoration.**
+**Sidebar room actions now use frozen composite targets for exact hosted deletion and remote/previous-local leave flows, with strict last-open restoration.**
 
 ## Accomplishments
 
 - Added an accessible sidebar menu trigger that does not navigate or alter the selected room, and restores focus after cancelling its native confirmation dialog.
 - Added immutable `RoomTarget` creation and strictly parsed versioned composite last-open records, including legacy read migration only after exact-room validation.
 - Routed coordinator selection and remote rail navigation through valid remembered room identities.
+- Added Leave-only sidebar actions for participant, remote, retired, and previous-local records; matching active embedded sessions are discarded synchronously on removal.
 
 ## Task Commits
 
@@ -59,11 +60,14 @@ status: complete
 2. Task 1: `365219a` — row-safe hosted deletion and focus lifecycle.
 3. Task 2: `87c8ab2` — frozen targets and exact composite storage validation.
 4. Task 3: `57f31ab` — coordinator last-open restoration.
+5. Task 2 completion: `dc0dcc1` — exact remote/previous-local leave and ChatRoute removal event handling.
+6. Task 2 browser coverage: `7aa79aa` — remote sidebar Leave action coverage.
 
 ## Verification
 
 - `pnpm exec vitest run tests/unit/room-navigation.test.ts` — passed (27 tests).
 - `pnpm exec playwright test tests/e2e/phase-one.spec.ts --grep "sidebar room actions"` — passed.
+- `pnpm exec playwright test tests/e2e/phase-one.spec.ts --grep "sidebar room actions|same-id sidebar removal|switches local Delete to remote Leave|leaves a previous local host session"` — passed.
 - `pnpm exec tsc --noEmit` — passed.
 - `git diff --check` — passed.
 
@@ -81,5 +85,5 @@ The combined overflow browser grep still has a pre-existing failing assertion: `
 
 ## Self-Check: PASSED
 
-- Confirmed all four task commits exist in git history.
+- Confirmed all six task commits exist in git history.
 - Confirmed the modified source and test files exist.
