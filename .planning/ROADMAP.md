@@ -2,277 +2,103 @@
 
 ## Overview
 
-Cordn Browser is built in six phases: Phase 1 delivers a coordinator shell that starts, stops, and configures relays.
-Phase 2 hardens the key lifecycle with encrypted persistence and a confirmed destroy action.
-Phase 3 adds live resource telemetry and automates deployment via nsite/Blossom on every push to main.
-Phase 4 closes explicit objective gaps around browser limits and guarded runtime options.
-Phase 5 registers the real Cordn coordinator method surface in the browser.
-Phase 6 persists Cordn coordinator method data in browser SQLite-WASM storage.
-Phase 7 wires browser telemetry to real Cordn adapter activity.
-Phase 8 makes deploy triggers match both common default branches and the current local branch.
-Phase 9 adds workflow tests that lock deploy branch readiness against regression.
-Phase 10 adds a live upstream parity check for Cordn `src/server` method names.
-Phase 11 makes the max-users guard truthful by sourcing and labeling its live floor as active subscriptions.
-Phase 12 adds a visual operator shell and screenshot-backed layout guard for the minimal cypherpunk GUI.
-Phase 13 proves the confirmed destroy flow clears browser Cache Storage, not only localStorage.
-Phase 14 audits the full objective evidence and records the remaining live nsite deploy-secret blocker.
+Milestone v1.1, **Quality of Life & Polish**, makes a browser-resident Cordn
+coordinator feel coherent and trustworthy through daily reloads and active room
+use. It starts by preserving anonymous identity and membership integrity, then
+makes room recovery and navigation truthful, turns recovery into a clear startup
+experience, consolidates personal and host controls, modernizes conversations,
+and closes with repeatable delivery guidance and automated proof.
 
 ## Phases
 
-- [x] **Phase 1: Core Foundation** - Working browser coordinator with key gen, lifecycle controls, relay config, cypherpunk UI, and CI test gate
-- [x] **Phase 2: Security & Persistence** - Encrypted key persistence, confirmed destroy action, per-relay status, and persistence error handling
-- [x] **Phase 3: Telemetry & Deployment** - Live resource monitoring and automated nsite/Blossom deployment pipeline
-- [x] **Phase 4: Runtime Limits & Guarded Options** - Announcement option, maximum users browser cap, and guarded limit invariant
-- [x] **Phase 5: Browser Cordn Methods** - Browser-safe Cordn coordinator core and MCP method registration
-- [x] **Phase 6: Coordinator Persistence** - SQLite-WASM snapshot persistence for Cordn coordinator method data
-- [x] **Phase 7: Adapter-Backed Telemetry** - Resource monitor updates from Cordn method activity and live subscriptions
-- [x] **Phase 8: Deploy Branch Readiness** - CI and nsite deploy trigger on `main` and current `master`
-- [x] **Phase 9: Workflow Guardrails** - Unit tests cover CI/deploy branch filters
-- [x] **Phase 10: Upstream Parity Check** - Script compares browser method keys to live Cordn upstream
-- [x] **Phase 11: Subscription Limit Truthfulness** - Max-users guard is sourced from live active subscriptions and labeled accurately
-- [x] **Phase 12: Visual Operator Shell** - Screenshot-backed shell polish and no-overflow Playwright guard
-- [x] **Phase 13: Destroy Cache Proof** - Playwright seeds Cache Storage and verifies confirmed destroy clears it
-- [x] **Phase 14: Completion Audit** - Requirement-by-requirement proof and live deploy blocker record
+- [ ] **Phase 15: Identity Continuity & Membership Integrity** - Preserve anonymous identity across reloads and make deliberate rotation a safe privacy boundary.
+- [ ] **Phase 16: Resilient Rooms & Recovery** - Make room navigation, unread state, and coordinator-led room restoration accurate and actionable.
+- [ ] **Phase 17: Full-Viewport Startup Motion** - Turn truthful room-recovery progress into an accessible GSAP ASCII startup experience.
+- [ ] **Phase 18: Unified Presence, Notifications & Controls** - Consolidate personal presence and notifications while separating them from host lifecycle actions.
+- [ ] **Phase 19: Grouped Conversations & Reactions** - Make active conversations easier to scan and react to without visual repetition.
+- [ ] **Phase 20: Delivery Contract & Regression Proof** - Document the GSD lifecycle and protect the complete v1.1 experience with automated coverage.
 
 ## Phase Details
 
-### Phase 1: Core Foundation
-**Goal**: Users can open the app, generate a coordinator identity, configure relays, and start/stop a live Nostr/MCP coordinator — all without any persistence or backend
-**Depends on**: Nothing (first phase)
-**Requirements**: KEYGEN-01, KEYGEN-02, KEYGEN-03, KEYGEN-04, KEYGEN-05, COORD-01, COORD-02, COORD-04, COORD-05, COORD-06, RELAY-01, RELAY-02, RELAY-03, RELAY-04, RELAY-05, RELAY-07, SEC-03, UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, ERR-01, ERR-04, ERR-05, TEST-01, TEST-03, TEST-04, TEST-05, TEST-06, CICD-01, CICD-02
+### Phase 15: Identity Continuity & Membership Integrity
+**Goal**: Anonymous users retain one durable local identity and only the room authority that belongs to that identity.
+**Depends on**: Phase 14
+**Requirements**: IDEN-01, IDEN-02, IDEN-03, IDEN-04
 **Success Criteria** (what must be TRUE):
-  1. User opens app and sees a generated npub with a copyable truncated display — no setup required
-  2. User adds a relay URL, clicks Start, and sees the status badge transition through `starting → running`
-  3. User clicks Stop and sees the badge transition through `stopping → idle`
-  4. Relay config inputs are visually locked while coordinator is in any non-idle state; an explicit unlock button is required to edit
-  5. GitHub Actions CI pipeline runs lint → unit → Playwright on every push and completes in under 4 minutes
-**Plans**: 5 plans
-
-Plans:
-- [x] 01-01: Project scaffolding — Vite 8, Svelte 5, TypeScript strict, Tailwind v4, ESLint (ban svelte/store), run vite build to confirm no Node built-in leaks
-- [x] 01-02: State machine + key management — pure StateMachine.ts with Vitest coverage; KeyManager holding Uint8Array lifetime
-- [x] 01-03: Coordinator store + transport — CoordinatorStore (.svelte.ts), TransportFactory, ConfigStore with edit guard locked on non-idle state
-- [x] 01-04: UI components — LifecyclePanel, RelayConfigPanel (guarded), status badge, npub display, beforeunload WS cleanup
-- [x] 01-05: Tests + CI — Vitest state machine + relay URL validation; Playwright start/stop/config-edit e2e; GitHub Actions lint→unit→playwright workflow
+  1. After an ordinary page reload or browser restart on the same device, a user returns as the same anonymous identity with its local profile.
+  2. Restoring an ephemeral host shows each previously known coordinator and room once, without duplicate participant, coordinator, or room entries.
+  3. From the identity menu, a user can choose to rotate identity and must explicitly confirm after seeing that existing room membership will not carry over.
+  4. After confirmed rotation, the new identity cannot send with the retired identity's locally stored room credentials until it joins a room itself.
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 2: Security & Persistence
-**Goal**: The coordinator key can survive browser restarts via encrypted opt-in persistence, and the destroy action is fully confirmed and cryptographically clean
-**Depends on**: Phase 1
-**Requirements**: COORD-03, RELAY-06, PERSIST-01, PERSIST-02, PERSIST-03, PERSIST-04, PERSIST-05, PERSIST-06, SEC-01, SEC-02, SEC-04, ERR-02, ERR-03, TEST-02, TEST-07
+### Phase 16: Resilient Rooms & Recovery
+**Goal**: Users can navigate and leave the exact room they intend while room restoration presents reliable state instead of misleading failures.
+**Depends on**: Phase 15
+**Requirements**: ROOM-01, ROOM-02, ROOM-03, BOOT-01, BOOT-02, BOOT-03
 **Success Criteria** (what must be TRUE):
-  1. User can opt in to key persistence by entering and confirming a passphrase; key is written encrypted
-  2. On next page load with a stored key, user is prompted for passphrase before a new key is generated
-  3. Entering the wrong passphrase shows an inline error and leaves the new-key path available
-  4. Destroy requires an explicit confirmation dialog; afterwards memory is zeroed, localStorage cleared, and UI resets to initial state
-  5. Per-relay connection status (connected / disconnected / error) is visible inline in the relay list when coordinator is running
-**Plans**: 3 plans
-
-Plans:
-- [x] 02-01: Key persistence — KeyStorage PBKDF2 + AES-GCM encrypt/decrypt; single-blob localStorage write; passphrase prompt UI; Vitest encryption tests
-- [x] 02-02: Destroy flow + security hardening — confirm dialog, Uint8Array.fill(0) + localStorage.removeItem in one synchronous block, SEC-01/02/04
-- [x] 02-03: Per-relay status + persistence error handling — RELAY-06 status display, ERR-02 inline relay errors, ERR-03 passphrase error, TEST-07 destroy e2e
+  1. A user can hover or keyboard-focus an eligible sidebar room, open its context menu, and confirm leaving that exact room and coordinator without opening the room first.
+  2. Each room with new messages displays an accurate unread count, which increments for received messages and clears when that room is read.
+  3. While starting a coordinator, the user sees each room being restored and aggregate restoration progress.
+  4. A recoverable room timeout remains visible as retry/recovery progress; only an exhausted recovery becomes an actionable failure.
+  5. A locally hosted room remains visibly recovering during startup and never appears as a disconnected chat before recovery finishes.
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 3: Telemetry & Deployment
-**Goal**: Live resource metrics are visible when the coordinator is running, and deployment to Blossom/Nostr is fully automated on push to main
-**Depends on**: Phase 2
-**Requirements**: TELEMETRY-01, TELEMETRY-02, TELEMETRY-03, TELEMETRY-04, TELEMETRY-05, CICD-03, CICD-04, CICD-05, CICD-06
+### Phase 17: Full-Viewport Startup Motion
+**Goal**: Coordinator recovery progress is communicated by a smooth, accessible startup motion that fills the desktop viewport.
+**Depends on**: Phase 16
+**Requirements**: MOTION-01, MOTION-02, MOTION-03
 **Success Criteria** (what must be TRUE):
-  1. When coordinator is running, user sees active subscription count, rolling message rate, and memory estimate (labeled as estimates; memory reads "unavailable" on non-Chrome)
-  2. Telemetry panel values reset or hide when coordinator is not in `running` state
-  3. Every push to main triggers an nsite deploy to Blossom/Nostr after all CI checks pass
-  4. Deploy step skips gracefully with a clear log message when GitHub secrets are absent
-  5. User can run `scripts/setup-secrets.sh` to be guided through adding all required GitHub secrets
-**Plans**: 2 plans
-
-Plans:
-- [x] 03-01: Resource telemetry — ResourceMonitor component; subscription counter; message rate rolling window; performance.memory feature-detect; "(est.)" labels
-- [x] 03-02: Deployment pipeline — GitHub Actions nsite deploy job gated on CI; nsyte CLI integration; setup-secrets.sh; CICD-06 skip-on-missing-secrets
+  1. At every supported desktop size, the startup ASCII field covers the full viewport with no unfilled side gutter.
+  2. Startup rings reveal and mask the ASCII field itself, rather than appearing as independent static border circles, and animate through GSAP.
+  3. Startup motion responds to current recovery progress without obscuring status information.
+  4. Users with reduced-motion enabled retain readable startup status and progress while nonessential motion is suppressed.
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 4: Runtime Limits & Guarded Options
-**Goal**: The browser coordinator exposes explicit runtime options from the original objective and guards maximum-users edits against browser-visible limits
-**Depends on**: Phase 3
-**Requirements**: CONFIG-01, CONFIG-02, LIMIT-01, LIMIT-02, LIMIT-03
+### Phase 18: Unified Presence, Notifications & Controls
+**Goal**: Users can find personal presence, notification, and invitation actions in one coherent surface, distinct from coordinator lifecycle controls.
+**Depends on**: Phase 16
+**Requirements**: PRES-01, PRES-02, INVITE-01, SHELL-01, NOTF-01, NOTF-02, NOTF-03
 **Success Criteria** (what must be TRUE):
-  1. Announcement is visible as a runtime option and defaults off
-  2. Maximum users is visible as a runtime option with a browser cap
-  3. Runtime options are locked while the coordinator is running
-  4. Maximum users cannot be reduced below the active subscription floor
-  5. Transport startup receives the configured announcement setting
-**Plans**: 1 plan
-
-Plans:
-- [x] 04-01: Runtime limits - announcement toggle, max-users input, guarded limit floor, transport option wiring, tests
+  1. The profile dropdown lets a user select online, invisible, or offline presence, and its active accessible status dot is attached to the user/avatar control.
+  2. Header controls plainly separate personal actions from host/coordinator lifecycle actions, with no duplicate status or settings controls.
+  3. A clearly labeled `Notification settings` action opens a working settings surface and retains the user's choices.
+  4. A separate bell opens a grouped in-app notification feed with unread state and actionable incoming room invitations.
+  5. Browser-notification permission is requested only after a user action, and enabled desktop notifications follow the configured cadence without duplicate bursts.
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 5: Browser Cordn Methods
-**Goal**: The browser ContextVM server registers the upstream Cordn coordinator tool surface and backs it with browser-safe in-memory storage
-**Depends on**: Phase 4
-**Requirements**: CORDN-01, CORDN-02, CORDN-03, CORDN-04
+### Phase 19: Grouped Conversations & Reactions
+**Goal**: Users can scan active conversations quickly and use compact, accurate reactions on message groups.
+**Depends on**: Phase 18
+**Requirements**: REACT-01, REACT-02, CHAT-01, CHAT-02
 **Success Criteria** (what must be TRUE):
-  1. Browser server registers every upstream Cordn coordinator method name
-  2. Browser adapter can post and fetch MLS group messages in-memory
-  3. Coordinator start flow remains browser-runnable after method registration
-  4. No Node-only sqlite/runtime modules are bundled into the browser app
-**Plans**: 1 plan
-
-Plans:
-- [x] 05-01: Browser Cordn methods — contracts, in-memory coordinator, adapter, MCP tool registration, MLS message tests
-**UI hint**: no
-
-### Phase 6: Coordinator Persistence
-**Goal**: Cordn method data survives browser reloads when persistence is enabled and is cleared by disable/destroy actions
-**Depends on**: Phase 5
-**Requirements**: COORD-DATA-01, COORD-DATA-02, COORD-DATA-03
-**Success Criteria** (what must be TRUE):
-  1. Persistent coordinator startup hydrates Cordn storage before registering methods
-  2. Cordn group message state round-trips through a persisted browser snapshot
-  3. Disabling persistence or destroying the coordinator removes SQLite-WASM kvvfs data and fallback localStorage state
-  4. Browser runtime remains free of Node `Buffer` dependencies
-  5. Full local CI passes
-**Plans**: 1 plan
-
-Plans:
-- [x] 06-01: SQLite-WASM coordinator storage - snapshot persistence, startup hydration, destroy cleanup, browser base64, tests
-**UI hint**: no
-
-### Phase 7: Adapter-Backed Telemetry
-**Goal**: Browser telemetry reflects real Cordn adapter operations and coordinator subscription counts
-**Depends on**: Phase 6
-**Requirements**: TELEMETRY-01, TELEMETRY-02
-**Success Criteria** (what must be TRUE):
-  1. Cordn method activity increments the browser message-rate window
-  2. Group subscription start/end updates the displayed subscription count from the coordinator
-  3. Existing SDK transport event telemetry remains as a fallback
-  4. Unit tests cover operation and subscription telemetry callbacks
-**Plans**: 1 plan
-
-Plans:
-- [x] 07-01: Adapter telemetry sink - operation callback, subscription count callback, monitor binding, tests
-**UI hint**: no
-
-### Phase 8: Deploy Branch Readiness
-**Goal**: GitHub workflows are ready for either `main` or this repository's current `master` branch
-**Depends on**: Phase 7
-**Requirements**: CICD-01, CICD-03
-**Success Criteria** (what must be TRUE):
-  1. Pull request CI targets both `main` and `master`
-  2. nsite deploy workflow runs after successful CI on both `main` and `master`
-  3. Existing secret guard behavior remains unchanged
-  4. Workflow syntax validates locally
-**Plans**: 1 plan
-
-Plans:
-- [x] 08-01: Branch-ready workflows - add `master` to CI/deploy branch filters and validate workflow YAML
-**UI hint**: no
-
-### Phase 9: Workflow Guardrails
-**Goal**: Local tests fail if CI/deploy workflow branch support regresses
-**Depends on**: Phase 8
-**Requirements**: CICD-01, CICD-03
-**Success Criteria** (what must be TRUE):
-  1. Unit tests assert CI pull request filters include `main` and `master`
-  2. Unit tests assert nsite deploy workflow-run filters include `main` and `master`
-  3. Existing deploy secret/action assertions remain covered
-  4. Full local CI passes
-**Plans**: 1 plan
-
-Plans:
-- [x] 09-01: Workflow guardrails - add unit coverage for CI/deploy branch filters
-**UI hint**: no
-
-### Phase 10: Upstream Parity Check
-**Goal**: Operators can verify the browser server method surface against live upstream Cordn `src/server`
-**Depends on**: Phase 9
-**Requirements**: CORDN-01
-**Success Criteria** (what must be TRUE):
-  1. A repo-local command clones upstream Cordn `src/server`
-  2. The command compares upstream `COORDINATOR_METHODS` usage to browser `COORDINATOR_METHODS`
-  3. The command fails on missing or extra browser method keys
-  4. The command reports the upstream commit checked
-**Plans**: 1 plan
-
-Plans:
-- [x] 10-01: Upstream parity script - sparse clone, method-key comparison, package script, verification
-**UI hint**: no
-
-### Phase 11: Subscription Limit Truthfulness
-**Goal**: The runtime limit guard stops implying authoritative MLS membership and instead reflects the browser-visible subscription floor
-**Depends on**: Phase 10
-**Requirements**: LIMIT-02, LIMIT-03, TELEMETRY-01
-**Success Criteria** (what must be TRUE):
-  1. Runtime option state labels the live floor as active subscriptions
-  2. Config validation errors refer to active subscriptions
-  3. The max-users floor is synchronized from the resource monitor subscription count
-  4. Unit and Playwright coverage lock the visible wording
-**Plans**: 1 plan
-
-Plans:
-- [x] 11-01: Subscription limit truthfulness - rename guard source, wire telemetry floor, update tests
+  1. Consecutive messages from one sender render as a single group with the sender avatar and name shown once above its individual bubbles.
+  2. Every message retains its timestamp and relevant metadata in a smaller, lower-contrast treatment without repeating sender chrome.
+  3. Each message or message group offers a compact reaction-add affordance overlapping the bubble border and opens an inline emoji picker.
+  4. Reactions aggregate by emoji across participants, show total counts, and let the current participant toggle their own reaction without duplicating the count.
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 12: Visual Operator Shell
-**Goal**: The GUI reads as a distinctive, minimal browser coordinator console without adding nonessential controls
-**Depends on**: Phase 11
-**Requirements**: UI-01, UI-02, UI-03, TEST-06
+### Phase 20: Delivery Contract & Regression Proof
+**Goal**: Contributors can follow one documented GSD delivery lifecycle and reliably detect regressions across the completed v1.1 experience.
+**Depends on**: Phase 19
+**Requirements**: DOC-01, TEST-01
 **Success Criteria** (what must be TRUE):
-  1. App renders inside an explicit operator shell
-  2. Desktop and mobile screenshots show no incoherent overlap
-  3. Playwright verifies common desktop and mobile viewports have no horizontal overflow
-  4. Visual verdict state is persisted for future iteration
-**Plans**: 1 plan
-
-Plans:
-- [x] 12-01: Visual operator shell - signal-grid shell, header accent, screenshot verdict, overflow test
-**UI hint**: yes
-
-### Phase 13: Destroy Cache Proof
-**Goal**: The destroy flow has browser-level proof that Cache Storage is cleared along with persisted coordinator state
-**Depends on**: Phase 12
-**Requirements**: PERSIST-05, PERSIST-06, SEC-04, TEST-07
-**Success Criteria** (what must be TRUE):
-  1. Playwright seeds a real Cache Storage entry before destroy
-  2. The test proves the seeded cache exists before confirmation
-  3. Confirmed destroy removes the seeded cache
-  4. Existing localStorage and regenerated-identity assertions remain covered
-**Plans**: 1 plan
-
-Plans:
-- [x] 13-01: Destroy cache proof - seed browser cache, confirm destroy, assert cache removal
-**UI hint**: no
-
-### Phase 14: Completion Audit
-**Goal**: The original objective has an inspectable proof map that separates proven work from the remaining live deploy blocker
-**Depends on**: Phase 13
-**Requirements**: CICD-01, CICD-03, CICD-04, CICD-05, CICD-06
-**Success Criteria** (what must be TRUE):
-  1. Local CI and upstream parity are re-run for the pushed commit
-  2. GitHub CI and deploy run IDs are recorded
-  3. The deploy guarded-skip reason is recorded without exposing secrets
-  4. The remaining action to prove live nsite publication is explicit
-**Plans**: 1 plan
-
-Plans:
-- [x] 14-01: Completion audit - requirement map, run IDs, deploy-secret blocker
-**UI hint**: no
+  1. A contributor can read the root `AGENTS.md` and follow the repository's required GSD flow for requirements, planning, plan checks, execution, verification, gap closure, review, and shipping.
+  2. Contributors can run unit and Playwright coverage that exercises identity continuity and rotation, exact room leaving, unread state, and startup recovery.
+  3. The same automated coverage detects regressions in notifications, consolidated controls, grouped conversations, and aggregated reactions before release.
+**Plans**: TBD
 
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Foundation | 5/5 | Complete | 2026-06-23 |
-| 2. Security & Persistence | 3/3 | Complete | 2026-06-23 |
-| 3. Telemetry & Deployment | 2/2 | Complete | 2026-06-23 |
-| 4. Runtime Limits & Guarded Options | 1/1 | Complete | 2026-06-23 |
-| 5. Browser Cordn Methods | 1/1 | Complete | 2026-06-23 |
-| 6. Coordinator Persistence | 1/1 | Complete | 2026-06-23 |
-| 7. Adapter-Backed Telemetry | 1/1 | Complete | 2026-06-23 |
-| 8. Deploy Branch Readiness | 1/1 | Complete | 2026-06-23 |
-| 9. Workflow Guardrails | 1/1 | Complete | 2026-06-23 |
-| 10. Upstream Parity Check | 1/1 | Complete | 2026-06-23 |
-| 11. Subscription Limit Truthfulness | 1/1 | Complete | 2026-06-23 |
-| 12. Visual Operator Shell | 1/1 | Complete | 2026-06-23 |
-| 13. Destroy Cache Proof | 1/1 | Complete | 2026-06-23 |
-| 14. Completion Audit | 1/1 | Complete | 2026-06-23 |
+| 15. Identity Continuity & Membership Integrity | 0/TBD | Not started | - |
+| 16. Resilient Rooms & Recovery | 0/TBD | Not started | - |
+| 17. Full-Viewport Startup Motion | 0/TBD | Not started | - |
+| 18. Unified Presence, Notifications & Controls | 0/TBD | Not started | - |
+| 19. Grouped Conversations & Reactions | 0/TBD | Not started | - |
+| 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
