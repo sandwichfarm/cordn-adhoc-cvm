@@ -260,6 +260,28 @@ test("keeps the unified root shell while an established anonymous identity opens
   await expectIdentityChooserNeverObserved(page);
 });
 
+test("rotates a zero-membership local identity only after the approved confirmation", async ({ page }) => {
+  await page.goto("/");
+  const profile = page.getByTestId("user-profile");
+  const original = await profile.locator("img").getAttribute("src");
+
+  await profile.getByRole("button", { name: /^Open profile for / }).click();
+  const menu = page.getByRole("dialog", { name: "User profile" });
+  await expect(menu.getByText("device-local and persist in this browser", { exact: false })).toBeVisible();
+  await menu.getByRole("button", { name: "Rotate identity…" }).click();
+
+  const dialog = page.getByTestId("identity-rotation-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Rotate local identity?" })).toBeVisible();
+  await expect(dialog.getByText("No local room memberships")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Keep current identity" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Rotate identity" }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(profile.locator("img")).not.toHaveAttribute("src", original ?? "");
+  await expect(page.getByText("Identity rotated. Local room access was removed.")).toBeAttached();
+});
+
 test("restores NIP-07 before a legacy invite is consumed in the unified root shell", async ({ page, browser }) => {
   test.setTimeout(90_000);
   const mockIdentity = createNip07BrowserMockIdentity();

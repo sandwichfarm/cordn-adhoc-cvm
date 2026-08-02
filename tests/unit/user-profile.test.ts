@@ -288,4 +288,37 @@ describe("user profile helpers", () => {
     await reloaded.initialize("River");
     expect(reloaded.pubkey).toBe(canonicalPubkey);
   });
+
+  test("rotates an anonymous identity only after creating a replacement", async () => {
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    const originalPubkey = store.pubkey;
+    const originalSigner = store.activeSigner;
+
+    await store.rotateAnonymousIdentity();
+
+    expect(store.recoveryRequired).toBe(false);
+    expect(store.rotationInProgress).toBe(false);
+    expect(store.pubkey).not.toBe(originalPubkey);
+    expect(store.activeSigner).not.toBe(originalSigner);
+    await expect(originalSigner?.signEvent({ kind: 1, created_at: 1, tags: [], content: "" }) ?? Promise.resolve()).rejects.toThrow("Signer is no longer available");
+  });
+
+  test("requires explicit recovery rather than loading identity data after the recovery boundary", async () => {
+    localStorage.setItem("cordn:v1:anonymous-identity-recovery", JSON.stringify({ version: 1 }));
+    const store = new UserProfileStore();
+
+    await store.initialize("River");
+
+    expect(store.recoveryRequired).toBe(true);
+    expect(store.activeSigner).toBeNull();
+    expect(store.hasIdentity).toBe(false);
+
+    await store.recoverAnonymousIdentity();
+
+    expect(store.recoveryRequired).toBe(false);
+    expect(store.activeSigner).not.toBeNull();
+    expect(store.hasIdentity).toBe(true);
+    expect(localStorage.getItem("cordn:v1:anonymous-identity-recovery")).toBeNull();
+  });
 });
