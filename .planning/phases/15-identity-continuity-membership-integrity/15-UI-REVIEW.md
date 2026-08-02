@@ -5,14 +5,16 @@ status: complete
 audited: 2026-08-02
 baseline: 15-UI-SPEC.md
 screenshots: captured
-overall_score: 14/24
+overall_score: 24/24
+re_audit_commit: 2f70709
 ---
 
 # Phase 15 — UI Review
 
-**Audited:** 2026-08-02  
-**Baseline:** approved `15-UI-SPEC.md` design contract  
-**Screenshots:** captured via Playwright at 1440×900 and 375×812 in `.planning/ui-reviews/15-20260802-1725/`
+**Audited:** 2026-08-02
+**Baseline:** approved `15-UI-SPEC.md` design contract
+**Re-audit:** source commit `2f70709`
+**Screenshots:** captured at desktop and 375×812 mobile shell; the updated confirm/recovery states are additionally verified by focused Playwright checks.
 
 ---
 
@@ -20,74 +22,66 @@ overall_score: 14/24
 
 | Pillar | Score | Key Finding |
 |--------|-------|-------------|
-| 1. Copywriting | 2/4 | Failure copy exposes arbitrary implementation errors instead of the contract’s recovery-safe message. |
-| 2. Visuals | 2/4 | The confirmation dialog omits the required close affordance and therefore does not fully match the established dialog structure. |
-| 3. Color | 2/4 | Accent use diverges from the reserved 10% map: the open trigger is muted, while busy status is accent-colored. |
-| 4. Typography | 2/4 | New/affected profile UI uses several undeclared fractional-rem sizes rather than the four locked sizes. |
-| 5. Spacing | 3/4 | Core dialog geometry is correct, but new controls/error treatment introduce non-token spacing values. |
-| 6. Experience Design | 3/4 | Native modal, busy lock, recovery lock, focus and method isolation are sound; the missing explicit close control weakens the non-destructive exit pattern. |
+| 1. Copywriting | 4/4 | Approved copy is exact for normal/retryable failures, while post-boundary recovery deliberately avoids the false unchanged-state claim. |
+| 2. Visuals | 4/4 | Dialog hierarchy, terminal surface, 44px labelled close affordance, and CAHMLS shell lockup meet the contract. |
+| 3. Color | 4/4 | Open trigger uses the reserved accent, busy status is secondary, and destructive fill remains confined to final actions. |
+| 4. Typography | 4/4 | Affected identity menu and dialog now use only the locked 10/12/14/18px hierarchy and weights. |
+| 5. Spacing | 4/4 | Updated controls and dialog layout use the 4px spacing scale and specified responsive bounds. |
+| 6. Experience Design | 4/4 | Initialization gating, focus/dismissal behavior, busy/recovery states, and anonymous-only method isolation are proven. |
 
-**Overall: 14/24**
+**Overall: 24/24**
 
 ---
 
 ## Top 3 Priority Fixes
 
-1. **Normalize dialog failures to the approved message** — raw/internal recovery and rotation errors can confuse users at a privacy boundary — render exactly `Unable to rotate your identity. Your current identity and local room access are unchanged. Try again.` for recoverable failures, while retaining only the non-dismissable recovery surface after the durable boundary.
-2. **Add the specified 44px close control to the confirm dialog** — keyboard/pointer users lack the established header dismissal affordance — add an accessible close button to `IdentityRotationDialog`, disable it while busy, omit/disable it for recovery, and preserve focus return to `.user-trigger`.
-3. **Apply the locked token/color rules to the identity menu and dialog** — selected identity state is visually under-signalled and token drift reduces the contract’s deliberate terminal hierarchy — use the accent border for `[aria-expanded="true"]`, keep busy text secondary, and replace fractional font/spacing values with the declared 10/12/14/18px and 4px-grid tokens.
+None. The prior warnings are resolved by `2f70709`; no actionable Phase 15 UI fix remains.
 
 ---
 
 ## Detailed Findings
 
-### Pillar 1: Copywriting (2/4)
+### Pillar 1: Copywriting (4/4)
 
-- **WARNING — Contract error copy is not enforced.** `IdentityRotationDialog` renders the thrown error verbatim (`src/components/IdentityRotationDialog.svelte:40`). `rotateAnonymousIdentity()` can throw implementation-specific messages such as acknowledgement failures (`src/identity/user-profile.svelte.ts:150`), while recovery falls back to a different unapproved message. This violates the canonical error-state copy and can describe an unrecoverable post-boundary condition as a retryable one.
-- **PASS evidence:** initiating CTA, title, empty heading/body, impact singular/plural wording, recovery title/body, busy labels, and completion announcement match the contract (`src/components/IdentityRotationDialog.svelte:19-21, 61, 66, 70-75, 80-82`; `src/components/UserProfile.svelte:124-128, 201-203`). No Phase 15 CTA is labelled `Cancel`.
+- **PASS — Recoverable failure uses the exact canonical error.** `IdentityRotationDialog` owns the approved string and displays it with `role="alert"` after a retryable failure (`src/components/IdentityRotationDialog.svelte:16, 41-49, 86`). The focused browser test verifies the exact text and retry-enabled recovery CTA (`tests/e2e/identity-ui-review.spec.ts:144-165`).
+- **PASS — Post-boundary distinction is safe.** If confirmation becomes recovery after crossing the durable boundary, the dialog suppresses the unchanged-state claim (`src/components/IdentityRotationDialog.svelte:45-49`); browser coverage confirms recovery has no alert or dismiss action (`tests/e2e/identity-ui-review.spec.ts:122-142`). Primary CTA, empty state, impact wording, recovery copy, busy labels, and completion announcement remain contract-exact (`src/components/IdentityRotationDialog.svelte:20-22, 68, 76, 80-92`; `src/components/UserProfile.svelte:124-128, 201-203`).
 
-### Pillar 2: Visuals (2/4)
+### Pillar 2: Visuals (4/4)
 
-- **WARNING — The new confirm dialog has no explicit close button.** The established native-dialog pattern has a labelled 44px header close control (`src/components/RoomRemovalDialog.svelte:73-79`); `IdentityRotationDialog` renders only a header text block (`src/components/IdentityRotationDialog.svelte:57-63`). This misses the UI spec’s explicit close-control sizing requirement and makes the non-destructive exit less discoverable, especially after the profile menu has been obscured by the modal.
-- **PASS evidence:** screenshot review found no clipping in the 375px shell capture. The CAHMLS camel and wordmark remain visible and aligned in the affected shell (`src/components/WorkspaceNav.svelte:459-463`); no Phase 15 header control or duplicate identity surface was added.
+- **PASS — Established dialog structure is restored.** The native modal has header/body/footer structure and a labelled 44px close affordance only in the dismissable confirm variant (`src/components/IdentityRotationDialog.svelte:54-95, 101-116`). Focused browser coverage measures the control at ≥44px and verifies focus returns to the trigger (`tests/e2e/identity-ui-review.spec.ts:58-82`).
+- **PASS — Responsive shell evidence.** Desktop and 375px captures show no CAHMLS camel/wordmark clipping. The dialog constrains its width/height, keeps header content shrinkable, and wraps body content (`src/components/IdentityRotationDialog.svelte:98-108`); menu summary fields retain ellipsis behavior (`src/components/UserProfile.svelte:323-328`).
 
-### Pillar 3: Color (2/4)
+### Pillar 3: Color (4/4)
 
-- **WARNING — Open identity trigger does not use the required accent border.** The contract reserves `#87ff9f` for the selected/open profile trigger, but `[aria-expanded="true"]` uses muted `#34483a` (`src/components/UserProfile.svelte:313-314`). The open state is therefore visually weaker than specified.
-- **WARNING — Accent is used for busy status outside the declared role.** `.live` uses `#87ff9f` (`src/components/IdentityRotationDialog.svelte:99`) even though the contract reserves accent for focus, selected trigger, and non-destructive action hover/focus. Busy status should use secondary body/status color so destructive action remains the focal point.
-- **PASS evidence:** the dialog’s dominant/surface/destructive colors are otherwise contract-aligned (`src/components/IdentityRotationDialog.svelte:88-90, 98, 103-107`).
+- **PASS — Accent map now follows the contract.** The selected trigger has `#87ff9f` border (`src/components/UserProfile.svelte:313-315`), visible focus remains 2px accent (`src/components/IdentityRotationDialog.svelte:121`), and the non-destructive action is the allowed accent-hover surface (`src/components/IdentityRotationDialog.svelte:117-120`).
+- **PASS — Busy state is secondary, destructive state is explicit.** Live status uses muted secondary `#91a59a`, while the destructive confirmation uses `#dc6f66`/`#ffaaa3` (`src/components/IdentityRotationDialog.svelte:112-120`). Browser coverage confirms the live computed color and disabled close state while rotating (`tests/e2e/identity-ui-review.spec.ts:84-120`).
 
-### Pillar 4: Typography (2/4)
+### Pillar 4: Typography (4/4)
 
-- **WARNING — The affected profile surface violates the locked type scale.** The phase contract permits only 10px, 12px, 14px, and 18px in new Phase 15 UI. The profile/menu styles use values including `.68rem`, `.5rem`, `.8rem`, `.58rem`, `.56rem`, `.72rem`, and `.65rem` (`src/components/UserProfile.svelte:317-335`), yielding fractional rendered sizes such as 10.88px and 12.8px. This undermines the specified utility/body/emphasis hierarchy.
-- **PASS evidence:** dialog heading/body/impact correctly use 18px/12px/14px and locked weights (`src/components/IdentityRotationDialog.svelte:92-97, 102`).
+- **PASS — Locked scale is applied.** The dialog uses 10px utility, 12px body/button, 14px impact, and 18px heading styles (`src/components/IdentityRotationDialog.svelte:103-116`). The affected profile menu has been normalized to the same sizes and declared weights/line-heights (`src/components/UserProfile.svelte:318-336`); Playwright verifies representative rendered sizes (`tests/e2e/identity-ui-review.spec.ts:62-67`).
 
-### Pillar 5: Spacing (3/4)
+### Pillar 5: Spacing (4/4)
 
-- **WARNING — New dialog micro-spacing is not consistently on the 4px scale.** The error treatment uses `.65rem .75rem` (10.4px/12px), and CTA horizontal padding uses `.8rem` (12.8px) (`src/components/IdentityRotationDialog.svelte:98, 102`). The contract requires declared multiples of 4, so these values should become 12px/12px or 8px/16px as appropriate.
-- **PASS evidence:** required responsive constraints are implemented: `width: min(29rem, calc(100vw - 1rem))`, `max-height: calc(100dvh - 1rem)`, grid header/body/footer, and body-only vertical scrolling (`src/components/IdentityRotationDialog.svelte:88-100`). The mobile screenshot shows no horizontal overflow.
+- **PASS — New spacing is on the declared grid.** Header/body use 16px, footer gap 8px/padding 12px, buttons meet the 44px minimum with 12px/16px padding, and error padding is 12px (`src/components/IdentityRotationDialog.svelte:101-116`). Affected menu spacing is normalized to 4/8/12/16px values (`src/components/UserProfile.svelte:313-336`).
+- **PASS — Narrow-height/width protection is present.** The dialog retains `width: min(29rem, calc(100vw - 1rem))`, `max-height: calc(100dvh - 1rem)`, and body-only scrolling (`src/components/IdentityRotationDialog.svelte:98-108`).
 
-### Pillar 6: Experience Design (3/4)
+### Pillar 6: Experience Design (4/4)
 
-- **WARNING — Non-destructive dismissal is functional but incomplete.** Escape and backdrop dismissal are guarded by busy/recovery state (`src/components/IdentityRotationDialog.svelte:28-30, 53-55`) and default focus correctly lands on `Keep current identity` (`src/components/IdentityRotationDialog.svelte:23-26`), but the absent close control leaves the required pointer-accessible header dismissal path unimplemented.
-- **PASS evidence:** confirm and recovery use native modal dialogs with labels/descriptions; busy disables every rendered action and provides a polite status (`src/components/IdentityRotationDialog.svelte:47-55, 75, 80-82`). Recovery is non-dismissable, focus returns to the trigger after confirm dismissal/error (`src/components/UserProfile.svelte:301-305`), and rotate is isolated to anonymous mode (`src/components/UserProfile.svelte:190-203, 236-245`). Targeted browser evidence also checks default focus and recovery Escape resistance (`tests/e2e/nip07-session-restoration.spec.ts:271-280`; `tests/e2e/stale-local-sessions.spec.ts:330-335`).
+- **PASS — Initialization and method isolation are correct.** The profile trigger is withheld until the identity is initialized and remains absent in recovery (`src/components/UserProfile.svelte:159-176`); malformed-identity browser coverage proves it never flashes (`tests/e2e/identity-ui-review.spec.ts:25-56`). Rotation remains only within the anonymous branch (`src/components/UserProfile.svelte:190-203, 236-245`).
+- **PASS — Dialog behavior meets all state requirements.** Confirm default focus is `Keep current identity`; all controls disable during busy work; Escape/backdrop dismissal is rejected while busy or recovering; recovery has only `Create new identity` (`src/components/IdentityRotationDialog.svelte:24-30, 60-62, 70-72, 85-92`). The test suite covers focus return, busy lock, non-dismissable post-boundary recovery, and retryable recovery (`tests/e2e/identity-ui-review.spec.ts:58-165`).
 
 ---
 
 ## Registry Safety
 
-Registry audit: skipped — `components.json` is absent and `15-UI-SPEC.md` declares no third-party registries.
+Registry audit: skipped — `components.json` is absent and `15-UI-SPEC.md` declares no third-party registry.
 
 ---
 
 ## Files Audited
 
-- `15-01-SUMMARY.md`, `15-02-SUMMARY.md`, `15-03-SUMMARY.md`
-- `15-01-PLAN.md`, `15-02-PLAN.md`, `15-03-PLAN.md`, `15-CONTEXT.md`, `15-UI-SPEC.md`
+- `15-UI-SPEC.md`, prior `15-UI-REVIEW.md`
 - `src/components/IdentityRotationDialog.svelte`
 - `src/components/UserProfile.svelte`
-- `src/components/RoomRemovalDialog.svelte`
-- `src/components/WorkspaceNav.svelte`
-- `src/components/HostWorkspace.svelte`, `src/App.svelte`, `src/app.css`
-- `src/identity/user-profile.svelte.ts`
-- `tests/e2e/nip07-session-restoration.spec.ts`, `tests/e2e/stale-local-sessions.spec.ts`, `tests/unit/user-profile.test.ts`
+- `src/components/RoomRemovalDialog.svelte`, `src/components/WorkspaceNav.svelte`
+- `tests/e2e/identity-ui-review.spec.ts`, `tests/e2e/nip07-session-restoration.spec.ts`, `tests/e2e/stale-local-sessions.spec.ts`, `tests/unit/user-profile.test.ts`
