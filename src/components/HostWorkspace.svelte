@@ -369,7 +369,7 @@
         pendingRecoverySession?.discard();
         const candidate = new ChatRoomSession(latest, signer);
         pendingRecoverySession = candidate;
-        await candidate.start();
+        await candidate.recover(signal);
         if (signal.aborted || candidate.status.connection !== "connected") {
           candidate.discard();
           if (pendingRecoverySession === candidate) pendingRecoverySession = null;

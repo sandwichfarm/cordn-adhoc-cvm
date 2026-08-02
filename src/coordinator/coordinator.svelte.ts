@@ -65,21 +65,23 @@ const defaultRoomRecoveryRuntime: RoomRecoveryRuntime = {
     const attemptController = new AbortController();
     const abort = () => attemptController.abort();
     signal.addEventListener("abort", abort, { once: true });
+    let timer: number | null = null;
     try {
       await Promise.race([
         operation(attemptController.signal),
         new Promise<never>((_, reject) => {
-          const timer = window.setTimeout(() => {
+          timer = window.setTimeout(() => {
             attemptController.abort();
             reject(new Error("Hosted room recovery timed out"));
           }, timeoutMs);
           signal.addEventListener("abort", () => {
-            window.clearTimeout(timer);
+            if (timer !== null) window.clearTimeout(timer);
             reject(abortError());
           }, { once: true });
         }),
       ]);
     } finally {
+      if (timer !== null) window.clearTimeout(timer);
       signal.removeEventListener("abort", abort);
     }
   },
@@ -324,6 +326,8 @@ export class CoordinatorStore {
   }
 
   private async startGeneration(generation: number, signal: AbortSignal): Promise<void> {
+    this.recoveryTargets = [];
+    this.recoveryCompleted.clear();
     this.status = transitionCoordinator(this.status, "start");
     this.setStartupProgress("checking-instance");
     configStore.lock();
@@ -437,6 +441,8 @@ export class CoordinatorStore {
     if (activeStartup) await activeStartup;
     this.status = transitionCoordinator(this.status, "stop");
     await this.stopSync();
+    this.recoveryTargets = [];
+    this.recoveryCompleted.clear();
     this.relayStatuses = {};
     this.status = transitionCoordinator(this.status, "stopped");
     this.setStartupProgress("idle");
@@ -545,8 +551,8 @@ export class CoordinatorStore {
           succeeded = true;
           break;
         } catch (error) {
+          await adapter.discard?.(target);
           if (!this.ownsGeneration(generation, signal)) {
-            await adapter.discard?.(target);
             return false;
           }
           if (attempt === ROOM_RECOVERY_POLICY.maxAttempts) {

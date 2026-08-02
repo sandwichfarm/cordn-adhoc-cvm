@@ -176,6 +176,33 @@ export class ChatRoomSession {
     window.addEventListener("offline", this.handleOffline);
   }
 
+  /**
+   * Perform one startup-only synchronization attempt. Recovery deliberately
+   * avoids the steady-state offline path: the coordinator owns retry and may
+   * discard this session after an aborted or failed attempt.
+   */
+  async recover(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) throw new DOMException("Recovery cancelled", "AbortError");
+    const generation = ++this.lifecycleGeneration;
+    this.stopped = false;
+    if (this.timer) window.clearInterval(this.timer);
+    this.timer = null;
+    window.removeEventListener("online", this.handleOnline);
+    window.removeEventListener("offline", this.handleOffline);
+    const abort = () => {
+      if (generation !== this.lifecycleGeneration) return;
+      this.lifecycleGeneration += 1;
+      this.stopped = true;
+      void this.client?.close();
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    try {
+      await this.runExclusive(() => this.recoverOnce(generation, signal));
+    } finally {
+      signal.removeEventListener("abort", abort);
+    }
+  }
+
   stop(): void {
     this.lifecycleGeneration += 1;
     this.stopped = true;
@@ -373,6 +400,65 @@ export class ChatRoomSession {
     } finally {
       this.persist();
       this.emit();
+    }
+  }
+
+  private async recoverOnce(generation: number, signal: AbortSignal): Promise<void> {
+    const active = (): boolean => !signal.aborted && !this.stopped && generation === this.lifecycleGeneration;
+    if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
+    this.status = { connection: "connecting" };
+    try {
+      const client = this.getClient();
+      if (this.room.isHost) {
+        const requests = this.currentInviteRequests(await client.fetchJoinRequests(this.room.id));
+        if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
+        const newRequests = requests.filter((request) => !this.knownJoinRequestIds.has(request.kp_ref));
+        for (const request of requests) this.knownJoinRequestIds.add(request.kp_ref);
+        for (const request of newRequests) {
+          notificationCenter.enqueue({
+            category: "join_request",
+            key: `${this.room.id}:${request.kp_ref}`,
+            room: this.room.title,
+            action: this.room.autoApprove !== false ? "joined" : "waiting",
+          });
+        }
+        if (this.room.autoApprove !== false) {
+          await this.acceptJoinRequests(client, requests);
+          if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
+          this.pendingJoinRequests = [];
+        } else {
+          this.pendingJoinRequests = requests;
+        }
+      }
+      if (!this.room.isHost && this.room.joinRequestSent) {
+        await this.acceptWelcome(client);
+        if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
+      }
+      if (!this.room.isHost && this.room.joinRequestSent) {
+        this.status = { connection: "connected", detail: "Waiting for the host to admit you" };
+        this.persist();
+        this.emit();
+        return;
+      }
+      await this.flushPending(client);
+      if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
+      await this.pullMessages(client);
+      if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
+      this.status = { connection: "connected" };
+      this.persist();
+      this.emit();
+      if (!this.serverWasOnline) {
+        this.serverWasOnline = true;
+        window.dispatchEvent(new CustomEvent(SERVER_ONLINE_EVENT, {
+          detail: { coordinatorPubkey: this.room.coordinatorPubkey, roomId: this.room.id },
+        }));
+      }
+    } catch (error) {
+      await this.client?.close();
+      if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
+      this.client = null;
+      this.status = { connection: "connecting" };
+      throw new Error("Hosted room recovery failed");
     }
   }
 
