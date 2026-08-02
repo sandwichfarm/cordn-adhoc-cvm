@@ -1,10 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
   import { parseInviteUrl, type ChatInvite, type CoordinatorKeyMode, type RoomHostIdentity } from "../chat/invite";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { hostIdentityForRoom, listRooms, roomIdentityKey, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type StoredRoom } from "../chat/room-store";
+  import { hostIdentityForRoom, listRooms, loadRoom, removeStoredRoom, roomIdentityKey, roomTargetFor, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type RoomTarget, type StoredRoom } from "../chat/room-store";
   import InviteRedeemer from "./InviteRedeemer.svelte";
+  import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
+  import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
 
   interface Props {
     currentUrl: string;
@@ -17,6 +20,7 @@
     activeRoomHost?: RoomHostIdentity;
     roomConnectionStatus?: "cached" | "connecting" | "connected" | "offline" | "deleted";
     showRoomBrowser?: boolean;
+    coordinator?: CoordinatorStore;
     onNavigate: (href: string) => void;
   }
 
@@ -49,6 +53,7 @@
     activeRoomHost,
     roomConnectionStatus,
     showRoomBrowser = true,
+    coordinator,
     onNavigate,
   }: Props = $props();
   let open = $state(false);
@@ -58,6 +63,9 @@
   let noticeTimer: number | null = null;
   let lastNoticeAt = 0;
   let notificationAudio: AudioContext | null = null;
+  let removalRoom = $state<StoredRoom | null>(null);
+  let removalTarget = $state<RoomTarget | null>(null);
+  let removalOrigin = $state<HTMLButtonElement | null>(null);
 
   const invite = $derived(parseInviteUrl(currentUrl));
   const storedRooms = $derived(readRooms(roomsRevision));
@@ -257,6 +265,37 @@
     return activeRoom?.id === room.id && activeRoom.coordinatorPubkey === room.coordinatorPubkey;
   }
 
+  function removalModeFor(room: StoredRoom): "delete" | "leave" {
+    return Boolean(coordinator && effectiveHomeCoordinatorPubkey && room.isHost && room.membershipStatus !== "retired" && room.coordinatorPubkey === effectiveHomeCoordinatorPubkey) ? "delete" : "leave";
+  }
+
+  function requestRemoval(room: RoomLink, origin: HTMLButtonElement | undefined): void {
+    const latest = loadRoom(room.id, room.coordinatorPubkey);
+    if (!latest) return;
+    removalRoom = latest;
+    removalTarget = roomTargetFor(latest);
+    removalOrigin = origin ?? null;
+  }
+
+  async function confirmRemoval(): Promise<void> {
+    const target = removalTarget;
+    const snapshot = removalRoom;
+    if (!target || !snapshot) return;
+    const latest = loadRoom(target.roomId, target.coordinatorPubkey);
+    if (!latest || latest.id !== target.roomId || latest.coordinatorPubkey !== target.coordinatorPubkey) throw new Error(`Unable to leave # ${snapshot.title}. Please try again.`);
+    if (removalModeFor(latest) === "delete") await coordinator?.deleteHostedRoom({ id: target.roomId, coordinatorPubkey: target.coordinatorPubkey });
+    removeStoredRoom({ id: target.roomId, coordinatorPubkey: target.coordinatorPubkey });
+    if (isActive(snapshot)) navigate("/");
+  }
+
+  function closeRemoval(): void {
+    removalRoom = null;
+    removalTarget = null;
+    const origin = removalOrigin;
+    removalOrigin = null;
+    origin?.focus();
+  }
+
   onMount(() => {
     const refresh = () => roomsRevision += 1;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -394,12 +433,15 @@
         {:else}
           <div class="room-list">
             {#each homeRooms as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
-              <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
+              <div class:active={isActive(room)} class="room-row">
+              <button class="room-row-primary" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
+              <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode={room.isHost ? "delete" : "leave"} onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              </div>
             {/each}
           </div>
         {/if}
@@ -417,12 +459,15 @@
           </div>
           <div class="room-list">
             {#each previousLocalSessions as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
-              <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open previous local session ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
+              <div class:active={isActive(room)} class="room-row">
+              <button class="room-row-primary" type="button" aria-label={`Open previous local session ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
+              <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              </div>
             {/each}
           </div>
           <p class="previous-local-guidance">Open a previous session to leave it from this device. It cannot be deleted by the current coordinator key.</p>
@@ -441,17 +486,23 @@
           </div>
           <div class="room-list">
             {#each server.rooms as room (roomIdentityKey(room.coordinatorPubkey, room.id))}
-              <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
+              <div class:active={isActive(room)} class="room-row">
+              <button class="room-row-primary" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
                 <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
+              <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              </div>
             {/each}
           </div>
         </div>
       {/each}
     </div>
+  {/if}
+  {#if removalRoom}
+    <RoomRemovalDialog mode={removalModeFor(removalRoom)} roomTitle={removalRoom.title} messageCount={removalRoom.messages.length} joinRequestPending={removalRoom.joinRequestSent === true} onConfirm={confirmRemoval} onClose={closeRemoval} />
   {/if}
 </nav>
 
@@ -521,9 +572,10 @@
   .server-kind { border: 1px solid #5f4c2b; padding: .2rem .3rem; color: #dcae59; font-size: .5rem; letter-spacing: .08em; text-transform: uppercase; }
   .server-kind.previous { border-color: #5d5b39; color: #e4e78d; }
   .room-list { display: grid; gap: .12rem; border: 1px solid #202d25; background: #090e0b; padding: .3rem; }
-  .room-row, .empty-room { display: grid; width: 100%; align-items: center; border: 1px solid transparent; background: transparent; padding: .62rem .65rem; text-align: left; }
-  .room-row { grid-template-columns: auto minmax(0, 1fr) auto auto; gap: .6rem; color: #91a59a; }
-  .room-row:hover { background: #111a14; color: #effff2; }
+  .room-row, .empty-room { display: grid; width: 100%; align-items: center; border: 1px solid transparent; background: transparent; text-align: left; }
+  .room-row { grid-template-columns: minmax(0, 1fr) auto; color: #91a59a; }
+  .room-row-primary { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: .6rem; padding: .62rem .65rem; color: inherit; text-align: left; }
+  .room-row:hover .room-row-primary, .room-row:focus-within .room-row-primary { background: #111a14; color: #effff2; }
   .room-row.active { border-color: transparent; background: #17241b; color: #effff2; box-shadow: inset 3px 0 #7cf59d; }
   .hash { color: #587060; font-size: .8rem; }
   .room-name { display: flex; min-width: 0; flex-direction: column; overflow: hidden; font-size: .72rem; }

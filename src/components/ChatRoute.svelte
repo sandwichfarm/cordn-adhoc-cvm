@@ -554,6 +554,7 @@
         {homeCoordinatorPubkey}
         {homeCoordinatorName}
         {coordinatorStatus}
+        {coordinator}
         {soundsEnabled}
         activeRoomHost={activeRoomHost ?? undefined}
         roomConnectionStatus={room ? (roomDeletedByHost ? "deleted" : connection) : undefined}
