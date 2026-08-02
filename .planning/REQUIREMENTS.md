@@ -86,9 +86,9 @@
 | ROOM-01 | Phase 16 | Pending |
 | ROOM-02 | Phase 16 | Pending |
 | ROOM-03 | Phase 16 | Pending |
-| BOOT-01 | Phase 17 | Pending |
-| BOOT-02 | Phase 17 | Pending |
-| BOOT-03 | Phase 17 | Pending |
+| BOOT-01 | Phase 16 | Pending |
+| BOOT-02 | Phase 16 | Pending |
+| BOOT-03 | Phase 16 | Pending |
 | MOTION-01 | Phase 17 | Pending |
 | MOTION-02 | Phase 17 | Pending |
 | MOTION-03 | Phase 17 | Pending |
