@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 15
 current_phase_name: Identity Continuity & Membership Integrity
 status: executing
-stopped_at: Phase 15 UI-SPEC approved
-last_updated: "2026-08-02T15:03:40.518Z"
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-08-02T16:00:06.692Z"
 last_activity: 2026-08-02
 last_activity_desc: Phase 15 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 ## Current Position
 
 Phase: 15 (Identity Continuity & Membership Integrity) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 15
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-08-02 — Phase 15 execution started
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -51,6 +51,11 @@ Progress: [░░░░░░░░░░] 0%
 **Recent Trend:** No data yet
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 15 P01 | 53m 39s | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -65,6 +70,8 @@ Recent decisions affecting current work:
 - Phase 13: Confirmed destroy now has Playwright proof for Cache Storage cleanup in addition to localStorage cleanup.
 - Phase 14: `.planning/COMPLETION-AUDIT.md` records requirement evidence and the remaining live nsite deploy-secret blocker.
 - v1.1 roadmap: Deliver quality-of-life work in dependency order: identity integrity, room recovery, startup motion, unified controls, conversation presentation, then delivery proof.
+- [Phase 15]: Persist only version and 32-byte secret hex; malformed present records require recovery.
+- [Phase 15]: Retain the anonymous signer independently of NIP-07/NIP-46 and zeroize it on retirement.
 
 ### Pending Todos
 
@@ -93,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T14:17:06.648Z
-Stopped at: Phase 15 UI-SPEC approved
-Resume file: .planning/phases/15-identity-continuity-membership-integrity/15-UI-SPEC.md
+Last session: 2026-08-02T16:00:06.686Z
+Stopped at: Completed 15-01-PLAN.md
+Resume file: .planning/phases/15-identity-continuity-membership-integrity/15-02-PLAN.md
