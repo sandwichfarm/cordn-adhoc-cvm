@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 16
 current_phase_name: Resilient Rooms & Recovery
 status: executing
-stopped_at: Phase 16 UI-SPEC approved
-last_updated: "2026-08-02T18:36:56.666Z"
+stopped_at: Completed 16-02-PLAN.md
+last_updated: "2026-08-02T19:32:32.497Z"
 last_activity: 2026-08-02
 last_activity_desc: Phase 15 complete, transitioned to Phase 16
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 5
 ---
 
 # Project State
@@ -32,7 +32,7 @@ Plan: Not started
 Status: Ready to execute
 Last activity: 2026-08-02 — Phase 15 complete, transitioned to Phase 16
 
-Progress: [████████████████████] 3/3 plans (100%)
+Progress: [████████████████████] 3/3 plans ([████████░░] 83%)
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [████████████████████] 3/3 pla
 | Phase 15 P01 | 53m 39s | 2 tasks | 8 files |
 | Phase 15-identity-continuity-membership-integrity P02 | 10min | 2 tasks | 7 files |
 | Phase 15 P03 | 11min | 3 tasks | 9 files |
+| Phase 16-resilient-rooms-recovery P02 | 36min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 15] Require the active signer for all new room authority; room-local secrets are legacy-only migration material.
 - [Phase 15] Treat `(coordinatorPubkey, roomId)` as the sole room identity and journal exact storage before retirement commit.
 - [Phase 15] Use the versioned non-secret recovery marker as the irreversible boundary before signer replacement is published.
+- [Phase ?]: Unread state is keyed by coordinator pubkey plus room ID and established at the initial sync baseline.
+- [Phase ?]: Unread announcement history remains non-reactive bookkeeping to prevent Svelte update loops.
 
 ### Pending Todos
 
@@ -99,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T18:17:11.031Z
-Stopped at: Phase 16 UI-SPEC approved
-Resume file: .planning/phases/16-resilient-rooms-recovery/16-UI-SPEC.md
+Last session: 2026-08-02T19:32:32.491Z
+Stopped at: Completed 16-02-PLAN.md
+Resume file: None
