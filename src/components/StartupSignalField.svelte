@@ -34,6 +34,7 @@
   let applySignal: ((nextSignal: StartupSignalPresentation) => void) | undefined;
 
   type MotionPreference = "normal" | "reduced";
+  let motionPreference = $state<MotionPreference>("reduced");
 
   function motionState(nextSignal: StartupSignalPresentation): string {
     return nextSignal.mode === "resting" ? "resting" : nextSignal.recoveryState;
@@ -98,6 +99,7 @@
 
       media.add("(prefers-reduced-motion: reduce)", () => {
         preference = "reduced";
+        motionPreference = "reduced";
         gsap.killTweensOf([field, ".ring-plane", ".ascii-ring"]);
         return () => {
           ambient = undefined;
@@ -105,6 +107,7 @@
       });
       media.add("(prefers-reduced-motion: no-preference)", () => {
         preference = "normal";
+        motionPreference = "normal";
         gsap.set(".ascii-ring", { transformOrigin: "50% 50%" });
         gsap.set(".ascii-texture", { transformOrigin: "50% 50%" });
         gsap.set(".ring-plane", { xPercent: -50, yPercent: -50 });
@@ -142,6 +145,7 @@
   data-phase={signal.phase}
   data-recovery-state={signal.recoveryState}
   data-motion-state={currentMotionState}
+  data-motion-preference={motionPreference}
   data-forward-target={signal.forwardPercent}
   data-mode={signal.mode}
   style="--signal-forward: 0; --signal-energy: .78; --signal-phase-color: #7cf59d; --signal-mask-offset: 0%;"
