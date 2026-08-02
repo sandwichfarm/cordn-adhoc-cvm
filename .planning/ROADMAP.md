@@ -12,7 +12,7 @@ and closes with repeatable delivery guidance and automated proof.
 ## Phases
 
 - [x] **Phase 15: Identity Continuity & Membership Integrity** - Preserve anonymous identity across reloads and make deliberate rotation a safe privacy boundary. (completed 2026-08-02)
-- [ ] **Phase 16: Resilient Rooms & Recovery** - Make room navigation, unread state, and coordinator-led room restoration accurate and actionable.
+- [x] **Phase 16: Resilient Rooms & Recovery** - Make room navigation, unread state, and coordinator-led room restoration accurate and actionable. (completed 2026-08-02)
 - [ ] **Phase 17: Full-Viewport Startup Motion** - Turn truthful room-recovery progress into an accessible GSAP ASCII startup experience.
 - [ ] **Phase 18: Unified Presence, Notifications & Controls** - Consolidate personal presence and notifications while separating them from host lifecycle actions.
 - [ ] **Phase 19: Grouped Conversations & Reactions** - Make active conversations easier to scan and react to without visual repetition.
@@ -53,11 +53,14 @@ and closes with repeatable delivery guidance and automated proof.
   4. A recoverable room timeout remains visible as retry/recovery progress; only an exhausted recovery becomes an actionable failure.
   5. A locally hosted room remains visibly recovering during startup and never appears as a disconnected chat before recovery finishes.
 
-**Plans**: 3/3 plans executed
+**Plans**: 6/6 plans executed
 
 - [x] 16-01-PLAN.md
 - [x] 16-02-PLAN.md
 - [x] 16-03-PLAN.md
+- [x] 16-04-PLAN.md
+- [x] 16-05-PLAN.md
+- [x] 16-06-PLAN.md
 
 **UI hint**: yes
 

@@ -14,8 +14,8 @@
 
 ### Room Navigation & Unread State
 
-- [ ] **ROOM-01**: A user can hover or keyboard-focus an eligible room in the sidebar, open a three-dot context menu, and leave it without first opening that room.
-- [ ] **ROOM-02**: Leaving a room from the sidebar targets that exact room and coordinator and requires a contextual confirmation before local membership state is removed.
+- [x] **ROOM-01**: A user can hover or keyboard-focus an eligible room in the sidebar, open a three-dot context menu, and leave it without first opening that room.
+- [x] **ROOM-02**: Leaving a room from the sidebar targets that exact room and coordinator and requires a contextual confirmation before local membership state is removed.
 - [x] **ROOM-03**: Every room with unread messages shows an accurate unread-count badge that increments for newly received messages and clears when the room is read.
 
 ### Coordinator Startup & Recovery
@@ -83,8 +83,8 @@
 | IDEN-02 | Phase 15 | Complete |
 | IDEN-03 | Phase 15 | Complete |
 | IDEN-04 | Phase 15 | Complete |
-| ROOM-01 | Phase 16 | Pending |
-| ROOM-02 | Phase 16 | Pending |
+| ROOM-01 | Phase 16 | Complete |
+| ROOM-02 | Phase 16 | Complete |
 | ROOM-03 | Phase 16 | Complete |
 | BOOT-01 | Phase 16 | Complete |
 | BOOT-02 | Phase 16 | Complete |
