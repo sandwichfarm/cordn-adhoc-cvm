@@ -11,6 +11,7 @@ const protocolMocks = vi.hoisted(() => ({
   encodeState: vi.fn((state: unknown) => String(state)),
   encryptMessage: vi.fn(),
   groupCreatorPubkey: vi.fn(),
+  hasValidChatEnvelopeAuth: vi.fn(() => true),
   groupId: vi.fn(),
   joinWelcome: vi.fn(),
   sanitizeChatEnvelopeHostBadge: vi.fn((envelope: unknown) => envelope),

@@ -30,6 +30,8 @@ const ROOM_KEY_PREFIX = "cordn-adhoc-chat-room:";
 const ROOM_KEY_V2_PREFIX = `${ROOM_KEY_PREFIX}v2:`;
 const ACTIVE_HOST_ROOM_KEY_PREFIX = "cordn-adhoc-active-host-room:";
 export const ROOMS_CHANGED_EVENT = "cordn:rooms-changed";
+/** Metadata-only signal for unread changes. It never contains message content. */
+export const ROOM_UNREAD_CHANGED_EVENT = "cordn:room-unread-changed";
 export const SERVER_ONLINE_EVENT = "cordn:server-online";
 export const SERVER_OFFLINE_EVENT = "cordn:server-offline";
 
@@ -67,6 +69,13 @@ export interface RoomIdentity {
 /** Immutable authority and navigation identity for a stored room. */
 export type RoomTarget = Readonly<{ coordinatorPubkey: string; roomId: string }>;
 
+export interface RoomReadState {
+  version: 1;
+  baselineEstablished: boolean;
+  lastReadCursor: number;
+  unreadCount: number;
+}
+
 interface LastOpenRoomRecord {
   version: 1;
   coordinatorPubkey: string;
@@ -103,6 +112,8 @@ export interface StoredRoom {
   lastCursor: number;
   messages: StoredMessage[];
   pending: PendingMessage[];
+  /** Optional because rooms persisted before unread accounting have no ledger. */
+  readState?: RoomReadState;
   /** Optional for version-1 cached rooms written before reactions existed. */
   reactions?: StoredReaction[];
   autoApprove?: boolean;
@@ -293,6 +304,20 @@ export class ChatRoomSession {
     });
   }
 
+  /** Persist acknowledgement on the live room so a later sync cannot restore stale unread. */
+  markRead(): void {
+    const previousCount = roomUnreadCount(this.room);
+    this.room.readState = {
+      version: 1,
+      baselineEstablished: true,
+      lastReadCursor: safeCursor(this.room.lastCursor),
+      unreadCount: 0,
+    };
+    this.persist();
+    this.emit();
+    if (previousCount > 0) emitUnreadChange(this.room, previousCount, 0);
+  }
+
   async sync(): Promise<void> {
     if (this.stopped) return;
     if (this.pendingSync) return this.pendingSync;
@@ -436,6 +461,7 @@ export class ChatRoomSession {
     const messages = await client.fetchMessages(this.room.id, this.room.lastCursor);
     let state = decodeState(this.room.stateBase64);
     const shouldNotify = this.hasCompletedInitialMessageSync;
+    const hadEstablishedBaseline = this.room.readState?.baselineEstablished === true && isRoomReadState(this.room.readState);
     for (const message of messages) {
       try {
         const decoded = await decryptMessage(state, message.msg_64, {
@@ -447,6 +473,11 @@ export class ChatRoomSession {
           this.applyReaction({ ...decoded.envelope, cursor: message.cursor });
         } else if (decoded.envelope && !this.room.messages.some((entry) => entry.id === decoded.envelope?.id)) {
           this.room.messages = [...this.room.messages, { ...decoded.envelope, cursor: message.cursor }];
+          if (hadEstablishedBaseline
+            && hasValidChatEnvelopeAuth(decoded.envelope)
+            && decoded.envelope.sender !== this.room.stablePubkey) {
+            this.incrementUnread(message.cursor);
+          }
           if (shouldNotify && decoded.envelope.sender !== this.room.stablePubkey) {
             notificationCenter.enqueue({
               category: "new_message",
@@ -463,7 +494,28 @@ export class ChatRoomSession {
       }
     }
     this.room.stateBase64 = encodeState(state);
+    if (!hadEstablishedBaseline) {
+      this.room.readState = {
+        version: 1,
+        baselineEstablished: true,
+        lastReadCursor: safeCursor(this.room.lastCursor),
+        unreadCount: 0,
+      };
+    }
     this.hasCompletedInitialMessageSync = true;
+  }
+
+  private incrementUnread(cursor: number): void {
+    const previousCount = roomUnreadCount(this.room);
+    const unreadCount = saturatingAdd(previousCount, 1);
+    if (unreadCount === previousCount) return;
+    this.room.readState = {
+      version: 1,
+      baselineEstablished: true,
+      lastReadCursor: Math.max(safeCursor(this.room.readState?.lastReadCursor), safeCursor(cursor)),
+      unreadCount,
+    };
+    emitUnreadChange(this.room, previousCount, unreadCount);
   }
 
   private persist(): void {
@@ -935,6 +987,35 @@ export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubke
   }));
 }
 
+/** Return the validated exact-room unread count, never a coerced persisted value. */
+export function roomUnreadCount(room: Pick<StoredRoom, "readState">): number {
+  return isRoomReadState(room.readState) && room.readState.baselineEstablished ? room.readState.unreadCount : 0;
+}
+
+/** Sum only child rooms belonging to the requested coordinator, without overflow. */
+export function coordinatorUnreadTotal(rooms: Iterable<Pick<StoredRoom, "coordinatorPubkey" | "readState">>, coordinatorPubkey: string): number {
+  let total = 0;
+  for (const room of rooms) {
+    if (room.coordinatorPubkey === coordinatorPubkey) total = saturatingAdd(total, roomUnreadCount(room));
+  }
+  return total;
+}
+
+/** Acknowledge exactly one persisted room; same room IDs under another coordinator remain untouched. */
+export function markRoomRead(target: RoomTarget): void {
+  const room = loadRoom(target.roomId, target.coordinatorPubkey);
+  if (!room || room.id !== target.roomId || room.coordinatorPubkey !== target.coordinatorPubkey) return;
+  const previousCount = roomUnreadCount(room);
+  room.readState = {
+    version: 1,
+    baselineEstablished: true,
+    lastReadCursor: safeCursor(room.lastCursor),
+    unreadCount: 0,
+  };
+  saveRoom(room);
+  if (previousCount > 0) emitUnreadChange(room, previousCount, 0);
+}
+
 export function rotateRoomInvite(room: StoredRoom): StoredRoom {
   room.inviteToken = createInviteToken();
   saveRoom(room);
@@ -977,6 +1058,7 @@ function readStoredRoom(raw: string | null): StoredRoom | null {
       || !Array.isArray(room.pending)
       || !room.pending.every(isPendingMessage)) return null;
     const stored = room as unknown as StoredRoom;
+    if (!isRoomReadState(stored.readState)) delete stored.readState;
     if (stored.membershipStatus !== "active" && stored.membershipStatus !== "retired") {
       delete stored.membershipStatus;
     }
@@ -1016,6 +1098,32 @@ function readStoredRoom(raw: string | null): StoredRoom | null {
   } catch {
     return null;
   }
+}
+
+function isRoomReadState(value: unknown): value is RoomReadState {
+  return isRecord(value)
+    && value.version === 1
+    && typeof value.baselineEstablished === "boolean"
+    && isSafeNonNegativeInteger(value.lastReadCursor)
+    && isSafeNonNegativeInteger(value.unreadCount);
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function safeCursor(value: unknown): number {
+  return isSafeNonNegativeInteger(value) ? value : 0;
+}
+
+function saturatingAdd(left: number, right: number): number {
+  return left > Number.MAX_SAFE_INTEGER - right ? Number.MAX_SAFE_INTEGER : left + right;
+}
+
+function emitUnreadChange(room: Pick<StoredRoom, "id" | "coordinatorPubkey">, previousCount: number, unreadCount: number): void {
+  window.dispatchEvent(new CustomEvent(ROOM_UNREAD_CHANGED_EVENT, {
+    detail: { coordinatorPubkey: room.coordinatorPubkey, roomId: room.id, previousCount, unreadCount },
+  }));
 }
 
 function migrateLegacyRoom(storageKey: string, room: StoredRoom): void {

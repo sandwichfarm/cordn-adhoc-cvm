@@ -8,7 +8,7 @@
   import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, roomIdentityKey, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import type { RemoteJoinRequest } from "../chat/coordinator-client";
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
@@ -290,8 +290,21 @@
       pendingJoinRequests = [...session.pendingJoinRequests];
       hostedRooms = hostedRooms.map((entry) => sameRoomIdentity(entry.room, nextRoom) ? { ...entry, room: nextRoom } : entry);
       if (receivedMessage) playIncomingTone();
+      acknowledgeVisibleHostRoom();
     }
     revision += 1;
+  }
+
+  function displayUnreadCount(count: number): string {
+    return count >= 100 ? "99+" : String(count);
+  }
+
+  function acknowledgeVisibleHostRoom(): void {
+    if (document.visibilityState !== "visible" || roomConnection === "connecting") return;
+    const activeRoom = room;
+    const activeSession = session;
+    if (!activeRoom || !activeSession || !sameRoomIdentity(activeSession.room, activeRoom)) return;
+    if (roomUnreadCount(activeSession.room) > 0) activeSession.markRead();
   }
 
   async function openHostChat(nextRoom: StoredRoom) {
@@ -931,6 +944,8 @@
     window.addEventListener("online", recheckBrowserOnline);
     document.addEventListener("visibilitychange", recheckWhenVisible);
     window.addEventListener("keydown", closeDialogsOnEscape);
+    const acknowledgeOnVisibility = () => acknowledgeVisibleHostRoom();
+    document.addEventListener("visibilitychange", acknowledgeOnVisibility);
     reachabilityTimer = window.setInterval(() => void probeRemoteCoordinators(), 12_000);
     return () => {
       reachabilityProbeGeneration += 1;
@@ -943,6 +958,7 @@
       window.removeEventListener("online", recheckBrowserOnline);
       document.removeEventListener("visibilitychange", recheckWhenVisible);
       window.removeEventListener("keydown", closeDialogsOnEscape);
+      document.removeEventListener("visibilitychange", acknowledgeOnVisibility);
       compactQuery.removeEventListener("change", syncCompactViewport);
     };
   });
@@ -1230,6 +1246,7 @@
                         <span class="truncate" title={entry.room.title}>{entry.room.title}</span>
                         <RoomHostBadge host={hostIdentityForRoom(entry.room)} compact />
                       </button>
+                      {#if roomUnreadCount(entry.room) > 0}<span class="unread-badge" title={`${roomUnreadCount(entry.room)} unread messages`} aria-label={`${roomUnreadCount(entry.room)} unread messages`}>{displayUnreadCount(roomUnreadCount(entry.room))}</span>{/if}
                       <RoomActionsMenu sidebar roomTitle={entry.room.title} {soundsEnabled} removalMode="delete" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(entry.room, origin)} />
                     </div>
                   {/each}
@@ -1642,7 +1659,8 @@
   .channel-empty:hover { border-color: #7cf59d; color: #dfffe7; }
   .channel-empty:disabled { cursor: default; border-color: #202d25; color: #546159; opacity: .65; }
   .channel-previous-guidance, .coordinator-key-warning { margin: .35rem .7rem .15rem; color: #d9d68e; font-size: .58rem; line-height: 1.5; }
-  .channel-row { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border: 1px solid transparent; color: #91a59a; text-align: left; font-size: .72rem; }
+  .channel-row { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; border: 1px solid transparent; color: #91a59a; text-align: left; font-size: .72rem; }
+  .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; border: 1px solid #3b5943; border-radius: 2px; background: #102216; color: #bfeac8; font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; }
   .channel-row-primary { display: grid; min-width: 0; grid-template-columns: .15rem auto minmax(0, 1fr) auto; align-items: center; gap: .55rem; padding: .55rem .2rem; color: inherit; text-align: left; }
   .channel-row:hover .channel-row-primary, .channel-row:focus-within .channel-row-primary { background: #111a14; color: #dfffe7; }
   .channel-row.active { background: #17241b; color: #effff2; }

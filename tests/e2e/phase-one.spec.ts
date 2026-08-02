@@ -234,6 +234,17 @@ async function seedJoinedRoom(
   }, { title, coordinatorPubkey, relayUrl: relay.url, privateFixture });
 }
 
+test("unread badge lifecycle starts at the zero baseline", async ({ page }) => {
+  await page.goto("/");
+  await seedJoinedRoom(page, "Unread baseline");
+  await page.reload();
+
+  await page.getByRole("button", { name: /Rooms, 1 available/ }).click();
+  const switcher = page.getByTestId("room-switcher");
+  await expect(switcher.getByRole("button", { name: /Open room Unread baseline/ })).toBeVisible();
+  await expect(switcher.getByLabel(/unread messages/)).toHaveCount(0);
+});
+
 test("generates copyable identity on first load", async ({ page }) => {
   await page.goto("/");
 
