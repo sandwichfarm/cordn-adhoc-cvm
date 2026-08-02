@@ -64,14 +64,14 @@ and closes with repeatable delivery guidance and automated proof.
 
 **UI hint**: yes
 
-### Phase 17: Full-Viewport Startup Motion
+### Phase 17: Content-Pane Startup Motion
 
-**Goal**: Coordinator recovery progress is communicated by a smooth, accessible startup motion that fills the desktop viewport.
+**Goal**: Coordinator recovery progress is communicated by a smooth, accessible startup motion that completely fills the workspace content pane while retaining the surrounding application shell.
 **Depends on**: Phase 16
 **Requirements**: MOTION-01, MOTION-02, MOTION-03
 **Success Criteria** (what must be TRUE):
 
-  1. At every supported desktop size, the startup ASCII field covers the full viewport with no unfilled side gutter.
+  1. At every supported desktop size, the startup ASCII field covers the entire workspace content pane with no uncovered right portion or internal gutter.
   2. Startup rings reveal and mask the ASCII field itself, rather than appearing as independent static border circles, and animate through GSAP.
   3. Startup motion responds to current recovery progress without obscuring status information.
   4. Users with reduced-motion enabled retain readable startup status and progress while nonessential motion is suppressed.

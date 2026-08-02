@@ -1,15 +1,18 @@
 ---
 phase: 17
-slug: full-viewport-startup-motion
+slug: content-pane-startup-motion
 status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-02
+updated: 2026-08-02
+reviewed_at: 2026-08-02T23:18:08+01:00
+reviewed_by: gsd-ui-checker
 ---
 
-# Phase 17 — UI Design Contract
+# Phase 17 — Content-Pane Startup Motion UI Design Contract
 
-> Visual and interaction contract for full-viewport coordinator startup and recovery. This phase preserves the verified Phase 16 recovery transaction and makes its live state the sole driver of the presentation.
+> Visual and interaction contract for content-pane coordinator startup and recovery. This phase preserves the verified Phase 16 recovery transaction and makes its live state the sole driver of the presentation without taking ownership of the global header or room rail.
 
 ---
 
@@ -27,13 +30,14 @@ Continue the restrained cypherpunk operator shell: dark, low-contrast surfaces; 
 
 ---
 
-## Viewport and Layering Contract
+## Content-Pane Layering Contract
 
 - Enter `startup-mode` while the local coordinator is `starting` or `stopping`, including room recovery, automatic retry, exhausted recovery, and the short handoff while a recovered local room opens.
-- In `startup-mode`, the startup stage is the sole application viewport: `position: fixed; inset: 0; width: 100vw; height: 100dvh; overflow: hidden`. It must meet every viewport edge at supported desktop sizes (at minimum 1024×640, 1280×720, and 1440×900), with no room-rail, topbar, chat-column, or background gutter visible at either side.
-- The normal workspace chrome is visually absent and non-interactive while this mode is active. Do not leave a blurred, clipped, or partially visible rail/header behind the stage. Keep dialogs opened from startup above the stage and focus-managed as dialogs.
+- The startup stage replaces only the content pane's normal chat/management body. Its containing content pane is positioned (`position: relative`); the stage is pane-scoped with `position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden`. Never use `position: fixed`, `100vw`, `100dvh`, or browser-viewport measurements for its geometry.
+- At supported desktop browser sizes (at minimum 1024×640, 1280×720, and 1440×900), the stage and its ASCII field meet all four bounds of the actual content pane, including the pane's full right edge. There is no internal horizontal gutter, uncovered right portion, or two-thirds-width field.
+- The global header and room rail/sidebar remain visible, enabled, and usable throughout startup. Do not hide, blur, cover, inert, or `aria-hide` either shell region, and do not intercept their pointer or keyboard interaction. Keep dialogs opened from startup above the pane-scoped stage and focus-managed as dialogs.
 - The ASCII field is an absolute, pointer-inert decorative layer at z-index 0. The readable content and all actions sit above it at z-index 1 in one centered focal column.
-- The focal column is `min(512px, calc(100vw - 32px))`; the progress panel is `min(448px, 100%)`. Preserve at least 16px inline clearance. In short viewports, the focal column may scroll internally, but document/body scrolling is forbidden and every visible action must remain inside the stage.
+- The focal column is `min(512px, calc(100% - 32px))`; the progress panel is `min(448px, 100%)`. Preserve at least 16px inline clearance within the pane. If the pane is short, the focal column may scroll internally, but the stage must not introduce document-level scrolling or clip a visible action.
 - On completion, remove the startup stage as soon as the coordinator is ready; a visual transition may not defer readiness, status changes, focus restoration, or chat availability.
 
 ---
@@ -42,7 +46,7 @@ Continue the restrained cypherpunk operator shell: dark, low-contrast surfaces; 
 
 ### ASCII field and rings
 
-- Render a deterministic monospace ASCII bed edge-to-edge across the entire startup viewport. It must remain visibly present at all four viewport edges; it is never a centered decorative patch.
+- Render a deterministic monospace ASCII bed edge-to-edge across the entire content pane. It must remain visibly present at all four pane edges, including the right edge; it is never a centered decorative patch.
 - Render exactly one base ASCII bed plus three concentric reveal layers. Every visible ring is a masked copy of ASCII texture using `mask-image` and `-webkit-mask-image` radial-gradient bands. Ring containers have no `border`, `outline`, SVG stroke, or standalone circle fallback.
 - Keep a calm, lower-density central focal zone behind the text. Use opacity, the existing dark translucent progress panel, and a subtle backdrop blur for contrast; do not shrink the field away from the content.
 - Keep glyphs decorative and `aria-hidden`. The field must not create focus targets, announce state, or receive pointer input.
@@ -65,7 +69,7 @@ The signal field receives a compact projection of the existing startup truth: `p
 
 ### Reduced motion
 
-- Under `prefers-reduced-motion: reduce`, create no nonessential GSAP timeline. Render the same full-viewport ASCII bed and masked rings as a static composition; a new truthful state may update its stable CSS variables immediately, with no tween.
+- Under `prefers-reduced-motion: reduce`, create no nonessential GSAP timeline. Render the same content-pane-filling ASCII bed and masked rings as a static composition; a new truthful state may update its stable CSS variables immediately, with no tween.
 - The heading, current status, recovery count, progressbar, retry action, and delete action remain visible and semantically identical in reduced motion. Never use field motion as the only indication of progress, retry, exhaustion, readiness, or failure.
 
 ---
@@ -107,7 +111,7 @@ Use `font-variant-numeric: tabular-nums` for percentages, steps, and room counts
 
 | Role | Value | Usage |
 |------|-------|-------|
-| Dominant (60%) | `#101614` | Full startup surface and primary dark field ground |
+| Dominant (60%) | `#101614` | Full content-pane startup surface and primary dark field ground |
 | Secondary (30%) | `#080e0a` | Translucent progress panel, contrast mask, and quiet field layers |
 | Accent (10%) | `#7cf59d` | Progress-fill end state, active primary retry control, focus ring, and masked ASCII highlights |
 | Destructive | `#ffaaa3` | `Delete failed room` treatment and destructive confirmation only |
@@ -139,13 +143,13 @@ Applicable state considerations resolved: 5 covered, 2 backstop, 0 unresolved.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| loading | Startup stage, status panel, progressbar | ✅ covered | The full-viewport stage renders during startup and recovery while the semantic progressbar and live status present the current Phase 16 truth. |
+| loading | Startup stage, status panel, progressbar | ✅ covered | The content-pane stage renders during startup and recovery while the semantic progressbar and live status present the current Phase 16 truth; the global header and room rail remain available. |
 | error | Exhausted recovery panel and recovery actions | ✅ covered | Exhaustion settles motion, retains the documented error copy, exposes `Retry recovery`, and preserves the contextual delete confirmation. |
 | empty | Room-recovery status panel | ✅ covered | Zero recovery targets show the documented `No rooms to restore` heading and `0 of 0 rooms restored` without treating zero as an error. |
 | partial | Room-recovery status panel and signal field | ✅ covered | Partially restored queues retain exact completed/total values, keep the current room visible, and advance the signal field from the same monotonic ratio without implying completion. |
-| overflow | Startup focal column and progress panel | 🧪 backstop | At supported desktop and short viewport sizes, the stage owns the viewport with no document scroll; any needed scrolling is confined to the focal column and actions stay reachable. |
+| overflow | Startup focal column and progress panel | 🧪 backstop | At supported desktop and short content-pane sizes, the stage fills only the content pane with no document scroll; any needed scrolling is confined to the focal column and actions stay reachable. |
 | long-text | Current-room label, live status, diagnostics, buttons | ✅ covered | Long room names and recovery text wrap within the focal column; progress numerals retain their own space and no label creates horizontal viewport overflow. |
-| loading | Decorative ASCII field | 🧪 backstop | The full-edge ASCII bed and all three masked reveal layers are present during startup while the field remains pointer-inert and absent from the accessibility tree. |
+| loading | Decorative ASCII field | 🧪 backstop | The pane-edge ASCII bed and all three masked reveal layers are present during startup while the field remains pointer-inert and absent from the accessibility tree. |
 
 ---
 
@@ -159,22 +163,24 @@ Applicable state considerations resolved: 5 covered, 2 backstop, 0 unresolved.
 
 ## Verification Contract
 
-- Playwright verifies the startup stage and ASCII field have a bounding box equal to the desktop viewport at 1024×640, 1280×720, and 1440×900; document dimensions equal the viewport and no normal shell gutter remains visible.
+- Playwright verifies, at 1024×640, 1280×720, and 1440×900 browser sizes, that the startup stage and ASCII field bounding boxes equal the actual positioned content pane bounding box (matching x, y, width, and height within a 1px tolerance), not the browser viewport.
+- Playwright verifies the ASCII field's right bound equals the content pane's right bound within 1px at each supported size, with no uncovered right portion or horizontal gutter.
+- Playwright verifies the global header and room rail/sidebar remain visible and interactive during startup: their controls are not hidden, disabled, inert, or `aria-hidden`, and a representative header control plus a representative room-rail control can receive keyboard focus and be activated without the stage intercepting the action.
 - Playwright verifies each ring layer has a `mask-image`/`-webkit-mask-image` and that no ring element has a visible CSS border or outline. The base bed and three ring layers must contain ASCII texture.
 - Playwright verifies a changed progress/recovery state changes the field's exposed presentation state or computed transform/CSS variable while the panel's text, `aria-valuenow`, `aria-valuetext`, and recovery counts stay truthful and visible.
 - Playwright verifies retry has no manual retry control until exhaustion; exhaustion shows the existing exact copy and actions; deleting a failed room still opens the contextual confirmation.
-- Playwright emulates `prefers-reduced-motion: reduce` and verifies no nonessential field animation is running while the full-stage, live status, and semantic progressbar remain readable.
+- Playwright emulates `prefers-reduced-motion: reduce` and verifies no nonessential field animation is running while the content-pane stage, live status, and semantic progressbar remain readable.
 - Unit coverage proves the startup-progress-to-presentation projection is monotonic for increasing progress/completed rooms and identifies retry/exhausted states without reinterpreting recovery truth.
 
 ---
 
-## Checker Sign-Off
+## Checker Status
 
-- [x] Dimension 1 Copywriting: PASS
-- [x] Dimension 2 Visuals: PASS
-- [x] Dimension 3 Color: PASS
-- [x] Dimension 4 Typography: PASS
-- [x] Dimension 5 Spacing: PASS
-- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: approved 2026-08-02
+- [x] Dimension 2 Visuals: approved 2026-08-02
+- [x] Dimension 3 Color: approved 2026-08-02
+- [x] Dimension 4 Typography: approved 2026-08-02
+- [x] Dimension 5 Spacing: approved 2026-08-02
+- [x] Dimension 6 Registry Safety: approved 2026-08-02
 
-**Approval:** approved by `gsd-ui-checker` on 2026-08-02
+**Status:** approved — revalidated against the authoritative content-pane correction on 2026-08-02.

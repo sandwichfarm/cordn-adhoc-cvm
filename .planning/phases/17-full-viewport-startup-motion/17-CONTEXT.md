@@ -1,4 +1,4 @@
-# Phase 17: Full-Viewport Startup Motion - Context
+# Phase 17: Content-Pane Startup Motion - Context
 
 **Gathered:** 2026-08-02
 **Status:** Ready for planning
@@ -7,21 +7,21 @@
 <domain>
 ## Phase Boundary
 
-Turn the existing coordinator startup/recovery state into a full-viewport, GSAP-driven ASCII experience. This phase changes presentation and motion only: Phase 16 remains the source of truth for startup phases, room-recovery progress, retry, exhaustion, and safe recovery actions.
+Turn the existing coordinator startup/recovery state into a content-pane-filling, GSAP-driven ASCII experience. This phase changes presentation and motion only: Phase 16 remains the source of truth for startup phases, room-recovery progress, retry, exhaustion, and safe recovery actions.
 
 </domain>
 
 <decisions>
 ## Implementation Decisions
 
-### Viewport ownership
-- While the local coordinator is starting or stopping, the startup experience owns the entire application viewport rather than remaining inside the normal chat column.
-- The normal header, room rail, and chat chrome must not leave side gutters or compete with the startup experience during that transient state.
+### Content-pane ownership
+- While the local coordinator is starting or stopping, the startup experience owns the entire workspace content pane, not the entire browser viewport.
+- The global header and room rail remain visible and usable. The startup stage replaces only the content pane and must fill that pane from its left edge to its right edge without the previously uncovered right portion.
 - Status, recovery progress, settings review, retry, and exhausted-room removal remain reachable inside the startup surface.
-- The layout must stay contained at supported desktop widths and short viewports without document-level scrolling or clipped actions.
+- The stage sizes itself from the content container (`inset: 0; width: 100%; height: 100%` inside that positioned pane), not from `100vw`, `100dvh`, or a fixed viewport overlay. It must not introduce document-level scrolling or clipped actions.
 
 ### ASCII field and masked rings
-- A deterministic ASCII texture covers the full viewport edge to edge; it is not a centered decorative patch.
+- A deterministic ASCII texture covers the full content pane edge to edge; it is not a centered decorative patch and may not stop around two-thirds of the pane width.
 - Rings are true masks through which the ASCII field is revealed, with no independent border-circle substitute.
 - Use GSAP for the living motion: layered drift, scale, rotation, opacity, and phase transitions should feel fluid and restrained rather than like a static pulse.
 - The ring field should remain visually legible behind content through contrast masks and a calm focal zone, not by shrinking the animation away from the content.
@@ -33,7 +33,7 @@ Turn the existing coordinator startup/recovery state into a full-viewport, GSAP-
 - Transitions between transport startup, room restoration, retry, exhaustion, and completion should be smooth without delaying coordinator readiness.
 
 ### Accessibility and performance
-- `prefers-reduced-motion: reduce` suppresses nonessential GSAP timelines and presents a stable full-viewport ASCII composition.
+- `prefers-reduced-motion: reduce` suppresses nonessential GSAP timelines and presents a stable content-pane-filling ASCII composition.
 - Status and progress retain semantic progressbar/live-region behavior independent of the decorative field.
 - Animation cleanup must be component-scoped and leak-free across repeated start/stop/retry cycles.
 - Avoid per-frame Svelte state writes and excessive DOM churn; animate transforms, opacity, and mask-related CSS variables through GSAP.
@@ -58,16 +58,16 @@ Turn the existing coordinator startup/recovery state into a full-viewport, GSAP-
 - Browser behavior is verified with Playwright against real rendered layout and computed styles; pure progress projection belongs in Vitest where practical.
 
 ### Integration Points
-- Promote `startup-mode` to viewport-level layout ownership in `HostWorkspace.svelte`.
+- Keep startup ownership inside the content pane in `HostWorkspace.svelte`; do not hide or inert the global header or room rail.
 - Pass a small presentation projection of `coordinator.startupProgress` into `StartupSignalField.svelte`.
-- Extend `tests/e2e/workspace-lifecycle.spec.ts` with full-viewport, progress-responsive, retry/exhaustion, and reduced-motion assertions.
+- Extend `tests/e2e/workspace-lifecycle.spec.ts` with content-pane bounds, progress-responsive, retry/exhaustion, and reduced-motion assertions.
 
 </code_context>
 
 <specifics>
 ## Specific Ideas
 
-- The user explicitly asked for ASCII visible across the whole page, rings formed as masks of that ASCII, and visibly richer GSAP motion.
+- The user clarified that “full” means the full workspace content container: the defect was an ASCII background that covered roughly 66% and missed the right portion. The browser viewport, global header, and room rail are not startup-owned.
 - Preserve the existing startup screen rather than briefly exposing a connecting/disconnected chat while the local coordinator recovers.
 - Keep the animation sophisticated but quiet enough that the progress text remains the focal information.
 

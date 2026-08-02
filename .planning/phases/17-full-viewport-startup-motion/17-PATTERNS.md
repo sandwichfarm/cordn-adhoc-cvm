@@ -1,117 +1,99 @@
-# Phase 17: Full-Viewport Startup Motion - Pattern Map
+# Phase 17: Content-Pane Startup Motion - Pattern Map
 
-**Mapped:** 2026-08-02  
-**Files analyzed:** 5  
+**Mapped:** 2026-08-02
+**Files analyzed:** 5
 **Analogs found:** 5 / 5
 
 ## File Classification
 
 | New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
 |---|---|---|---|---|
-| `src/components/HostWorkspace.svelte` | component | event-driven | `src/components/HostWorkspace.svelte` | exact |
+| `src/components/HostWorkspace.svelte` | component | event-driven | `src/components/HostWorkspace.svelte` content-pane grid and startup branch | exact |
 | `src/components/StartupSignalField.svelte` | component | transform | `src/components/StartupSignalField.svelte` | exact |
-| `src/components/startup-signal-presentation.ts` | utility | transform | `src/coordinator/types.ts` | role-match |
-| `tests/unit/startup-signal-presentation.test.ts` | test | transform | `tests/unit/state-machine.test.ts` | role-match |
-| `tests/e2e/workspace-lifecycle.spec.ts` | test | request-response | `tests/e2e/workspace-lifecycle.spec.ts` | exact |
+| `src/components/startup-signal-presentation.ts` | utility | transform | `src/components/startup-signal-presentation.ts` | exact |
+| `tests/unit/startup-signal-presentation.test.ts` | test | transform | `tests/unit/startup-signal-presentation.test.ts` | exact |
+| `tests/e2e/workspace-lifecycle.spec.ts` | test | request-response | `tests/e2e/workspace-lifecycle.spec.ts` pane-alignment helper | exact |
 
 ## Pattern Assignments
 
 ### `src/components/HostWorkspace.svelte` (component, event-driven)
 
-**Analog:** `src/components/HostWorkspace.svelte`
+**Analog:** its existing content-pane grid at `src/components/HostWorkspace.svelte` lines 1462-1478 and 1814-1818.
 
-This component is already the sole presentation boundary for coordinator startup truth. Extend its existing `StartupSignalField` import and startup-stage branch; do not move recovery actions or truth derivation into the field.
+The startup stage belongs inside `data-testid="host-chat"`, which is the second column of the established `host-layout` grid. Reuse this exact container relationship; it is the authoritative layout analog for a surface that fills the pane all the way to its right edge while retaining the header and room rail.
 
-**Imports pattern** ([lines 1-32](../../src/components/HostWorkspace.svelte)):
-
-```typescript
-import { onDestroy, onMount, tick } from "svelte";
-import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
-import type { HostedRoomRecoveryAdapter, HostedRoomRecoveryTarget } from "../coordinator/types";
-// ... component imports from sibling files
-import StartupSignalField from "./StartupSignalField.svelte";
-```
-
-**Derived state pattern** ([lines 128-150](../../src/components/HostWorkspace.svelte)):
-
-```typescript
-const localRoomReady = $derived(
-  coordinator.status === "running"
-    && coordinator.startupProgress.roomRecovery.state === "complete"
-    && room !== null
-    && session !== null
-    && roomConnection === "connected"
-);
-
-const exhaustedRecoveryRoom = $derived.by(() => {
-  const target = coordinator.exhaustedRoomRecoveryTarget;
-  return target ? loadRoom(target.roomId, target.coordinatorPubkey) : null;
-});
-```
-
-**Semantic progress and recovery-action pattern** ([lines 1502-1576](../../src/components/HostWorkspace.svelte)):
+**Content-pane grid pattern** (lines 1462-1478, 1814-1818):
 
 ```svelte
-<StartupSignalField />
-...
-<section
-  class="startup-progress-panel"
-  data-testid="startup-progress-panel"
-  data-recovery-state={coordinator.startupProgress.roomRecovery.state}
-  data-recovery-completed={coordinator.startupProgress.roomRecovery.completed}
-  data-recovery-total={coordinator.startupProgress.roomRecovery.total}
-  aria-label="Coordinator startup"
->
-  <div class="startup-progress-track" role="progressbar"
-    aria-valuenow={coordinator.startupProgress.phase === "restoring-rooms"
-      ? coordinator.startupProgress.roomRecovery.total === 0 ? 100
-        : Math.round((coordinator.startupProgress.roomRecovery.completed / coordinator.startupProgress.roomRecovery.total) * 100)
-      : coordinator.startupProgress.percent}>
-  </div>
-  <footer><span role="status" aria-live="polite">...</span></footer>
-  {#if coordinator.startupProgress.phase === "restoring-rooms" && coordinator.startupProgress.roomRecovery.state === "exhausted"}
-    <div class="startup-recovery-actions">
-      <button class="startup-primary" type="button" onclick={() => void coordinator.retryRoomRecovery()}>Retry recovery</button>
-      {#if exhaustedRecoveryRoom}
-        <button class="startup-danger" type="button" onclick={(event) => requestSidebarRoomRemoval(exhaustedRecoveryRoom!, event.currentTarget)}>Delete failed room</button>
-      {/if}
-    </div>
+<section class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat">
+  {#if embeddedChatActive}
+    <ChatRoute embedded ... />
+  {:else if ...}
+    <!-- pane-owned content goes here -->
   {/if}
 </section>
 ```
 
-**Layout pattern** ([lines 1960-1983](../../src/components/HostWorkspace.svelte)):
-
 ```css
-.startup-stage { position: relative; display: grid; height: 100%; place-items: center; overflow: hidden; padding: 2rem; background: ...; }
-.startup-content { position: relative; z-index: 1; width: min(38rem, 100%); max-height: 100%; overflow-y: auto; text-align: center; }
-.startup-progress-panel { width: min(32rem, 100%); margin: 1.25rem auto 0; background: rgb(8 14 10 / .82); padding: .8rem .9rem; text-align: left; backdrop-filter: blur(8px); }
+.host-layout {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.host-chat { width: 100%; max-width: 100%; }
 ```
 
-Promote this established stage/content separation to the fixed viewport contract. Preserve the `data-testid`, live region, `progressbar`, retry call, and contextual removal route verbatim. The component should compute the projection once with `$derived` and pass it as a prop, while the normal chrome is hidden/inert for the same startup/stopping condition.
+**Startup branch and semantic panel pattern** (lines 1508-1585):
 
----
+```svelte
+<div class="startup-stage">
+  <StartupSignalField signal={startupSignal} />
+  <div class="startup-content">
+    <section class="startup-progress-panel" data-testid="startup-progress-panel">
+      <div class="startup-progress-track" role="progressbar" ...></div>
+      <footer><span role="status" aria-live="polite">...</span></footer>
+      {#if coordinator.startupProgress.roomRecovery.state === "exhausted"}
+        <button class="startup-primary" type="button" onclick={() => void coordinator.retryRoomRecovery()}>Retry recovery</button>
+        <button class="startup-danger" type="button" onclick={(event) => requestSidebarRoomRemoval(exhaustedRecoveryRoom!, event.currentTarget)}>Delete failed room</button>
+      {/if}
+    </section>
+  </div>
+</div>
+```
+
+**Pane-scoped geometry to apply** (replace stale lines 1973-1976 recommendations):
+
+```css
+.host-chat { position: relative; }
+.startup-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 2rem;
+}
+.startup-content {
+  position: relative;
+  z-index: 1;
+  width: min(512px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+}
+```
+
+Do not use the currently stale `startupViewportOwned`/`viewport-owned` branch, `position: fixed`, `100vw`, `100dvh`, or global-shell `aria-hidden`, `inert`, `visibility`, and pointer suppression. Header and rail remain rendered, enabled, and interactive; only the normal body in `host-chat` is replaced.
 
 ### `src/components/StartupSignalField.svelte` (component, transform)
 
-**Analog:** `src/components/StartupSignalField.svelte`
+**Analog:** `src/components/StartupSignalField.svelte` lines 29-112 and 116-228.
 
-**Imports and deterministic texture pattern** ([lines 1-18](../../src/components/StartupSignalField.svelte)):
-
-```typescript
-import { gsap } from "gsap";
-import { onMount } from "svelte";
-
-const columns = 210;
-const rows = 112;
-const glyphs = "        ....::::++++**xx0011##//\\\\";
-
-function asciiField(seed: number): string { /* deterministic xorshift texture */ }
-const textures = [asciiField(3), asciiField(11), asciiField(19), asciiField(29)];
-let field: HTMLDivElement | undefined = $state();
-```
-
-**Scoped GSAP lifecycle pattern** ([lines 20-78](../../src/components/StartupSignalField.svelte)):
+**Lifecycle, reduced-motion, and cleanup pattern** (lines 32-113):
 
 ```typescript
 onMount(() => {
@@ -120,10 +102,7 @@ onMount(() => {
   media.add("(prefers-reduced-motion: no-preference)", () => {
     const context = gsap.context(() => {
       gsap.set(".ascii-ring", { transformOrigin: "50% 50%" });
-      gsap.to(".ring-outer", {
-        scale: 1.035, opacity: .72, duration: 8.5,
-        ease: "sine.inOut", repeat: -1, yoyo: true,
-      });
+      gsap.to(".ring-outer", { scale: 1.035, opacity: .72, duration: 8.5, ease: "sine.inOut", repeat: -1, yoyo: true });
     }, field);
     return () => context.revert();
   });
@@ -131,11 +110,12 @@ onMount(() => {
 });
 ```
 
-**Decorative markup and exact ring count** ([lines 81-87](../../src/components/StartupSignalField.svelte)):
+Keep GSAP component-scoped. On changing truthful presentation values, update transforms, opacity, and mask-related custom properties without creating Svelte state writes inside GSAP callbacks. Preserve the static identical field under reduced motion, and clean up timelines for mount/unmount and start/stop/retry cycles.
+
+**Decorative field and true-mask pattern** (lines 116-143, 176-202):
 
 ```svelte
 <div bind:this={field} class="signal-field" aria-hidden="true" data-testid="startup-ascii-field">
-  <div class="field-glow"></div>
   <div class="ascii-bed"><pre class="ascii-texture">{textures[0]}</pre></div>
   <div class="ring-plane">
     <div class="ascii-ring ring-outer"><pre class="ascii-texture">{textures[1]}</pre></div>
@@ -145,189 +125,112 @@ onMount(() => {
 </div>
 ```
 
-**Mask and pointer-isolation pattern** ([lines 90-159](../../src/components/StartupSignalField.svelte)):
-
 ```css
 .signal-field { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: strict; }
 .ascii-ring { position: absolute; inset: 4%; overflow: hidden; opacity: .52;
   -webkit-mask-position: center; -webkit-mask-repeat: no-repeat; -webkit-mask-size: 100% 100%;
   mask-position: center; mask-repeat: no-repeat; mask-size: 100% 100%; }
-.ring-outer {
-  -webkit-mask-image: radial-gradient(circle, transparent 0 47.1%, #000 47.45% 48.15%, transparent 48.5%);
-  mask-image: radial-gradient(circle, transparent 0 47.1%, #000 47.45% 48.15%, transparent 48.5%);
-}
+.ring-outer { -webkit-mask-image: radial-gradient(circle, transparent 0 47.1%, #000 47.45% 48.15%, transparent 48.5%);
+  mask-image: radial-gradient(circle, transparent 0 47.1%, #000 47.45% 48.15%, transparent 48.5%); }
 ```
 
-Retain the single texture allocation and one mount-scoped GSAP/media owner. Add typed presentation input and update GSAP transform/opacity/mask CSS-property targets from effects; never write Svelte state in GSAP callbacks or recreate the texture array. Reduced motion must continue to have no nonessential timeline and render the same markup/static masks.
-
----
+The `signal-field` fills the stage through `inset: 0`; retain one base bed and exactly three masked copies. Do not add border/outline/SVG circle substitutes. The deterministic texture allocation at lines 12-30 remains one-time and pane-size-independent.
 
 ### `src/components/startup-signal-presentation.ts` (utility, transform)
 
-**Analog:** `src/coordinator/types.ts`
+**Analog:** `src/components/startup-signal-presentation.ts` lines 1-38.
 
-There is no existing standalone browser-free presentation projector. The closest pure transformation is the typed recovery normalizer; copy its explicit typed-input/default/object-return style while keeping this module independent of GSAP, DOM, and store mutation.
-
-**Type and pure transform pattern** ([lines 34-67](../../src/coordinator/types.ts)):
+**Typed, pure presentation projection** (lines 17-38):
 
 ```typescript
-export interface HostedRoomRecoveryProgress {
-  state: "idle" | "restoring" | "retrying" | "exhausted" | "complete";
-  completed: number;
-  total: number;
-  roomName: string | null;
-  attempt: number;
-  diagnostic: string;
-}
-
-export function createHostedRoomRecoveryProgress(
-  input: Partial<HostedRoomRecoveryProgress> & Pick<HostedRoomRecoveryProgress, "state" | "completed" | "total">
-): HostedRoomRecoveryProgress {
-  const roomName = input.roomName ?? null;
-  const diagnostic = input.diagnostic ?? ...;
-  return { state: input.state, completed: input.completed, total: input.total, roomName, attempt: input.attempt ?? 0, diagnostic };
+export function projectStartupSignal(
+  progress: CoordinatorStartupProgress,
+  status: CoordinatorStatus,
+): StartupSignalPresentation {
+  const total = clamp(progress.roomRecovery.total, 0, Number.MAX_SAFE_INTEGER);
+  const completed = clamp(progress.roomRecovery.completed, 0, total);
+  const roomRatio = total === 0 ? 1 : completed / total;
+  const forwardPercent = progress.phase === "restoring-rooms"
+    ? 85 + roomRatio * 15
+    : clamp(progress.percent, 0, 100);
+  return { phase: progress.phase, recoveryState: progress.roomRecovery.state, completed, total,
+    roomName: progress.roomRecovery.roomName, forwardPercent,
+    mode: status === "stopping" ? "resting" : "active" };
 }
 ```
 
-Import `CoordinatorStartupProgress` as a type from `../coordinator/types`; return a small immutable object containing only visual inputs (`phase`, recovery state, room name, completed/total, forward percentage and stable state). Preserve recovery values exactly. The utility must not import Svelte or GSAP.
-
----
+Keep this a browser-free projection of coordinator truth. Preserve phase, retry/exhaustion state, room name, counts, and monotonic forward value; it must not own retry state, mutate the coordinator, import GSAP, or infer readiness.
 
 ### `tests/unit/startup-signal-presentation.test.ts` (test, transform)
 
-**Analog:** `tests/unit/state-machine.test.ts`
+**Analog:** `tests/unit/startup-signal-presentation.test.ts` lines 6-63.
 
-**Imports and table-driven pure-function tests** ([lines 1-48](../../tests/unit/state-machine.test.ts)):
-
-```typescript
-import { describe, expect, test, vi } from "vitest";
-
-import { isConfigLocked, transitionCoordinator } from "../../src/coordinator/state-machine";
-
-describe("transitionCoordinator", () => {
-  test.each([
-    ["idle", "start", "starting"],
-    ["starting", "started", "running"],
-  ] satisfies Array<[CoordinatorStatus, CoordinatorEvent, CoordinatorStatus]>)(
-    "%s + %s -> %s",
-    (state, event, expected) => expect(transitionCoordinator(state, event)).toBe(expected),
-  );
-});
-```
-
-**Recovery truth fixture/assertion pattern** ([lines 50-83](../../tests/unit/state-machine.test.ts)):
+**Literal fixture and table-driven projection pattern** (lines 6-24, 43-55):
 
 ```typescript
-describe("hosted room recovery progress", () => {
-  test("makes a zero-room recovery visibly complete before the coordinator becomes ready", () => {
-    expect(createHostedRoomRecoveryProgress({ state: "complete", completed: 0, total: 0 }))
-      .toMatchObject({ state: "complete", completed: 0, total: 0, roomName: null });
-  });
+function progress(overrides: Partial<CoordinatorStartupProgress> = {}): CoordinatorStartupProgress {
+  return { phase: "connecting-relays", percent: 60, roomRecovery: { state: "idle", completed: 0, total: 0, roomName: null, attempt: 0, diagnostic: "" }, ...overrides };
+}
 
-  test("retains the exact current room and completed count for a retry", () => {
-    expect(createHostedRoomRecoveryProgress({ state: "retrying", completed: 1, total: 2, roomName: "Project planning", attempt: 2 }))
-      .toMatchObject({ state: "retrying", completed: 1, total: 2, roomName: "Project planning", attempt: 2, diagnostic: "Trying again…" });
-  });
-});
+test.each([[0, 0, 100], [1, 4, 88.75], [4, 4, 100]])(
+  "maps room recovery %i of %i into the final startup interval",
+  (completed, total, forwardPercent) => expect(projectStartupSignal(progress({ ... } as CoordinatorStartupProgress), "starting").forwardPercent).toBe(forwardPercent),
+);
 ```
 
-Use literal `CoordinatorStartupProgress` fixtures and direct function calls. Cover transport percent passthrough, forward room-ratio mapping including zero rooms, retry retaining completed work, and exhausted target stability. This test has no DOM or timer setup.
-
----
+Test the projection only: transport pass-through, zero-room completion, increasing room recovery, retry retaining completed count, exhausted state preservation, and stopping/resting. No DOM or timeline harness is needed.
 
 ### `tests/e2e/workspace-lifecycle.spec.ts` (test, request-response)
 
-**Analog:** `tests/e2e/workspace-lifecycle.spec.ts`
+**Analog:** `tests/e2e/workspace-lifecycle.spec.ts` lines 126-142, `expectEmbeddedChatFillsHostPane`.
 
-**Browser helper pattern for viewport ownership** ([lines 81-110](../../tests/e2e/workspace-lifecycle.spec.ts)):
-
-```typescript
-async function expectViewportOwned(page: import("@playwright/test").Page, viewport: { width: number; height: number }): Promise<void> {
-  await expect.poll(() => page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-    clientHeight: document.documentElement.clientHeight,
-    scrollHeight: document.documentElement.scrollHeight,
-    bodyWidth: document.body.scrollWidth,
-    bodyHeight: document.body.scrollHeight,
-  }))).toEqual({
-    clientWidth: viewport.width, scrollWidth: viewport.width,
-    clientHeight: viewport.height, scrollHeight: viewport.height,
-    bodyWidth: viewport.width, bodyHeight: viewport.height,
-  });
-}
-
-async function expectInsideViewport(locator: import("@playwright/test").Locator): Promise<void> {
-  await expect.poll(() => locator.evaluate((element) => {
-    const bounds = element.getBoundingClientRect();
-    return bounds.top >= 0 && bounds.left >= 0 && bounds.right <= window.innerWidth && bounds.bottom <= window.innerHeight;
-  })).toBe(true);
-}
-```
-
-**Existing startup recovery scenario pattern** ([lines 1896-1940](../../tests/e2e/workspace-lifecycle.spec.ts)):
+**Actual-pane bounds helper** (lines 126-142):
 
 ```typescript
-await page.reload();
-await page.getByPlaceholder("passphrase", { exact: true }).fill("offline-host-room-passphrase");
-await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
-
-await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
-await expect(page.getByTestId("host-message-list")).toBeHidden();
-await page.getByRole("button", { name: "Start", exact: true }).click();
-await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
-await expect(page.getByTestId("status-badge")).toHaveText("starting");
+await expect.poll(() => page.evaluate(() => {
+  const pane = document.querySelector<HTMLElement>('[data-testid="host-chat"]');
+  const route = pane?.querySelector<HTMLElement>('[data-testid="chat-route"]');
+  if (!pane || !route) return false;
+  const paneBounds = pane.getBoundingClientRect();
+  const routeBounds = route.getBoundingClientRect();
+  const aligned = (left: number, right: number) => (
+    Math.abs(left - paneBounds.left) <= 1 && Math.abs(right - paneBounds.right) <= 1
+  );
+  return aligned(routeBounds.left, routeBounds.right);
+})).toBe(true);
 ```
 
-Extend existing lifecycle setup rather than creating another app fixture. Set each desktop viewport before triggering startup; assert fixed bounds and body/document dimensions through `expectViewportOwned`; inspect every `.ascii-ring` for its ASCII child, mask computed style, and no border/outline; then call `page.emulateMedia({ reducedMotion: "reduce" })` before loading a recovery state and assert that the status panel/progressbar/actions remain visible.
+Extend this helper for `.startup-stage` and `[data-testid="startup-ascii-field"]`: compare their left/top/right/bottom to `host-chat`, explicitly including the right edges. Assert computed stage geometry is `absolute`, `inset: 0`, and `width`/`height` resolve to the pane; never compare the stage to browser viewport dimensions. At desktop widths 1024, 1280, and 1440, also assert header and `invite-panel` are visible, not inert/`aria-hidden`, and usable during startup. Preserve checks for semantic progressbar/live region, retry/exhaustion actions, masks, and reduced-motion static field.
 
 ## Shared Patterns
 
-### Recovery truth is read-only presentation input
+### Content-pane ownership
 
-**Sources:** `src/coordinator/types.ts` lines 34-67; `src/coordinator/coordinator.svelte.ts` lines 630-646  
-**Apply to:** projection utility, `HostWorkspace.svelte`, tests
+**Sources:** `src/components/HostWorkspace.svelte` lines 1462-1478 and 1814-1818; `tests/e2e/workspace-lifecycle.spec.ts` lines 126-142.
+**Apply to:** `HostWorkspace.svelte`, `StartupSignalField.svelte`, and browser checks.
 
-```typescript
-async retryRoomRecovery(): Promise<void> {
-  if (this.startupPromise) return this.startupPromise;
-  if (this.status !== "starting" || this.startupProgress.roomRecovery.state !== "exhausted" || !this.running) return;
-  // recovery transaction owns status/progress changes
-}
-```
+The `host-chat` grid cell is the content pane. It already provides the exact full-width/right-edge contract used by embedded chat. Give it `position: relative`; mount the absolute startup stage within it. The global header and rail are sibling shell regions, never startup-owned.
 
-The new presentation layer reads `CoordinatorStartupProgress`; it does not introduce a second retry state, mutation, timeout, or error interpretation.
+### Read-only recovery projection and semantics
 
-### Component-scoped animation cleanup
+**Sources:** `src/components/startup-signal-presentation.ts` lines 17-38; `src/components/HostWorkspace.svelte` lines 1515-1585.
+**Apply to:** projection, field, and tests.
 
-**Source:** `src/components/StartupSignalField.svelte` lines 20-78  
-**Apply to:** `StartupSignalField.svelte`
+Pass only the compact projection into the decorative field. The progress panel remains the source of user-visible status, progressbar, live state, retry, and exhausted-room removal.
 
-Use `gsap.matchMedia()` with a `gsap.context(..., field)` return cleanup and finish `onMount` with `media.revert()`. All selectors remain field-local through the context root.
+### Scoped decoration and motion
 
-### Semantic content stays above decorative DOM
+**Source:** `src/components/StartupSignalField.svelte` lines 32-113 and 116-228.
+**Apply to:** `StartupSignalField.svelte`.
 
-**Source:** `src/components/HostWorkspace.svelte` lines 1502-1576; `src/components/StartupSignalField.svelte` lines 81-87  
-**Apply to:** `HostWorkspace.svelte`, `StartupSignalField.svelte`
-
-The field is `aria-hidden` and pointer-inert; the existing `role="progressbar"` and `role="status" aria-live="polite"` remain in `HostWorkspace` over the field.
-
-### Browser layout assertions use polling and computed state
-
-**Source:** `tests/e2e/workspace-lifecycle.spec.ts` lines 81-110  
-**Apply to:** `tests/e2e/workspace-lifecycle.spec.ts`
-
-Assert document dimensions and element bounds with `expect.poll`/`page.evaluate`, not timing-sensitive snapshots. Inspect computed mask/border/outline values in the same style for the true-mask requirement.
+The field is `aria-hidden`, pointer-inert, and absolutely fills its positioned pane stage. Use `gsap.context` and `gsap.matchMedia`; reduced motion renders the same masks without timelines.
 
 ## No Analog Found
 
-| File | Role | Data Flow | Reason |
-|---|---|---|---|
-| `src/components/startup-signal-presentation.ts` | utility | transform | No existing standalone presentation projector; `createHostedRoomRecoveryProgress` is the closest pure typed mapper. |
-| `tests/unit/startup-signal-presentation.test.ts` | test | transform | No existing projection-specific unit suite; state-machine tests establish the closest direct pure-function convention. |
+None. The repository already contains exact analogs for pane ownership, presentation projection, deterministic masked texture, scoped GSAP, and pane-bound browser assertions.
 
 ## Metadata
 
-**Analog search scope:** `src/components`, `src/coordinator`, `tests/unit`, `tests/e2e`  
-**Files scanned:** 7  
+**Analog search scope:** `src/components`, `src/coordinator`, `tests/e2e`, `tests/unit`
+**Files scanned:** 8
 **Pattern extraction date:** 2026-08-02

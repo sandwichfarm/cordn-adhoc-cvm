@@ -26,7 +26,7 @@
 
 ### Startup Motion
 
-- [ ] **MOTION-01**: The startup ASCII field covers the full viewport at every supported desktop size without an unfilled side gutter.
+- [ ] **MOTION-01**: The startup ASCII field fills the workspace content container edge to edge at every supported desktop size without leaving the right portion uncovered.
 - [ ] **MOTION-02**: Startup rings are true masks/reveals of the ASCII field and are animated with GSAP rather than independent static border circles.
 - [ ] **MOTION-03**: Startup motion remains smooth, responds to progress state, and honors `prefers-reduced-motion` without hiding status or progress information.
 
