@@ -526,7 +526,7 @@ export class CoordinatorStore {
     if (total === 0) {
       this.setRoomRecoveryProgress("complete", 0, 0, null, 0, "No rooms to restore");
       // Keep the approved zero-room completion visible long enough to be perceived before ready.
-      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 150));
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 500));
       if (!this.ownsGeneration(generation, signal)) return false;
       return true;
     }
