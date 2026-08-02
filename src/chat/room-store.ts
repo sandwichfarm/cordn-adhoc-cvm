@@ -64,6 +64,19 @@ export interface RoomIdentity {
   badgeEmoji?: string;
 }
 
+/** Immutable authority and navigation identity for a stored room. */
+export type RoomTarget = Readonly<{ coordinatorPubkey: string; roomId: string }>;
+
+interface LastOpenRoomRecord {
+  version: 1;
+  coordinatorPubkey: string;
+  roomId: string;
+}
+
+export function roomTargetFor(room: Pick<StoredRoom, "id" | "coordinatorPubkey">): RoomTarget {
+  return Object.freeze({ coordinatorPubkey: room.coordinatorPubkey, roomId: room.id });
+}
+
 /** Which kind of signer owned the room when its local authority was created. */
 export type RoomIdentityOwner = "anonymous" | "external";
 
@@ -831,35 +844,63 @@ function storedRoomEntries(): Array<{ key: string; room: StoredRoom }> {
   return entries;
 }
 
-export function rememberActiveHostRoom(room: StoredRoom): void {
-  if (!room.isHost) return;
+export function rememberLastOpenRoom(room: Pick<StoredRoom, "id" | "coordinatorPubkey">): void {
   try {
-    localStorage.setItem(`${ACTIVE_HOST_ROOM_KEY_PREFIX}${room.coordinatorPubkey}`, room.id);
+    const key = `${ACTIVE_HOST_ROOM_KEY_PREFIX}${room.coordinatorPubkey}`;
+    const record: LastOpenRoomRecord = { version: 1, coordinatorPubkey: room.coordinatorPubkey, roomId: room.id };
+    localStorage.setItem(key, JSON.stringify(record));
+    if (localStorage.getItem(key) !== JSON.stringify(record)) localStorage.removeItem(key);
   } catch {
     // Room selection still works when storage is unavailable.
   }
 }
 
-export function loadRememberedHostRoom(coordinatorPubkey: string): StoredRoom | null {
+export function loadLastOpenRoom(coordinatorPubkey: string): StoredRoom | null {
   try {
-    const roomId = localStorage.getItem(`${ACTIVE_HOST_ROOM_KEY_PREFIX}${coordinatorPubkey}`);
-    if (!roomId) return null;
-    const room = loadRoom(roomId, coordinatorPubkey);
-    if (room?.isHost && room.coordinatorPubkey === coordinatorPubkey) return room;
-    localStorage.removeItem(`${ACTIVE_HOST_ROOM_KEY_PREFIX}${coordinatorPubkey}`);
+    const key = `${ACTIVE_HOST_ROOM_KEY_PREFIX}${coordinatorPubkey}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    let record: LastOpenRoomRecord | null = null;
+    try {
+      const value = JSON.parse(raw) as unknown;
+      if (isRecord(value) && value.version === 1 && typeof value.coordinatorPubkey === "string" && typeof value.roomId === "string") {
+        record = { version: 1, coordinatorPubkey: value.coordinatorPubkey, roomId: value.roomId };
+      }
+    } catch { /* legacy raw id handled below */ }
+    if (!record && raw.length > 0) {
+      const legacy = loadRoom(raw, coordinatorPubkey);
+      if (legacy?.coordinatorPubkey === coordinatorPubkey) {
+        rememberLastOpenRoom(legacy);
+        record = { version: 1, coordinatorPubkey, roomId: legacy.id };
+      }
+    }
+    if (!record || record.coordinatorPubkey !== coordinatorPubkey) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    const room = loadRoom(record.roomId, record.coordinatorPubkey);
+    if (room?.membershipStatus !== "retired" && sameRoomIdentity(room, { id: record.roomId, coordinatorPubkey })) return room;
+    localStorage.removeItem(key);
     return null;
   } catch {
     return null;
   }
 }
 
-export function forgetRememberedHostRoom(coordinatorPubkey: string): void {
+export function forgetLastOpenRoom(coordinatorPubkey: string): void {
   try {
     localStorage.removeItem(`${ACTIVE_HOST_ROOM_KEY_PREFIX}${coordinatorPubkey}`);
   } catch {
     // Nothing else depends on selection persistence.
   }
 }
+
+/** @deprecated Use the composite last-open helpers. */
+export function rememberActiveHostRoom(room: StoredRoom): void { if (room.isHost) rememberLastOpenRoom(room); }
+/** @deprecated Use the composite last-open helpers. */
+export function loadRememberedHostRoom(coordinatorPubkey: string): StoredRoom | null { return loadLastOpenRoom(coordinatorPubkey); }
+/** @deprecated Use the composite last-open helpers. */
+export function forgetRememberedHostRoom(coordinatorPubkey: string): void { forgetLastOpenRoom(coordinatorPubkey); }
 
 export function saveRoom(room: StoredRoom): void {
   room.updatedAt = Date.now();

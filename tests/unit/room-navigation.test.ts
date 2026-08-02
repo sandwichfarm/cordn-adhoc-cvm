@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NostrSigner } from "@contextvm/sdk/core";
-import { anonymousMembershipImpact, ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reconcileRoomHostIdentity, rememberActiveHostRoom, removeStoredRoom, requireRoomSigner, retireAnonymousMemberships, roomIdentityKey, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../../src/chat/room-store";
+import { anonymousMembershipImpact, ChatRoomSession, createHostedRoom, forgetLastOpenRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, reconcileRoomHostIdentity, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, retireAnonymousMemberships, roomIdentityKey, roomTargetFor, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../../src/chat/room-store";
 import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
 import { bytesToHex } from "nostr-tools/utils";
 
@@ -228,6 +228,15 @@ describe("room navigation persistence", () => {
     expect(loadRoom(first.id)).toBeNull();
   });
 
+  it("freezes composite row targets so same-id rooms cannot be conflated", () => {
+    const first = storedRoom({ id: "same", title: "First", coordinatorPubkey: "a".repeat(64), isHost: true });
+    const second = storedRoom({ id: "same", title: "Second", coordinatorPubkey: "b".repeat(64), isHost: false });
+
+    expect(roomTargetFor(first)).toEqual({ coordinatorPubkey: first.coordinatorPubkey, roomId: first.id });
+    expect(roomTargetFor(first)).not.toEqual(roomTargetFor(second));
+    expect(Object.isFrozen(roomTargetFor(first))).toBe(true);
+  });
+
   it("removes only the exact coordinator room and emits a removal change", () => {
     const first = storedRoom({
       id: "shared-group-id",
@@ -387,6 +396,20 @@ describe("room navigation persistence", () => {
     expect(loadRememberedHostRoom("b".repeat(64))).toBeNull();
     forgetRememberedHostRoom(coordinatorPubkey);
     expect(loadRememberedHostRoom(coordinatorPubkey)).toBeNull();
+  });
+
+  it("restores only a validated composite last-open record", () => {
+    const coordinatorPubkey = "a".repeat(64);
+    const room = storedRoom({ id: "last-open", title: "Last open", coordinatorPubkey, isHost: false });
+    saveRoom(room);
+    rememberLastOpenRoom(room);
+
+    expect(loadLastOpenRoom(coordinatorPubkey)).toMatchObject({ id: room.id, coordinatorPubkey });
+    expect(localStorage.getItem(`cordn-adhoc-active-host-room:${coordinatorPubkey}`)).toContain('"version":1');
+    localStorage.setItem(`cordn-adhoc-active-host-room:${coordinatorPubkey}`, JSON.stringify({ version: 1, coordinatorPubkey: "b".repeat(64), roomId: room.id }));
+    expect(loadLastOpenRoom(coordinatorPubkey)).toBeNull();
+    expect(localStorage.getItem(`cordn-adhoc-active-host-room:${coordinatorPubkey}`)).toBeNull();
+    forgetLastOpenRoom(coordinatorPubkey);
   });
 
   it("forgets a remembered room that is missing or belongs to another coordinator", () => {
