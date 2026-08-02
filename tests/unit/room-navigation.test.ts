@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NostrSigner } from "@contextvm/sdk/core";
-import { ChatRoomSession, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reconcileRoomHostIdentity, rememberActiveHostRoom, removeStoredRoom, ROOMS_CHANGED_EVENT, saveRoom, type StoredRoom } from "../../src/chat/room-store";
+import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reconcileRoomHostIdentity, rememberActiveHostRoom, removeStoredRoom, requireRoomSigner, ROOMS_CHANGED_EVENT, saveRoom, type StoredRoom } from "../../src/chat/room-store";
+import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
 
 function storedRoom(input: Partial<StoredRoom> & Pick<StoredRoom, "id" | "title" | "coordinatorPubkey" | "isHost">): StoredRoom {
   return {
@@ -400,6 +401,51 @@ describe("room navigation persistence", () => {
 
     expect(loadRememberedHostRoom(coordinatorPubkey)).toBeNull();
     expect(localStorage.getItem(`cordn-adhoc-active-host-room:${coordinatorPubkey}`)).toBeNull();
+  });
+});
+
+describe("room signer authority", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("uses the supplied durable signer when creating an anonymous hosted room", async () => {
+    const signer = new BrowserNostrSigner(new Uint8Array(32).fill(7));
+    const stablePubkey = await signer.getPublicKey();
+
+    const room = await createHostedRoom({
+      title: "Durable host room",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: ["wss://relay.example"],
+      signer,
+    });
+
+    expect(room.stablePubkey).toBe(stablePubkey);
+    expect(room.anonymousSecretKey).toBeUndefined();
+  });
+
+  it("rejects a mismatched signer without changing readable cached room state", async () => {
+    const durableSigner = new BrowserNostrSigner(new Uint8Array(32).fill(8));
+    const staleSigner = new BrowserNostrSigner(new Uint8Array(32).fill(9));
+    const room = storedRoom({
+      id: "signer-mismatch",
+      title: "Cached room",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      stablePubkey: await durableSigner.getPublicKey(),
+      messages: [{
+        type: "message",
+        id: "cached-message",
+        sender: "f".repeat(64),
+        name: "Host",
+        content: "Still readable",
+        createdAt: 1,
+        pubkey: "f".repeat(64),
+        sig: "e".repeat(128),
+      }],
+    });
+
+    await expect(requireRoomSigner(room, staleSigner)).rejects.toThrow("This signer does not match the identity that joined this room");
+    expect(room.messages).toHaveLength(1);
+    expect(room.messages[0]?.content).toBe("Still readable");
   });
 });
 
