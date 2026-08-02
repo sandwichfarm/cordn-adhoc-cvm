@@ -200,7 +200,7 @@ async function expectStartupMasks(page: import("@playwright/test").Page): Promis
 }
 
 async function expectStartupFieldStatic(field: import("@playwright/test").Locator): Promise<void> {
-  await field.evaluate((element) => new Promise<void>((resolve) => window.setTimeout(resolve, 450)));
+  await field.page().waitForTimeout(450);
   const beforeTransforms = await field.locator(".ascii-bed .ascii-texture, .ring-plane, .ascii-ring, .ascii-ring .ascii-texture").evaluateAll((elements) => (
     elements.map((element) => getComputedStyle(element).transform)
   ));

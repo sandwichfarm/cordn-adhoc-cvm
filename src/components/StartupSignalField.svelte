@@ -176,7 +176,6 @@
 
     return () => {
       applySignal = undefined;
-      destroyAmbient();
       media.revert();
       context.revert();
     };
