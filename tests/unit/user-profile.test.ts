@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { NostrConnectSigner } from "applesauce-signers/signers";
+import { generateSecretKey, getPublicKey } from "nostr-tools";
 
 const signerMocks = vi.hoisted(() => ({
   getPublicKey: vi.fn<() => Promise<string>>(),
@@ -32,7 +33,11 @@ import {
   PROFILE_RELAYS,
   UserProfileStore,
 } from "../../src/identity/user-profile.svelte";
-import { ANONYMOUS_IDENTITY_STORAGE_KEY } from "../../src/identity/anonymous-identity";
+import {
+  ANONYMOUS_IDENTITY_STORAGE_KEY,
+  prepareAnonymousIdentityReplacement,
+} from "../../src/identity/anonymous-identity";
+import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
 
 const NIP07_SESSION_STORAGE_KEY = "cordn:v1:nip07-session";
 const NIP07_PUBKEY = "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0";
@@ -201,5 +206,70 @@ describe("user profile helpers", () => {
     await signedIn.connectNip07();
     await signedIn.logout();
     expect(localStorage.getItem(NIP07_SESSION_STORAGE_KEY)).toBeNull();
+  });
+
+  test.each([
+    "{",
+    JSON.stringify({ version: 2, secretKeyHex: "00".repeat(32) }),
+    JSON.stringify({ version: 1, secretKeyHex: "z".repeat(64) }),
+    JSON.stringify({ version: 1, secretKeyHex: "00".repeat(31) }),
+    JSON.stringify({ version: 1, secretKeyHex: "00".repeat(33) }),
+  ])("requires explicit recovery for corrupt persisted identity", async (corruptRecord) => {
+    localStorage.setItem(ANONYMOUS_IDENTITY_STORAGE_KEY, corruptRecord);
+    const store = new UserProfileStore();
+
+    await store.initialize("River");
+
+    expect(store.recoveryRequired).toBe(true);
+    expect(store.initialized).toBe(false);
+    expect(store.hasIdentity).toBe(false);
+    expect(localStorage.getItem(ANONYMOUS_IDENTITY_STORAGE_KEY)).toBe(corruptRecord);
+    expect(store.error).toBe("Local identity needs recovery");
+  });
+
+  test("keeps the anonymous signer across authenticated selection and logout", async () => {
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    const anonymousSigner = store.activeSigner;
+    const anonymousPubkey = store.pubkey;
+
+    await store.connectNip07();
+    expect(store.activeSigner).not.toBe(anonymousSigner);
+    await store.logout();
+
+    expect(store.method).toBe("anonymous");
+    expect(store.activeSigner).toBe(anonymousSigner);
+    expect(store.pubkey).toBe(anonymousPubkey);
+  });
+
+  test("destroys secret-dependent signer operations without exposing private material", async () => {
+    const secretKey = generateSecretKey();
+    const signer = new BrowserNostrSigner(secretKey);
+    secretKey.fill(0);
+    const peerSecretKey = generateSecretKey();
+    const peerPubkey = getPublicKey(peerSecretKey);
+    peerSecretKey.fill(0);
+
+    signer.destroy();
+
+    await expect(signer.signEvent({ kind: 1, created_at: 1, tags: [], content: "" })).rejects.toThrow("Signer is no longer available");
+    await expect(signer.nip44.encrypt(peerPubkey, "private message")).rejects.toThrow("Signer is no longer available");
+    await expect(signer.nip44.decrypt(peerPubkey, "not-a-ciphertext")).rejects.toThrow("Signer is no longer available");
+  });
+
+  test("aborts a staged replacement without changing the canonical identity", async () => {
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    const canonicalRecord = localStorage.getItem(ANONYMOUS_IDENTITY_STORAGE_KEY);
+    const canonicalPubkey = store.pubkey;
+    const prepared = await prepareAnonymousIdentityReplacement();
+
+    prepared.abort();
+
+    expect(localStorage.getItem(ANONYMOUS_IDENTITY_STORAGE_KEY)).toBe(canonicalRecord);
+    await expect(prepared.signer.signEvent({ kind: 1, created_at: 1, tags: [], content: "" })).rejects.toThrow("Signer is no longer available");
+    const reloaded = new UserProfileStore();
+    await reloaded.initialize("River");
+    expect(reloaded.pubkey).toBe(canonicalPubkey);
   });
 });
