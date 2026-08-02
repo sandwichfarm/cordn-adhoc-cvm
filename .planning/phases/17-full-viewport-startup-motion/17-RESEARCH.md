@@ -1,4 +1,4 @@
-# Phase 17: Full-Viewport Startup Motion - Research
+# Phase 17: Content-Pane Startup Motion - Research
 
 **Researched:** 2026-08-02
 **Domain:** Svelte 5 browser UI, GSAP animation lifecycle, CSS masking, and Playwright verification
@@ -9,14 +9,14 @@
 
 ### Locked Decisions
 
-#### Viewport ownership
-- While the local coordinator is starting or stopping, the startup experience owns the entire application viewport rather than remaining inside the normal chat column.
-- The normal header, room rail, and chat chrome must not leave side gutters or compete with the startup experience during that transient state.
+#### Content-pane ownership
+- While the local coordinator is starting or stopping, the startup experience owns the entire workspace content pane, not the entire browser viewport.
+- The global header and room rail remain visible and usable. The startup stage replaces only the content pane and must fill that pane from its left edge to its right edge without the previously uncovered right portion.
 - Status, recovery progress, settings review, retry, and exhausted-room removal remain reachable inside the startup surface.
-- The layout must stay contained at supported desktop widths and short viewports without document-level scrolling or clipped actions.
+- The stage sizes itself from the content container (`inset: 0; width: 100%; height: 100%` inside that positioned pane), not from `100vw`, `100dvh`, or a fixed viewport overlay. It must not introduce document-level scrolling or clipped actions.
 
 #### ASCII field and masked rings
-- A deterministic ASCII texture covers the full viewport edge to edge; it is not a centered decorative patch.
+- A deterministic ASCII texture covers the full content pane edge to edge; it is not a centered decorative patch and may not stop around two-thirds of the pane width.
 - Rings are true masks through which the ASCII field is revealed, with no independent border-circle substitute.
 - Use GSAP for the living motion: layered drift, scale, rotation, opacity, and phase transitions should feel fluid and restrained rather than like a static pulse.
 - The ring field should remain visually legible behind content through contrast masks and a calm focal zone, not by shrinking the animation away from the content.
@@ -28,7 +28,7 @@
 - Transitions between transport startup, room restoration, retry, exhaustion, and completion should be smooth without delaying coordinator readiness.
 
 #### Accessibility and performance
-- `prefers-reduced-motion: reduce` suppresses nonessential GSAP timelines and presents a stable full-viewport ASCII composition.
+- `prefers-reduced-motion: reduce` suppresses nonessential GSAP timelines and presents a stable content-pane-filling ASCII composition.
 - Status and progress retain semantic progressbar/live-region behavior independent of the decorative field.
 - Animation cleanup must be component-scoped and leak-free across repeated start/stop/retry cycles.
 - Avoid per-frame Svelte state writes and excessive DOM churn; animate transforms, opacity, and mask-related CSS variables through GSAP.
@@ -47,7 +47,7 @@
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| MOTION-01 | The startup ASCII field covers the full viewport at every supported desktop size without an unfilled side gutter. | Promote startup ownership from the layout grid to a fixed `inset: 0` stage and assert exact viewport bounds at 1024×640, 1280×720, and 1440×900. [VERIFIED: codebase graph + source] |
+| MOTION-01 | The startup ASCII field fills the workspace content container edge to edge at every supported desktop size without leaving the right portion uncovered. | Keep startup ownership in the positioned content pane; render the stage and its base bed with `position: absolute; inset: 0; width: 100%; height: 100%`, and assert equality with the content-pane bounds (including the right edge) at 1024×640, 1280×720, and 1440×900. [VERIFIED: REQUIREMENTS.md + UI-SPEC.md] |
 | MOTION-02 | Startup rings are true masks/reveals of the ASCII field and are animated with GSAP rather than independent static border circles. | Preserve the existing ASCII copies, apply radial-gradient `mask-image` and `-webkit-mask-image` to exactly three ring containers, and scope GSAP transforms/CSS-variable tweens to the field. [CITED: https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/mask-image] [CITED: https://gsap.com/docs/v3/GSAP/gsap.context%28%29/] |
 | MOTION-03 | Startup motion remains smooth, responds to progress state, and honors `prefers-reduced-motion` without hiding status or progress information. | Derive presentation-only state from `CoordinatorStartupProgress`; use GSAP media-aware lifecycle cleanup, preserve the existing `progressbar` and live status, and test reduced-motion emulation. [VERIFIED: codebase graph + source] [CITED: https://gsap.com/docs/v3/GSAP/gsap.matchMedia%28%29/] [CITED: https://playwright.dev/docs/api/class-page] |
 </phase_requirements>
@@ -64,9 +64,9 @@
 
 Phase 17 is a presentation integration, not a recovery rewrite. `CoordinatorStore.startupProgress` already supplies a typed phase, percent, and hosted-room recovery record; `HostWorkspace` already renders the authoritative progressbar/live status and the exhausted recovery actions. The plan should retain this transaction verbatim and pass a compact, derived presentation object to `StartupSignalField`. [VERIFIED: codebase graph + source]
 
-The existing field already has one base ASCII bed, three ASCII ring copies, radial-gradient masks, GSAP, `aria-hidden`, and reduced-motion gating. The required change is to make the stage itself fixed viewport ownership, remove the competing normal workspace visually and interactively while startup is active, and replace the unrelated ambient-only behavior with state-driven GSAP target updates. CSS gradients are valid mask images, and GSAP contexts provide scoped revert cleanup. [VERIFIED: codebase graph + source] [CITED: https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/mask-image] [CITED: https://gsap.com/docs/v3/GSAP/gsap.context%28%29/]
+The existing field already has one base ASCII bed, three ASCII ring copies, radial-gradient masks, GSAP, `aria-hidden`, and reduced-motion gating. The required change is to keep the stage inside the positioned workspace content pane, fill that pane completely (including its right edge), retain the usable global header and room rail, and replace the unrelated ambient-only behavior with state-driven GSAP target updates. CSS gradients are valid mask images, and GSAP contexts provide scoped revert cleanup. [VERIFIED: codebase graph + source] [VERIFIED: CONTEXT.md + UI-SPEC.md] [CITED: https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/mask-image] [CITED: https://gsap.com/docs/v3/GSAP/gsap.context%28%29/]
 
-**Primary recommendation:** Keep the current `CoordinatorStartupProgress` as the single source of truth; add a pure projection helper plus a field-local GSAP controller, and make `HostWorkspace` mount one fixed startup stage above normal chrome only while status is `starting` or `stopping`. [VERIFIED: codebase graph + source]
+**Primary recommendation:** Keep the current `CoordinatorStartupProgress` as the single source of truth; add a pure projection helper plus a field-local GSAP controller, and make `HostWorkspace` mount one pane-scoped startup stage inside the positioned content container only while the startup surface is needed. Keep global header and room-rail interaction available. [VERIFIED: codebase graph + source] [VERIFIED: CONTEXT.md + UI-SPEC.md]
 
 ## Architectural Responsibility Map
 
@@ -74,7 +74,7 @@ The existing field already has one base ASCII bed, three ASCII ring copies, radi
 |------------|-------------|----------------|-----------|
 | Recovery truth, retry, exhaustion, and completion | API / Backend | Browser / Client | `CoordinatorStore` owns the startup transaction and exact room-recovery state; the UI must consume it without mutation. [VERIFIED: codebase graph + source] |
 | Visual-progress projection | Browser / Client | — | A pure mapping of typed coordinator progress to visual targets belongs at the presentation boundary and must not alter recovery behavior. [VERIFIED: codebase graph + source] |
-| Full-viewport startup composition and interaction isolation | Browser / Client | — | Fixed positioning, inert chrome, internal focal-column scrolling, and semantic status are DOM/layout responsibilities. [VERIFIED: UI-SPEC.md] |
+| Content-pane startup composition and interaction preservation | Browser / Client | — | The positioned content pane owns the absolute stage and its internal focal-column scrolling; the surrounding header and room rail remain visible, usable, and outside the stage. [VERIFIED: UI-SPEC.md] |
 | ASCII masking and motion | Browser / Client | — | CSS masking and GSAP transforms operate entirely on decorative, pointer-inert DOM layers. [VERIFIED: codebase graph + source] [CITED: https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/mask-image] |
 | Regression proof | Browser / Client | — | Vitest can prove pure projection behavior and Playwright can inspect rendered bounds, semantics, media emulation, and computed mask styles. [VERIFIED: codebase graph + source] [CITED: https://playwright.dev/docs/api/class-page] |
 
@@ -93,7 +93,7 @@ The existing field already has one base ASCII bed, three ASCII ring copies, radi
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
 | `vitest` | 4.1.9 installed | Pure projection regression tests | Test monotonic mapping and retry/exhausted identity without mounting or timing animation. [VERIFIED: package.json + vite.config.ts] |
-| `@playwright/test` | 1.61.0 installed | Desktop layout, computed-style, action, and reduced-motion verification | Emulate `reducedMotion`, set the three required desktop viewports, and inspect fixed-stage/mask/semantic state. [VERIFIED: package.json + playwright.config.ts] [CITED: https://playwright.dev/docs/api/class-page] |
+| `@playwright/test` | 1.61.0 installed | Desktop layout, computed-style, action, and reduced-motion verification | Emulate `reducedMotion`, set the three required desktop viewports, compare stage/field bounds to the content-pane rectangle, and inspect masks, shell usability, and semantic state. [VERIFIED: package.json + playwright.config.ts + UI-SPEC.md] [CITED: https://playwright.dev/docs/api/class-page] |
 
 ### Alternatives Considered
 
@@ -127,10 +127,13 @@ StartupSignalField
   |           +--> regular motion: transform/opacity/CSS custom-property targets
   |           +--> reduced motion: static CSS variables, no nonessential timeline
   v
-fixed startup stage (inset: 0, z-index above normal workspace)
-              |
-              +--> normal header / rail / chat hidden and inert
-              +--> dialogs remain above the stage
+positioned workspace content pane
+  |- pane-scoped startup stage (`position: absolute; inset: 0`)
+  |     |- pointer-inert ASCII bed reaches all pane edges
+  |     |- focal column may scroll internally on short panes
+  |     +--> dialogs opened from the stage remain above it
+  |
+  +--> global header and room rail stay visible, enabled, and usable
 ```
 
 ### Recommended Project Structure
@@ -138,7 +141,7 @@ fixed startup stage (inset: 0, z-index above normal workspace)
 ```text
 src/
 ├── components/
-│   ├── HostWorkspace.svelte                 # mount fixed stage; preserve semantic panel/actions
+│   ├── HostWorkspace.svelte                 # position content pane and mount pane-scoped stage
 │   ├── StartupSignalField.svelte             # own decorative DOM, CSS masks, GSAP lifecycle
 │   └── startup-signal-presentation.ts        # pure progress-to-visual projection
 tests/
@@ -197,17 +200,18 @@ const context = gsap.context(() => {
 onDestroy(() => context.revert());
 ```
 
-### Pattern 3: Fixed Viewport Overlay With Internal Overflow Ownership
+### Pattern 3: Pane-Scoped Stage With Internal Overflow Ownership
 
-**What:** Render the startup stage as the transient root of the viewport (`position: fixed; inset: 0; width: 100vw; height: 100dvh; overflow: hidden`) above the normal workspace. Give only the focal content column `overflow-y: auto` on short screens. [VERIFIED: UI-SPEC.md]
+**What:** Make the normal workspace content pane the positioned containing block, then render the startup stage inside it with `position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden`. Give only the focal content column `overflow-y: auto` on short panes. Do not use `position: fixed`, `100vw`, `100dvh`, browser-viewport measurements, or document-level interaction isolation. [VERIFIED: CONTEXT.md + UI-SPEC.md]
 
-**When to use:** While coordinator status is `starting` or `stopping`, including recovery retry, exhaustion, and local-room handoff; remove it immediately when the running/attached session condition is met. [VERIFIED: UI-SPEC.md] [VERIFIED: codebase source]
+**When to use:** While coordinator status is `starting` or `stopping`, including recovery retry, exhaustion, and local-room handoff; remove it immediately when the running/attached session condition is met. The header and room rail remain available throughout. [VERIFIED: CONTEXT.md + UI-SPEC.md] [VERIFIED: codebase source]
 
 ### Anti-Patterns to Avoid
 
 - **Animating recovery truth:** Do not add animation state to `CoordinatorStore`, synthesize status copy, or update progress from GSAP callbacks. The store's phase/recovery object remains authoritative. [VERIFIED: codebase graph + source]
 - **Static/bordered circles:** Do not use borders, outlines, SVG strokes, or standalone circles as ring substitutes. Each ring container must reveal an ASCII copy through both mask declarations. [VERIFIED: UI-SPEC.md]
-- **A centered texture plane:** Do not retain a `vmin`-sized field as the only visible texture. The base bed must occupy the entire fixed stage; rings may remain centered as masked layers. [VERIFIED: UI-SPEC.md]
+- **A centered texture plane:** Do not retain a `vmin`-sized field as the only visible texture. The base bed must occupy the entire content-pane stage, including the right edge; rings may remain centered as masked layers. [VERIFIED: CONTEXT.md + UI-SPEC.md]
+- **Viewport takeover:** Do not promote the stage to a fixed viewport overlay or hide, blur, cover, inert, or `aria-hide` the global header or room rail. The stage is only a child of the positioned content pane. [VERIFIED: CONTEXT.md + UI-SPEC.md]
 - **Per-frame Svelte writes:** Do not drive `$state` from GSAP's ticker or regenerate the ASCII strings on recovery updates. Update DOM transforms/CSS properties only. [VERIFIED: UI-SPEC.md]
 - **Delayed readiness:** Do not wait for an exit timeline before the coordinator becomes usable or before focus is restored. [VERIFIED: UI-SPEC.md]
 
@@ -224,16 +228,25 @@ onDestroy(() => context.revert());
 
 ## Common Pitfalls
 
-### Pitfall 1: The stage is full width only inside the layout grid
-**What goes wrong:** A `height: 100%` startup stage stays below the topbar or beside the rail, producing visible gutters despite a full-screen-looking child. [VERIFIED: codebase source]
+### Pitfall 1: The field fills only a centered patch of the content pane
+**What goes wrong:** The stage remains pane-scoped, but an ASCII bed or its parent uses a constrained/vmin width and leaves the content pane's right portion uncovered (the reported roughly two-thirds-width defect). [VERIFIED: CONTEXT.md + UI-SPEC.md]
 
-**Why it happens:** The present `startup-mode` class is on `.host-layout`, while the topbar is a sibling and the stage is still grid content. [VERIFIED: codebase source]
+**Why it happens:** A field intended as a decorative center plane is allowed to define the visible background extent instead of being an absolute `inset: 0` layer inside its pane-scoped stage. [VERIFIED: codebase source + CONTEXT.md]
 
-**How to avoid:** Put the visual stage at fixed viewport coordinates and make normal chrome unavailable while startup status owns the interface. Assert stage bounds, document/body scroll dimensions, and hidden/inert normal chrome in browser tests. [VERIFIED: UI-SPEC.md]
+**How to avoid:** Make the content pane `position: relative`; mount the stage and base bed as `position: absolute; inset: 0; width: 100%; height: 100%`; keep rings as layered masks, not field-sizing containers. At every supported viewport, compare both stage and field bounding boxes to the actual content pane, asserting x/y/width/height and right-edge equality within 1px. [VERIFIED: UI-SPEC.md]
 
-**Warning signs:** A screenshot or bounding-box query shows a non-zero stage `top`, a rail/header element remains visible, or `scrollHeight` exceeds viewport height. [VERIFIED: codebase source]
+**Warning signs:** The stage or field right edge is less than the content pane right edge, a width is based on `vmin`/viewport units, or a screenshot shows an uncovered right portion. A visible and interactive header/rail is expected, not a failure. [VERIFIED: CONTEXT.md + UI-SPEC.md]
 
-### Pitfall 2: Progress changes reset the field
+### Pitfall 2: Pane scope is accidentally promoted to viewport takeover
+**What goes wrong:** The stage uses `position: fixed`, `100vw`, `100dvh`, viewport measurements, or a high global z-index and covers the header or room rail. [VERIFIED: CONTEXT.md + UI-SPEC.md]
+
+**Why it happens:** “Full” is interpreted as browser-wide rather than as the full workspace content container. [VERIFIED: CONTEXT.md]
+
+**How to avoid:** Use the content pane as the only geometry reference; keep the stage absolute within it and preserve the shell regions without `hidden`, `inert`, `aria-hidden`, overlay capture, or blur. Test that header and room-rail controls remain visible and can receive pointer/keyboard interaction during startup. [VERIFIED: UI-SPEC.md]
+
+**Warning signs:** A stage box starts at viewport x/y instead of the content-pane x/y, its dimensions equal `window.innerWidth`/`innerHeight` rather than the pane rectangle, or a shell control becomes covered or disabled. [VERIFIED: UI-SPEC.md]
+
+### Pitfall 3: Progress changes reset the field
 **What goes wrong:** Recreating an infinite timeline whenever phase data changes snaps transforms back to initial values and can make a later recovery step look earlier. [VERIFIED: UI-SPEC.md]
 
 **Why it happens:** Ambient animations are created once today and have no distinction between a baseline loop and a progress target. [VERIFIED: codebase source]
@@ -242,7 +255,7 @@ onDestroy(() => context.revert());
 
 **Warning signs:** A later `percent` has a lower exposed presentation value, room completion appears to drop, or a retry falsely looks complete. [VERIFIED: UI-SPEC.md]
 
-### Pitfall 3: Reduced motion stops semantics along with motion
+### Pitfall 4: Reduced motion stops semantics along with motion
 **What goes wrong:** The reduced-motion branch hides the field and unintentionally removes the live status/progress panel or its updates. [VERIFIED: UI-SPEC.md]
 
 **Why it happens:** Decorative and semantic state are co-located in the startup stage. [VERIFIED: codebase source]
@@ -251,7 +264,7 @@ onDestroy(() => context.revert());
 
 **Warning signs:** `page.emulateMedia({ reducedMotion: "reduce" })` removes the progressbar, hides retry/delete, or leaves a GSAP tween active. [CITED: https://playwright.dev/docs/api/class-page]
 
-### Pitfall 4: Mask tests prove only declarations, not a real reveal
+### Pitfall 5: Mask tests prove only declarations, not a real reveal
 **What goes wrong:** A test only checks for a class name; implementation could replace masks with borders while retaining the class. [VERIFIED: UI-SPEC.md]
 
 **Why it happens:** CSS visual semantics are easy to fake with a static outline. [VERIFIED: UI-SPEC.md]
@@ -348,7 +361,7 @@ None. The UI contract resolves the behavior, copy, desktop sizes, mask count, an
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| MOTION-01 | Fixed startup stage, base bed, and document dimensions equal each supported desktop viewport; normal shell leaves no side gutter. | Playwright integration | `pnpm test:e2e -- tests/e2e/workspace-lifecycle.spec.ts` | ✅ extend existing |
+| MOTION-01 | At 1024×640, 1280×720, and 1440×900, the pane-scoped startup stage and base ASCII bed equal the positioned workspace content pane's x/y/width/height within 1px; each right edge equals the content-pane right edge within 1px; header and room rail remain usable. [VERIFIED: UI-SPEC.md] | Playwright integration | `pnpm test:e2e -- tests/e2e/workspace-lifecycle.spec.ts` | ✅ extend existing [CITED: https://playwright.dev/docs/api/class-locator#locator-bounding-box] |
 | MOTION-02 | Exactly three ring layers each contain ASCII texture and computed standard/WebKit mask; no ring border/outline substitutes. | Playwright integration | `pnpm test:e2e -- tests/e2e/workspace-lifecycle.spec.ts` | ✅ extend existing |
 | MOTION-03 | Increasing transport/room recovery progress maps forward; retry preserves completion, exhaustion settles; reduced motion retains readable semantics with no nonessential timeline. | Vitest unit + Playwright integration | `pnpm test -- tests/unit/startup-signal-presentation.test.ts`; `pnpm test:e2e -- tests/e2e/workspace-lifecycle.spec.ts` | ❌ Wave 0 unit file; ✅ extend existing E2E |
 
@@ -362,7 +375,7 @@ None. The UI contract resolves the behavior, copy, desktop sizes, mask count, an
 
 - [ ] `tests/unit/startup-signal-presentation.test.ts` — proves the pure forward projection for phase percent, room completion, retry, and exhausted state (MOTION-03).
 - [ ] `src/components/startup-signal-presentation.ts` — contains the browser-independent projection exported for unit coverage (MOTION-03).
-- [ ] Extend `tests/e2e/workspace-lifecycle.spec.ts` — desktop viewport matrix, field bounds/masks/no-border checks, recovery action truth, and `page.emulateMedia({ reducedMotion: "reduce" })` checks (MOTION-01, MOTION-02, MOTION-03).
+- [ ] Extend `tests/e2e/workspace-lifecycle.spec.ts` — at each desktop viewport, compare content-pane/stage/field x/y/width/height and right edges within 1px; prove the header and rail remain usable; then cover masks/no-border, recovery action truth, and `page.emulateMedia({ reducedMotion: "reduce" })` (MOTION-01, MOTION-02, MOTION-03).
 
 ## Security Domain
 
@@ -392,12 +405,13 @@ Security enforcement is enabled because `.planning/config.json` does not set `wo
 ### Primary (HIGH confidence)
 
 - Project source via codebase-memory graph and targeted source inspection — `CoordinatorStore.startupProgress`, recovery transitions, `HostWorkspace`, `StartupSignalField`, current unit tests, and workspace lifecycle E2E. [VERIFIED: codebase graph + source]
-- [Approved Phase 17 UI contract](17-UI-SPEC.md) — viewport, masks, motion, accessibility, copy, and verification requirements. [VERIFIED: UI-SPEC.md]
+- [Approved Phase 17 UI contract](17-UI-SPEC.md) — content-pane geometry, masks, motion, shell usability, accessibility, copy, and verification requirements. [VERIFIED: UI-SPEC.md]
 - [GSAP context documentation](https://gsap.com/docs/v3/GSAP/gsap.context%28%29/) — scoped animation collection and revert cleanup. [CITED: https://gsap.com/docs/v3/GSAP/gsap.context%28%29/]
 - [GSAP matchMedia documentation](https://gsap.com/docs/v3/GSAP/gsap.matchMedia%28%29/) — media-query conditions and revert behavior. [CITED: https://gsap.com/docs/v3/GSAP/gsap.matchMedia%28%29/]
 - [Svelte lifecycle documentation](https://svelte.dev/docs/svelte/lifecycle-hooks) — mount/unmount cleanup and runes lifecycle. [CITED: https://svelte.dev/docs/svelte/lifecycle-hooks]
 - [MDN mask-image documentation](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/mask-image) — gradient mask behavior. [CITED: https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/mask-image]
 - [Playwright Page API](https://playwright.dev/docs/api/class-page) — reduced-motion emulation and viewport access. [CITED: https://playwright.dev/docs/api/class-page]
+- [Playwright Locator API](https://playwright.dev/docs/api/class-locator#locator-bounding-box) — rendered element bounding boxes for comparing the content pane, stage, and field. [CITED: https://playwright.dev/docs/api/class-locator#locator-bounding-box]
 
 ### Secondary (MEDIUM confidence)
 
