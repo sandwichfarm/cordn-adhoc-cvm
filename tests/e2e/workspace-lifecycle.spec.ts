@@ -576,6 +576,9 @@ test("startup signal follows retry and exhaustion truth", async ({ page }) => {
   await expect(startup).toHaveAttribute("data-recovery-total", "2");
   await expect(startup).toHaveAttribute("data-recovery-state", "retrying");
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-state", "retrying");
+  expect(await page.getByTestId("startup-ascii-field").locator(".ascii-ring .ascii-texture").evaluateAll((elements) => (
+    elements.map((element) => getComputedStyle(element).color)
+  ))).toEqual(["rgb(124, 245, 157)", "rgb(83, 154, 102)", "rgb(130, 216, 149)"]);
   await expect(page.getByRole("button", { name: "Retry recovery" })).toHaveCount(0);
   await expect(startup).toHaveAttribute("data-recovery-state", "exhausted");
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-state", "exhausted");
