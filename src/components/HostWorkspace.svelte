@@ -97,6 +97,7 @@
   let mobileToolsOpen = $state(false);
   let refreshState = $state<"idle" | "refreshing" | "refreshed">("idle");
   let roomRemovalTarget = $state<StoredRoom | null>(null);
+  let roomRemovalOrigin = $state<HTMLButtonElement | null>(null);
   let reactionPickerMessageId = $state<string | null>(null);
   let reactionError = $state("");
   let embeddedChatContext = $state<ChatPaneContext | null>(null);
@@ -771,10 +772,14 @@
   async function deleteCurrentHostedRoom(): Promise<void> {
     const target = roomRemovalTarget;
     if (!target?.isHost) return;
+    const latest = loadRoom(target.id, target.coordinatorPubkey);
+    if (!latest || !sameRoomIdentity(latest, target) || latest.coordinatorPubkey !== coordinatorPubkey) {
+      throw new Error(`Unable to delete # ${target.title}. Please try again.`);
+    }
 
     await coordinator.deleteHostedRoom({
-      id: target.id,
-      coordinatorPubkey: target.coordinatorPubkey,
+      id: latest.id,
+      coordinatorPubkey: latest.coordinatorPubkey,
     });
     const deletingActiveRoom = room?.id === target.id && room.coordinatorPubkey === target.coordinatorPubkey;
     if (deletingActiveRoom) {
@@ -799,6 +804,21 @@
       roomConnectionDetail = undefined;
       if (remainingRooms[0]) await selectRoom(remainingRooms[0]);
     }
+  }
+
+  function requestSidebarHostedRoomRemoval(target: StoredRoom, origin: HTMLButtonElement | undefined): void {
+    if (!target.isHost || target.coordinatorPubkey !== coordinatorPubkey) return;
+    const latest = loadRoom(target.id, target.coordinatorPubkey);
+    if (!latest || !sameRoomIdentity(latest, target)) return;
+    roomRemovalTarget = latest;
+    roomRemovalOrigin = origin ?? null;
+  }
+
+  function closeRoomRemovalDialog(): void {
+    roomRemovalTarget = null;
+    const origin = roomRemovalOrigin;
+    roomRemovalOrigin = null;
+    if (origin) void tick().then(() => origin.focus());
   }
 
   async function wakeCoordinator() {
@@ -1176,18 +1196,15 @@
               {#if selectedServerIsHome}
                 <div class="channel-list">
                   {#each hostedRooms as entry (roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id))}
-                    <button
-                      class:active={!embeddedChatActive && Boolean(room && sameRoomIdentity(entry.room, room))}
-                      class="channel-row"
-                      type="button"
-                      aria-label={`Open room ${entry.room.title}, hosted by ${hostIdentityForRoom(entry.room).name}`}
-                      onclick={() => selectRoom(entry)}
-                    >
-                      <span class="channel-active-mark" aria-hidden="true"></span>
-                      <span class="channel-hash" aria-hidden="true">#</span>
-                      <span class="truncate">{entry.room.title}</span>
-                      <RoomHostBadge host={hostIdentityForRoom(entry.room)} compact />
-                    </button>
+                    <div class:active={!embeddedChatActive && Boolean(room && sameRoomIdentity(entry.room, room))} class="channel-row">
+                      <button class="channel-row-primary" type="button" aria-label={`Open room ${entry.room.title}, hosted by ${hostIdentityForRoom(entry.room).name}`} onclick={() => selectRoom(entry)}>
+                        <span class="channel-active-mark" aria-hidden="true"></span>
+                        <span class="channel-hash" aria-hidden="true">#</span>
+                        <span class="truncate" title={entry.room.title}>{entry.room.title}</span>
+                        <RoomHostBadge host={hostIdentityForRoom(entry.room)} compact />
+                      </button>
+                      <RoomActionsMenu sidebar roomTitle={entry.room.title} {soundsEnabled} removalMode="delete" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarHostedRoomRemoval(entry.room, origin)} />
+                    </div>
                   {/each}
                   {#each homeJoinedRooms as joinedRoom (`${joinedRoom.coordinatorPubkey}:${joinedRoom.id}`)}
                     <button
@@ -1529,7 +1546,7 @@
         messageCount={roomRemovalTarget.messages.length}
         pendingInviteCount={pendingJoinRequests.length}
         onConfirm={deleteCurrentHostedRoom}
-        onClose={() => roomRemovalTarget = null}
+        onClose={closeRoomRemovalDialog}
       />
     {/if}
   </div>
@@ -1601,8 +1618,9 @@
   .channel-empty:hover { border-color: #7cf59d; color: #dfffe7; }
   .channel-empty:disabled { cursor: default; border-color: #202d25; color: #546159; opacity: .65; }
   .channel-previous-guidance, .coordinator-key-warning { margin: .35rem .7rem .15rem; color: #d9d68e; font-size: .58rem; line-height: 1.5; }
-  .channel-row { position: relative; display: grid; width: 100%; grid-template-columns: .15rem auto minmax(0, 1fr) auto; align-items: center; gap: .55rem; border: 1px solid transparent; padding: .55rem .55rem .55rem .2rem; color: #91a59a; text-align: left; font-size: .72rem; }
-  .channel-row:hover { background: #111a14; color: #dfffe7; }
+  .channel-row { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border: 1px solid transparent; color: #91a59a; text-align: left; font-size: .72rem; }
+  .channel-row-primary { display: grid; min-width: 0; grid-template-columns: .15rem auto minmax(0, 1fr) auto; align-items: center; gap: .55rem; padding: .55rem .2rem; color: inherit; text-align: left; }
+  .channel-row:hover .channel-row-primary, .channel-row:focus-within .channel-row-primary { background: #111a14; color: #dfffe7; }
   .channel-row.active { background: #17241b; color: #effff2; }
   .channel-active-mark { align-self: stretch; border-radius: 0 2px 2px 0; background: transparent; }
   .channel-row.active .channel-active-mark { background: #7cf59d; box-shadow: 0 0 10px rgb(124 245 157 / .25); }

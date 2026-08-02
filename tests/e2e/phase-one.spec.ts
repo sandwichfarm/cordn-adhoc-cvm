@@ -1027,14 +1027,14 @@ test("sidebar room actions do not open the row before deleting its exact host ro
   await createRoom(page, "Sidebar keep");
   await createRoom(page, "Sidebar delete");
 
-  const activeBefore = await page.locator(".channel-row.active").textContent();
+  await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Sidebar delete");
   const targetRow = page.locator(".channel-row").filter({ hasText: "Sidebar delete" });
   const trigger = targetRow.getByRole("button", { name: "More actions for # Sidebar delete" });
   await expect(trigger).toBeVisible();
   await trigger.focus();
   await expect(trigger).toBeFocused();
   await trigger.click();
-  await expect(page.locator(".channel-row.active")).toHaveText(activeBefore ?? "");
+  await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Sidebar delete");
 
   const menu = page.getByRole("menu", { name: "Room actions for Sidebar delete" });
   await expect(menu.getByRole("menuitem", { name: "Delete room Sidebar delete" })).toBeVisible();

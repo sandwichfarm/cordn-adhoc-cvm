@@ -6,10 +6,11 @@
     soundsEnabled: boolean;
     removalMode: "delete" | "leave";
     onToggleSounds: () => void | Promise<void>;
-    onRemove: () => void;
+    onRemove: (origin?: HTMLButtonElement) => void;
+    sidebar?: boolean;
   }
 
-  let { roomTitle, soundsEnabled, removalMode, onToggleSounds, onRemove }: Props = $props();
+  let { roomTitle, soundsEnabled, removalMode, onToggleSounds, onRemove, sidebar = false }: Props = $props();
   let open = $state(false);
   let trigger: HTMLButtonElement | undefined = $state();
 
@@ -23,20 +24,26 @@
     event.preventDefault();
     close(true);
   }
+
+  function toggle(event: MouseEvent): void {
+    if (sidebar) event.stopPropagation();
+    open = !open;
+  }
+
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="room-actions">
+<div class:sidebar class="room-actions">
   <button
     bind:this={trigger}
     class="more-room-actions"
     type="button"
-    aria-label="More room actions"
+    aria-label={sidebar ? `More actions for # ${roomTitle}` : "More room actions"}
     aria-haspopup="menu"
     aria-expanded={open}
     title="More room actions"
-    onclick={() => open = !open}
+    onclick={toggle}
   >
     <span aria-hidden="true">•••</span>
   </button>
@@ -45,7 +52,7 @@
     <button class="room-actions-scrim" type="button" aria-label="Close room actions" onclick={() => close(true)}></button>
     <div class="room-actions-menu" role="menu" aria-label={`Room actions for ${roomTitle}`}>
       <header><span>Room actions</span><strong># {roomTitle}</strong></header>
-      <button
+      {#if !sidebar}<button
         class="room-menu-action"
         type="button"
         role="menuitemcheckbox"
@@ -54,16 +61,16 @@
       >
         <span>{soundsEnabled ? "Mute notification sounds" : "Enable notification sounds"}</span>
         <span aria-hidden="true">{soundsEnabled ? "on" : "off"}</span>
-      </button>
+      </button>{/if}
       <button
         class:delete={removalMode === "delete"}
         class="room-menu-action"
         type="button"
         role="menuitem"
         aria-label={`${removalMode === "delete" ? "Delete" : "Leave"} room ${roomTitle}`}
-        onclick={() => { close(); onRemove(); }}
+        onclick={() => { close(); onRemove(trigger); }}
       >
-        <span>{removalMode === "delete" ? "Delete this room" : "Leave this room"}</span>
+        <span>{removalMode === "delete" ? (sidebar ? "Delete room" : "Delete this room") : (sidebar ? "Leave room" : "Leave this room")}</span>
         <span aria-hidden="true">→</span>
       </button>
     </div>
@@ -72,8 +79,10 @@
 
 <style>
   .room-actions { position: absolute; z-index: 96; top: .65rem; right: .65rem; }
+  .room-actions.sidebar { position: relative; top: auto; right: auto; z-index: 2; }
   .more-room-actions { position: relative; z-index: 96; display: grid; width: 2.65rem; height: 2.65rem; place-items: center; border: 0; background: transparent; color: #91a59a; font-size: .68rem; font-weight: 800; letter-spacing: .08em; transition: background .15s ease, color .15s ease; }
-  .more-room-actions:hover, .more-room-actions:focus-visible, .more-room-actions[aria-expanded="true"] { background: #111a14; color: #effff2; outline: none; }
+  .sidebar .more-room-actions { width: 2.75rem; height: 2.75rem; }
+  .more-room-actions:hover, .more-room-actions:focus-visible, .more-room-actions[aria-expanded="true"] { background: #111a14; color: #effff2; outline: 2px solid #7cf59d; outline-offset: -2px; }
   .room-actions-scrim { position: fixed; z-index: 94; inset: 0; border: 0; background: rgb(0 0 0 / .32); cursor: default; backdrop-filter: blur(1px); }
   .room-actions-menu { position: absolute; z-index: 95; top: calc(100% + .45rem); right: 0; display: grid; width: min(19rem, calc(100vw - 1rem)); border: 1px solid #496451; background: rgb(7 12 9 / .99); box-shadow: 0 20px 54px rgb(0 0 0 / .62); padding: .35rem; }
   .room-actions-menu header { display: grid; gap: .22rem; border-bottom: 1px solid #293832; padding: .55rem .6rem .65rem; }
