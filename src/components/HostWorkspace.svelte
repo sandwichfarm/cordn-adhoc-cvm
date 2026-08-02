@@ -1969,9 +1969,9 @@
   .startup-content h1 { margin-top: .6rem; color: #f3fff6; font-size: clamp(1.8rem, 4vw, 3.4rem); font-weight: 650; letter-spacing: -.035em; }
   .startup-copy { max-width: 32rem; margin: .8rem auto 0; color: #91a59a; font-size: .8rem; line-height: 1.65; }
   .startup-progress-panel { width: min(448px, 100%); margin: 1.25rem auto 0; background: rgb(8 14 10 / .82); padding: .8rem .9rem; text-align: left; backdrop-filter: blur(8px); }
-  .startup-progress-panel header { display: flex; min-width: 0; align-items: end; justify-content: space-between; gap: 1rem; }
+  .startup-progress-panel header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 1rem; }
   .startup-progress-panel header > div { min-width: 0; }
-  .startup-progress-panel header span, .startup-progress-panel header strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .startup-progress-panel header span, .startup-progress-panel header strong { display: block; overflow-wrap: anywhere; }
   .startup-progress-panel header span { color: #66786d; font-size: .48rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
   .startup-progress-panel header strong { margin-top: .28rem; color: #e8f5eb; font-size: .72rem; font-weight: 650; }
   .startup-progress-value { flex: 0 0 auto; color: #e4e78d; font-size: .72rem; font-variant-numeric: tabular-nums; }
@@ -1982,7 +1982,7 @@
   .startup-progress-panel footer { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 1rem; margin-top: .55rem; color: #82958a; font-size: .54rem; line-height: 1.45; }
   .startup-progress-panel footer > span:first-child { min-width: 0; }
   .startup-progress-panel footer > span:last-child { flex: 0 0 auto; color: #687a6f; font-variant-numeric: tabular-nums; }
-  .startup-recovery-actions { display: flex; justify-content: flex-end; gap: .45rem; margin-top: .75rem; }
+  .startup-recovery-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; margin-top: .75rem; }
   .startup-recovery-actions button { border: 1px solid #496451; padding: .55rem .7rem; color: #c6d7cb; font-size: .6rem; }
   .startup-recovery-actions button:hover, .startup-recovery-actions button:focus-visible { border-color: #7cf59d; color: #effff2; outline: none; }
   .startup-recovery-actions .startup-primary { border-color: #7cf59d; background: #7cf59d; color: #071009; font-weight: 650; }

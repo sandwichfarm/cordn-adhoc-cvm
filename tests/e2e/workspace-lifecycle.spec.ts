@@ -137,6 +137,55 @@ async function expectStartupFillsHostPane(page: import("@playwright/test").Page)
   })).toBe(true);
 }
 
+async function expectShellControlsUsable(page: import("@playwright/test").Page): Promise<void> {
+  const topbar = page.locator(".host-topbar");
+  const rail = page.getByTestId("invite-panel");
+  await expect(topbar).toBeVisible();
+  await expect(rail).toBeVisible();
+  await expect(topbar).not.toHaveAttribute("inert");
+  await expect(topbar).not.toHaveAttribute("aria-hidden", "true");
+  await expect(rail).not.toHaveAttribute("inert");
+  await expect(rail).not.toHaveAttribute("aria-hidden", "true");
+
+  const headerSettings = topbar.getByRole("button", { name: "Settings", exact: true });
+  await headerSettings.focus();
+  await expect(headerSettings).toBeFocused();
+  await headerSettings.click();
+  const settings = page.getByTestId("coordinator-settings");
+  await expect(settings).toBeVisible();
+  await closeCoordinatorSettings(settings);
+
+  const railControl = page.locator(".channel-context-button");
+  await railControl.focus();
+  await expect(railControl).toBeFocused();
+  await railControl.click();
+  await expect(page.getByRole("menu", { name: "Choose coordinator" })).toBeVisible();
+  await railControl.click();
+}
+
+async function expectStartupMasks(page: import("@playwright/test").Page): Promise<void> {
+  const field = page.getByTestId("startup-ascii-field");
+  await expect(field).toHaveAttribute("aria-hidden", "true");
+  await expect(field).toHaveCSS("pointer-events", "none");
+  await expect(field.locator(".ascii-bed .ascii-texture")).toHaveCount(1);
+  const rings = field.locator(".ascii-ring");
+  await expect(rings).toHaveCount(3);
+  const maskDetails = await rings.evaluateAll((elements: Element[]) => elements.map((element) => {
+    const style = getComputedStyle(element);
+    return {
+      hasTexture: element.querySelector(".ascii-texture") !== null,
+      hasMask: style.maskImage.includes("gradient") || style.webkitMaskImage.includes("gradient"),
+      borderWidth: style.borderTopWidth,
+      focusable: element.matches(":focus-visible") || (element as HTMLElement).tabIndex >= 0,
+    };
+  }));
+  expect(maskDetails).toEqual([
+    { hasTexture: true, hasMask: true, borderWidth: "0px", focusable: false },
+    { hasTexture: true, hasMask: true, borderWidth: "0px", focusable: false },
+    { hasTexture: true, hasMask: true, borderWidth: "0px", focusable: false },
+  ]);
+}
+
 async function openRoomActions(
   page: import("@playwright/test").Page,
   roomTitle: string,
@@ -380,7 +429,7 @@ test("generates copyable identity on first load", async ({ page }) => {
   await closeCoordinatorSettings(settings);
 });
 
-test("hosted-room recovery progress shows zero rooms before the host workspace is ready", async ({ page }) => {
+test("startup recovery states stay truthful for empty recovery", async ({ page }) => {
   await page.goto("/");
   await configureMockRelay(page);
 
@@ -407,7 +456,7 @@ test("does not render disconnected local chat during recovery", async ({ page })
   await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i)).toHaveCount(0);
 });
 
-test("multi-room recovery retries and exhausts safely before a retained manual retry", async ({ page }) => {
+test("startup recovery states stay truthful through retry and exhaustion", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto("/");
   await enablePersistence(page, "multi-room-recovery-passphrase");
@@ -1881,7 +1930,7 @@ test("persists relay and runtime configuration across reloads", async ({ page })
   await closeCoordinatorSettings(reloadedSettings);
 });
 
-test("restores the remembered anonymous host channel after identity initialization", async ({ page }) => {
+test("startup handoff keeps actions reachable", async ({ page }) => {
   await page.goto("/");
   await enablePersistence(page, "active-room-passphrase");
   await configureMockRelay(page);
@@ -1961,25 +2010,8 @@ test("startup fills the workspace content pane and keeps shell controls usable",
   await expectStartupFillsHostPane(page);
   const stage = page.locator(".startup-stage");
   await expect(stage).toHaveCSS("position", "absolute");
-  await expect(page.locator(".host-topbar")).toBeVisible();
-  await expect(page.getByTestId("invite-panel")).toBeVisible();
-  await expect(page.locator(".host-topbar")).not.toHaveAttribute("inert");
-  await expect(page.locator(".host-topbar")).not.toHaveAttribute("aria-hidden", "true");
-  await expect(page.getByTestId("invite-panel")).not.toHaveAttribute("inert");
-  await expect(page.getByTestId("invite-panel")).not.toHaveAttribute("aria-hidden", "true");
-  const headerSettings = page.locator(".host-topbar").getByRole("button", { name: "Settings", exact: true });
-  await headerSettings.focus();
-  await expect(headerSettings).toBeFocused();
-  await headerSettings.click();
-  const settings = page.getByTestId("coordinator-settings");
-  await expect(settings).toBeVisible();
-  await closeCoordinatorSettings(settings);
-  const railControl = page.locator(".channel-context-button");
-  await railControl.focus();
-  await expect(railControl).toBeFocused();
-  await railControl.click();
-  await expect(page.getByRole("menu", { name: "Choose coordinator" })).toBeVisible();
-  await railControl.click();
+  await expectShellControlsUsable(page);
+  await expectStartupMasks(page);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-forward-target", /\d+/);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", /restoring|retrying|exhausted/);
   await expect(page.getByRole("progressbar")).toBeVisible();
@@ -1999,6 +2031,52 @@ test("startup fills the workspace content pane and keeps shell controls usable",
 
   await page.locator(".channel-context-button").click();
   await expect(page.getByTestId("local-coordinator-menu-status")).toHaveAttribute("data-state", "connecting");
+});
+
+test("startup covers every supported content pane", async ({ page }) => {
+  const createdRoomTitle = "Content pane recovery room";
+  const longRoomTitle = `Long <room> ${"recovery label ".repeat(18)}`;
+  await page.goto("/");
+  await enablePersistence(page, "content-pane-passphrase");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await createRoom(page, createdRoomTitle);
+
+  await page.evaluate(({ createdTitle, longTitle }) => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:")) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const room = JSON.parse(raw) as { isHost?: boolean; relayUrls?: string[]; title?: string };
+      if (!room.isHost || room.title !== createdTitle) continue;
+      room.title = longTitle;
+      room.relayUrls = ["ws://127.0.0.1:1"];
+      localStorage.setItem(key, JSON.stringify(room));
+      return;
+    }
+    throw new Error("Could not find the persisted local host room");
+  }, { createdTitle: createdRoomTitle, longTitle: longRoomTitle });
+
+  await page.reload();
+  await page.getByPlaceholder("passphrase", { exact: true }).fill("content-pane-passphrase");
+  await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
+  await expect(page.getByTestId("startup-current-status")).toContainText(longRoomTitle);
+
+  for (const viewport of [
+    { width: 1024, height: 640 },
+    { width: 1280, height: 720 },
+    { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expectStartupFillsHostPane(page);
+    await expectShellControlsUsable(page);
+    await expectStartupMasks(page);
+    await expectViewportOwned(page, viewport);
+    await expect(page.getByTestId("startup-progress-panel")).toContainText(longRoomTitle);
+  }
 });
 
 test("blocks a second running coordinator for the same public key", async ({ page }) => {
