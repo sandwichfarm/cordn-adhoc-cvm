@@ -20,9 +20,9 @@
 
 ### Coordinator Startup & Recovery
 
-- [ ] **BOOT-01**: Coordinator startup reports room restoration as an explicit progress stage, including the current room and aggregate completion progress.
-- [ ] **BOOT-02**: Recoverable room connection timeouts remain in the startup/retry experience instead of surfacing as terminal MCP errors; a persistent failure becomes an actionable error only after recovery is exhausted.
-- [ ] **BOOT-03**: A locally hosted room cannot render as a disconnected chat while its coordinator startup and room recovery are still in progress.
+- [x] **BOOT-01**: Coordinator startup reports room restoration as an explicit progress stage, including the current room and aggregate completion progress.
+- [x] **BOOT-02**: Recoverable room connection timeouts remain in the startup/retry experience instead of surfacing as terminal MCP errors; a persistent failure becomes an actionable error only after recovery is exhausted.
+- [x] **BOOT-03**: A locally hosted room cannot render as a disconnected chat while its coordinator startup and room recovery are still in progress.
 
 ### Startup Motion
 
@@ -86,9 +86,9 @@
 | ROOM-01 | Phase 16 | Pending |
 | ROOM-02 | Phase 16 | Pending |
 | ROOM-03 | Phase 16 | Complete |
-| BOOT-01 | Phase 16 | Pending |
-| BOOT-02 | Phase 16 | Pending |
-| BOOT-03 | Phase 16 | Pending |
+| BOOT-01 | Phase 16 | Complete |
+| BOOT-02 | Phase 16 | Complete |
+| BOOT-03 | Phase 16 | Complete |
 | MOTION-01 | Phase 17 | Pending |
 | MOTION-02 | Phase 17 | Pending |
 | MOTION-03 | Phase 17 | Pending |

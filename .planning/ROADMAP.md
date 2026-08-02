@@ -53,11 +53,11 @@ and closes with repeatable delivery guidance and automated proof.
   4. A recoverable room timeout remains visible as retry/recovery progress; only an exhausted recovery becomes an actionable failure.
   5. A locally hosted room remains visibly recovering during startup and never appears as a disconnected chat before recovery finishes.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 - [x] 16-01-PLAN.md
 - [x] 16-02-PLAN.md
-- [ ] 16-03-PLAN.md
+- [x] 16-03-PLAN.md
 
 **UI hint**: yes
 
@@ -125,7 +125,7 @@ and closes with repeatable delivery guidance and automated proof.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 15. Identity Continuity & Membership Integrity | 3/3 | Complete    | 2026-08-02 |
-| 16. Resilient Rooms & Recovery | 2/3 | In Progress|  |
+| 16. Resilient Rooms & Recovery | 3/3 | In Progress|  |
 | 17. Full-Viewport Startup Motion | 0/TBD | Not started | - |
 | 18. Unified Presence, Notifications & Controls | 0/TBD | Not started | - |
 | 19. Grouped Conversations & Reactions | 0/TBD | Not started | - |
