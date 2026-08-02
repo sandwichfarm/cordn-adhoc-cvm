@@ -7,6 +7,7 @@
   interface Props {
     coordinatorLocked: boolean;
     coordinatorStatus: string;
+    homeCoordinatorPubkey?: string;
     onNavigate: (href: string) => void;
   }
 
@@ -16,12 +17,18 @@
     rooms: StoredRoom[];
   }
 
-  let { coordinatorLocked, coordinatorStatus, onNavigate }: Props = $props();
+  let { coordinatorLocked, coordinatorStatus, homeCoordinatorPubkey, onNavigate }: Props = $props();
   let revision = $state(0);
 
   const rooms = $derived(revision >= 0 ? listRooms() : []);
   const joinedRooms = $derived(rooms.filter((room) => !room.isHost));
-  const localRooms = $derived(rooms.filter((room) => room.isHost));
+  const currentLocalRooms = $derived(homeCoordinatorPubkey
+    ? rooms.filter((room) => room.isHost && room.coordinatorPubkey === homeCoordinatorPubkey)
+    : []
+  );
+  const previousLocalRooms = $derived(rooms.filter((room) =>
+    room.isHost && (!homeCoordinatorPubkey || room.coordinatorPubkey !== homeCoordinatorPubkey)
+  ));
   const coordinators = $derived.by(() => groupByCoordinator(joinedRooms));
 
   function groupByCoordinator(source: StoredRoom[]): CoordinatorGroup[] {
@@ -122,7 +129,7 @@
                     <span class="room-mark" aria-hidden="true">#</span>
                     <span class="room-copy">
                       <strong>{room.title}</strong>
-                      <small>{roomPreview(room)}</small>
+                      <small>{roomPreview(room)}{room.coordinatorKeyMode === "ephemeral" ? " · Host uses a temporary key" : ""}</small>
                     </span>
                     <RoomHostBadge host={hostIdentityForRoom(room)} compact />
                   </button>
@@ -139,18 +146,39 @@
         </div>
       {/if}
 
-      {#if localRooms.length > 0}
+      {#if currentLocalRooms.length > 0}
         <details class="local-rooms">
           <summary>
-            <span>Rooms hosted here</span>
-            <span>{localRooms.length}</span>
+            <span>Current coordinator rooms</span>
+            <span>{currentLocalRooms.length}</span>
           </summary>
           <p>{coordinatorLocked || coordinatorStatus !== "running" ? "The local coordinator is offline. Cached conversations remain available." : "The local coordinator is online."}</p>
           <div class="room-list">
-            {#each localRooms as room (`${room.coordinatorPubkey}:${room.id}`)}
+            {#each currentLocalRooms as room (`${room.coordinatorPubkey}:${room.id}`)}
               <button type="button" class="room-row" aria-label={`Open hosted room ${room.title}, hosted by ${hostIdentityForRoom(room).name}`} onclick={() => openRoom(room)}>
                 <span class="room-mark" aria-hidden="true">#</span>
-                <span class="room-copy"><strong>{room.title}</strong><small>{roomPreview(room)}</small></span>
+                <span class="room-copy"><strong>{room.title}</strong><small>{roomPreview(room)}{room.coordinatorKeyMode === "ephemeral" ? " · Temporary coordinator key" : ""}</small></span>
+                <RoomHostBadge host={hostIdentityForRoom(room)} compact />
+              </button>
+            {/each}
+          </div>
+        </details>
+      {/if}
+
+      {#if previousLocalRooms.length > 0}
+        <details class="local-rooms previous-local-rooms" open>
+          <summary>
+            <span>{homeCoordinatorPubkey ? "Previous local sessions" : "Saved hosted sessions"}</span>
+            <span>{previousLocalRooms.length}</span>
+          </summary>
+          <p>{homeCoordinatorPubkey
+            ? "The coordinator key changed. Open a room to leave its saved copy from this device; the current coordinator cannot delete it."
+            : "Unlock the coordinator to identify which saved sessions belong to its current key."}</p>
+          <div class="room-list">
+            {#each previousLocalRooms as room (`${room.coordinatorPubkey}:${room.id}`)}
+              <button type="button" class="room-row" aria-label={`Open previous local session ${room.title}, hosted by ${hostIdentityForRoom(room).name}`} onclick={() => openRoom(room)}>
+                <span class="room-mark" aria-hidden="true">↺</span>
+                <span class="room-copy"><strong>{room.title}</strong><small>Coordinator {shortKey(room.coordinatorPubkey)}{room.coordinatorKeyMode === "ephemeral" ? " · Temporary key" : ""}</small></span>
                 <RoomHostBadge host={hostIdentityForRoom(room)} compact />
               </button>
             {/each}
@@ -202,6 +230,9 @@
   .local-rooms summary::-webkit-details-marker { display: none; }
   .local-rooms summary:hover { background: #101713; color: #b9cbbf; }
   .local-rooms > p { border-top: 1px solid #202d25; padding: .55rem .8rem; color: #66786d; font-size: .55rem; line-height: 1.5; }
+  .previous-local-rooms { border-color: #4d4d31; }
+  .previous-local-rooms > summary { color: #d9d68e; }
+  .previous-local-rooms > p { color: #9d9e7d; }
 
   @media (max-width: 520px) {
     .lobby-brand, .coordinator-link { min-height: 3rem; padding: .55rem .7rem; }

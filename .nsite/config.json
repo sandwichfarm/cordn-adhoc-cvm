@@ -14,8 +14,8 @@
     "https://cdn.hzrd149.com",
     "https://blssm.us"
   ],
-  "id": "cordnadhoc",
-  "title": "CORDN AD-HOC CVM",
+  "id": "cahmls",
+  "title": "🐪 CAHMLS",
   "description": "An ad-hoc cordn contextvm that runs in the browser",
   "fallback": "index.html"
 

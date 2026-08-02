@@ -7,6 +7,7 @@ import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
 export const PROFILE_RELAYS = ["wss://purplepag.es", "wss://relay.damus.io"] as const;
 export const NIP46_CONNECT_RELAYS = ["wss://bucket.coracle.social"] as const;
+const NIP07_SESSION_STORAGE_KEY = "cordn:v1:nip07-session";
 
 export type UserAuthMethod = "anonymous" | "nip07" | "nip46";
 export type UserProfileStatus = "idle" | "connecting" | "loading" | "ready" | "error";
@@ -31,9 +32,11 @@ export class UserProfileStore {
   profile = $state<NostrProfile | null>(null);
   status = $state<UserProfileStatus>("idle");
   error = $state("");
+  initialized = $state(false);
   private signer: NostrSigner | null = null;
   private remoteSigner: NostrConnectSigner | null = null;
   private remotePool: NostrConnectPool | null = null;
+  private initialization: Promise<void> | null = null;
 
   get displayName(): string {
     return this.profile?.display_name?.trim()
@@ -60,6 +63,16 @@ export class UserProfileStore {
     return this.signer;
   }
 
+  get hasIdentity(): boolean {
+    return this.pubkey.trim().length > 0;
+  }
+
+  initialize(anonymousPubkey: string, anonymousName = ""): Promise<void> {
+    if (this.initialization) this.setAnonymous(anonymousPubkey, anonymousName);
+    this.initialization ??= this.bootstrap(anonymousPubkey, anonymousName);
+    return this.initialization;
+  }
+
   setAnonymous(pubkey: string, name = ""): void {
     if (this.method !== "anonymous") return;
     this.pubkey = pubkey;
@@ -78,6 +91,18 @@ export class UserProfileStore {
       this.status = "error";
       this.error = cause instanceof Error ? cause.message : "Could not connect the NIP-07 signer";
       throw cause;
+    }
+  }
+
+  private async restoreNip07Session(): Promise<boolean> {
+    if (this.method !== "anonymous" || !hasStoredNip07Session() || !this.nip07Available) return false;
+    try {
+      await this.connectNip07();
+      return true;
+    } catch {
+      this.status = "ready";
+      this.error = "";
+      return false;
     }
   }
 
@@ -146,6 +171,7 @@ export class UserProfileStore {
     this.remotePool = null;
     this.remoteSigner = null;
     this.signer = null;
+    clearStoredNip07Session();
     this.method = "anonymous";
     this.profile = null;
     this.error = "";
@@ -180,8 +206,51 @@ export class UserProfileStore {
     this.method = method;
     this.pubkey = pubkey;
     this.profile = null;
+    if (method === "nip07") saveNip07Session();
+    else clearStoredNip07Session();
     await this.refreshProfile();
   }
+
+  private async bootstrap(anonymousPubkey: string, anonymousName: string): Promise<void> {
+    this.setAnonymous(anonymousPubkey, anonymousName);
+    await this.restoreNip07Session();
+    this.initialized = true;
+  }
+}
+
+function hasStoredNip07Session(): boolean {
+  const storage = browserStorage();
+  if (!storage) return false;
+  try {
+    const value = JSON.parse(storage.getItem(NIP07_SESSION_STORAGE_KEY) ?? "null") as unknown;
+    return isRecord(value) && value.version === 1 && value.method === "nip07";
+  } catch {
+    return false;
+  }
+}
+
+function saveNip07Session(): void {
+  try {
+    browserStorage()?.setItem(NIP07_SESSION_STORAGE_KEY, JSON.stringify({ version: 1, method: "nip07" }));
+  } catch {
+    // Browser storage may be unavailable; the in-memory identity remains usable.
+  }
+}
+
+function clearStoredNip07Session(): void {
+  try {
+    browserStorage()?.removeItem(NIP07_SESSION_STORAGE_KEY);
+  } catch {
+    // Local logout still succeeds when browser storage is unavailable.
+  }
+}
+
+function browserStorage(): Storage | null {
+  return "localStorage" in globalThis ? globalThis.localStorage : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export function parseKindZero(content: string): NostrProfile | null {

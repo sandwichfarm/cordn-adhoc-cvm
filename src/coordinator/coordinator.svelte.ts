@@ -349,10 +349,15 @@ export class CoordinatorStore {
    * Delete a room through the local host control plane. This is deliberately
    * not registered as a coordinator RPC method.
    */
-  async deleteHostedRoom(groupId: string): Promise<void> {
-    const normalizedGroupId = groupId.trim();
+  async deleteHostedRoom(target: { id: string; coordinatorPubkey: string }): Promise<void> {
+    const normalizedGroupId = target.id.trim();
     if (normalizedGroupId.length === 0) {
       throw new Error("Room id is required");
+    }
+    const targetCoordinatorPubkey = target.coordinatorPubkey.trim().toLowerCase();
+    const localCoordinatorPubkey = this.identity.publicKeyHex.toLowerCase();
+    if (!targetCoordinatorPubkey || targetCoordinatorPubkey !== localCoordinatorPubkey) {
+      throw new Error("Cannot delete a room hosted by another coordinator");
     }
 
     try {

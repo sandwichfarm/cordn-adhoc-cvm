@@ -14,6 +14,7 @@ describe("Feature: self-contained chat invitations", () => {
         pubkey: "f".repeat(64),
         avatar: "https://images.example/ada.png",
       },
+      coordinatorKeyMode: "ephemeral",
     });
 
     expect(new URL(url).origin).toBe("http://localhost:4173");
@@ -29,6 +30,27 @@ describe("Feature: self-contained chat invitations", () => {
         pubkey: "f".repeat(64),
         avatar: "https://images.example/ada.png",
       },
+      coordinatorKeyMode: "ephemeral",
+    });
+  });
+
+  test("Scenario: invalid coordinator key lifecycle metadata is ignored", () => {
+    const url = new URL(createInviteUrl("https://adhoc.example", {
+      groupId: "lifecycle-room",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: [],
+      coordinatorKeyMode: "persistent",
+    }));
+    const metadata = JSON.parse(Buffer.from(url.searchParams.get("m")!, "base64url").toString("utf8")) as Record<string, unknown>;
+    metadata.coordinatorKeyMode = "sometimes";
+    url.searchParams.set("m", Buffer.from(JSON.stringify(metadata)).toString("base64url"));
+
+    expect(parseInviteUrl(url.toString())).toEqual({
+      groupId: "lifecycle-room",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: [],
+      title: "Chat",
+      coordinatorOrigin: "https://adhoc.example",
     });
   });
 

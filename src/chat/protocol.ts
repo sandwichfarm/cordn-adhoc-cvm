@@ -36,6 +36,16 @@ const CHAT_ENVELOPE_AUTH_KIND = 24_242;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+/** Keep composer and reaction controls interoperable across every chat surface. */
+export const CHAT_EMOJI_SHORTCUTS = ["👍", "❤️", "😂", "🎉", "👋", "✨"] as const;
+export type ChatEmojiShortcut = typeof CHAT_EMOJI_SHORTCUTS[number];
+
+export interface ChatReactionMutation {
+  targetMessageId: string;
+  emoji: ChatEmojiShortcut;
+  active: boolean;
+}
+
 export interface ChatEnvelope {
   type: "message";
   id: string;
@@ -46,6 +56,8 @@ export interface ChatEnvelope {
   badgeEmoji?: string;
   content: string;
   createdAt: number;
+  /** Optional so pre-reaction clients still advance MLS state using `type: message`. */
+  reaction?: ChatReactionMutation;
   auth?: {
     id: string;
     sig: string;
@@ -190,7 +202,8 @@ export async function signChatEnvelope(envelope: ChatEnvelope, signer: NostrSign
  * chat history but their presentation must not be treated as authoritative.
  */
 export function hasValidChatEnvelopeAuth(envelope: ChatEnvelope): boolean {
-  if (!envelope.auth || !/^[0-9a-f]{64}$/i.test(envelope.sender)) return false;
+  if (!envelope.auth || !/^[0-9a-f]{64}$/i.test(envelope.sender)
+    || (envelope.reaction !== undefined && !isChatReactionMutation(envelope.reaction))) return false;
   try {
     const event: NostrEvent = {
       ...chatEnvelopeAuthTemplate(envelope),
@@ -237,6 +250,11 @@ export async function decryptMessage(state: ClientState, opaqueBase64: string, o
   if (candidate.type !== "message" || !candidate.id || !candidate.sender || !candidate.name || typeof candidate.content !== "string") {
     throw new Error("Received an invalid chat message");
   }
+  // A malformed reaction is intentionally consumed but never converted into an
+  // ordinary message. This keeps the MLS ratchet aligned with its sender.
+  if (candidate.reaction !== undefined && !isChatReactionMutation(candidate.reaction)) {
+    return { state: result.newState };
+  }
   return {
     state: result.newState,
     envelope: sanitizeChatEnvelopeHostBadge(candidate as ChatEnvelope, options.expectedHostPubkey),
@@ -258,6 +276,20 @@ function chatEnvelopeAuthTemplate(envelope: ChatEnvelope): EventTemplate {
       badgeEmoji: envelope.badgeEmoji ?? null,
       content: envelope.content,
       createdAt: envelope.createdAt,
+      reaction: envelope.reaction ?? null,
     }),
   };
+}
+
+/** Strictly validate the compact mutation before it can affect a room projection. */
+export function isChatReactionMutation(value: unknown): value is ChatReactionMutation {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const reaction = value as Record<string, unknown>;
+  const keys = Object.keys(reaction).sort();
+  if (keys.length !== 3 || keys[0] !== "active" || keys[1] !== "emoji" || keys[2] !== "targetMessageId") return false;
+  return typeof reaction.targetMessageId === "string"
+    && reaction.targetMessageId.trim().length > 0
+    && typeof reaction.emoji === "string"
+    && (CHAT_EMOJI_SHORTCUTS as readonly string[]).includes(reaction.emoji)
+    && typeof reaction.active === "boolean";
 }

@@ -70,7 +70,10 @@ describe("browser coordinator deleted-room persistence", () => {
     const coordinator = new CoordinatorStore();
     const coordinatorPubkey = coordinator.identity.publicKeyHex;
 
-    await coordinator.deleteHostedRoom("hosted-room");
+    await coordinator.deleteHostedRoom({
+      id: "hosted-room",
+      coordinatorPubkey,
+    });
 
     expect(coordinator.debugLog.at(-1)).toMatchObject({
       level: "info",
@@ -79,6 +82,20 @@ describe("browser coordinator deleted-room persistence", () => {
     });
     const storage = await createBrowserCoordinatorStorage(false, coordinatorPubkey);
     expect(storage.isGroupDeleted("hosted-room")).toBe(true);
+    storage.close();
+  });
+
+  test("refuses to delete a same-id room owned by another coordinator", async () => {
+    const coordinator = new CoordinatorStore();
+    const coordinatorPubkey = coordinator.identity.publicKeyHex;
+
+    await expect(coordinator.deleteHostedRoom({
+      id: "shared-room",
+      coordinatorPubkey: "f".repeat(64),
+    })).rejects.toThrow("Cannot delete a room hosted by another coordinator");
+
+    const storage = await createBrowserCoordinatorStorage(false, coordinatorPubkey);
+    expect(storage.isGroupDeleted("shared-room")).toBe(false);
     storage.close();
   });
 });

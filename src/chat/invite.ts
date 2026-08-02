@@ -6,6 +6,8 @@ export interface RoomHostIdentity {
   avatar?: string;
 }
 
+export type CoordinatorKeyMode = "ephemeral" | "persistent";
+
 export interface ChatInvite {
   groupId: string;
   coordinatorPubkey: string;
@@ -14,12 +16,14 @@ export interface ChatInvite {
   coordinatorOrigin?: string;
   inviteToken?: string;
   host?: RoomHostIdentity;
+  coordinatorKeyMode?: CoordinatorKeyMode;
 }
 
 interface InviteMetadata {
   title: string;
   coordinatorOrigin: string;
   host?: RoomHostIdentity;
+  coordinatorKeyMode?: CoordinatorKeyMode;
 }
 
 const HOST_NAME_MAX_LENGTH = 96;
@@ -93,11 +97,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function normalizeCoordinatorKeyMode(value: unknown): CoordinatorKeyMode | undefined {
+  return value === "ephemeral" || value === "persistent" ? value : undefined;
+}
+
 /** A self-contained invite: group, coordinator identity, and relay hints travel together. */
 export function createInviteUrl(origin: string, invite: ChatInvite): string {
   const shellOrigin = requireHttpOrigin(origin);
   const coordinatorOrigin = requireHttpOrigin(invite.coordinatorOrigin ?? shellOrigin);
   const host = normalizeRoomHostIdentity(invite.host);
+  const coordinatorKeyMode = normalizeCoordinatorKeyMode(invite.coordinatorKeyMode);
   const coordinator = nip19.nprofileEncode({
     pubkey: invite.coordinatorPubkey,
     relays: invite.relayUrls,
@@ -106,6 +115,7 @@ export function createInviteUrl(origin: string, invite: ChatInvite): string {
     title: invite.title ?? "Chat",
     coordinatorOrigin,
     ...(host ? { host } : {}),
+    ...(coordinatorKeyMode ? { coordinatorKeyMode } : {}),
   } satisfies InviteMetadata);
   const params = new URLSearchParams({ c: coordinator, m: meta });
   if (invite.inviteToken) params.set("i", invite.inviteToken);
@@ -137,6 +147,9 @@ export function parseInviteUrl(value: string): ChatInvite | null {
         : null;
     if (!coordinatorOrigin) return null;
     const host = normalizeRoomHostIdentity((meta as { host?: unknown }).host);
+    const coordinatorKeyMode = normalizeCoordinatorKeyMode(
+      (meta as { coordinatorKeyMode?: unknown }).coordinatorKeyMode,
+    );
     const inviteToken = url.searchParams.get("i")?.trim() || undefined;
 
     return {
@@ -147,6 +160,7 @@ export function parseInviteUrl(value: string): ChatInvite | null {
       coordinatorOrigin,
       ...(inviteToken ? { inviteToken } : {}),
       ...(host ? { host } : {}),
+      ...(coordinatorKeyMode ? { coordinatorKeyMode } : {}),
     };
   } catch {
     return null;

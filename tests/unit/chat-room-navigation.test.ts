@@ -12,6 +12,7 @@ describe("same-shell room navigation", () => {
       coordinatorOrigin: "https://coordinator.example:443/api",
       relayUrls: ["wss://one.example", "wss://two.example"],
       inviteToken: "stored-capability",
+      coordinatorKeyMode: "ephemeral",
       isHost: false,
       joinRequestSent: true,
       host: {
@@ -36,6 +37,7 @@ describe("same-shell room navigation", () => {
         pubkey: "f".repeat(64),
         avatar: "https://images.example/ada.png",
       },
+      coordinatorKeyMode: "ephemeral",
     });
   });
 
@@ -51,6 +53,7 @@ describe("same-shell room navigation", () => {
         name: "Grace",
         pubkey: "e".repeat(64),
       },
+      coordinatorKeyMode: "persistent",
     };
 
     const href = createSameShellChatHref("https://local-shell.example", invite);

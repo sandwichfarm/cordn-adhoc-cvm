@@ -3,8 +3,9 @@ import { generateSecretKey } from "nostr-tools";
 import { bytesToHex, hexToBytes } from "nostr-tools/utils";
 import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
 import { notificationCenter } from "../notifications/notification-center.svelte";
-import { normalizeRoomHostIdentity, type ChatInvite, type RoomHostIdentity } from "./invite";
+import { normalizeRoomHostIdentity, type ChatInvite, type CoordinatorKeyMode, type RoomHostIdentity } from "./invite";
 import {
+  CHAT_EMOJI_SHORTCUTS,
   addMember,
   createKeyPackage,
   createRoomState,
@@ -14,10 +15,14 @@ import {
   encryptMessage,
   groupCreatorPubkey,
   groupId,
+  hasValidChatEnvelopeAuth,
+  isChatReactionMutation,
   joinWelcome,
   sanitizeChatEnvelopeHostBadge,
   signChatEnvelope,
+  type ChatEmojiShortcut,
   type ChatEnvelope,
+  type ChatReactionMutation,
   type LocalKeyPackage,
 } from "./protocol";
 import { ChatCoordinatorClient, type RemoteJoinRequest } from "./coordinator-client";
@@ -27,6 +32,7 @@ const ROOM_KEY_V2_PREFIX = `${ROOM_KEY_PREFIX}v2:`;
 const ACTIVE_HOST_ROOM_KEY_PREFIX = "cordn-adhoc-active-host-room:";
 export const ROOMS_CHANGED_EVENT = "cordn:rooms-changed";
 export const SERVER_ONLINE_EVENT = "cordn:server-online";
+export const SERVER_OFFLINE_EVENT = "cordn:server-offline";
 
 export interface StoredMessage extends ChatEnvelope {
   cursor?: number;
@@ -36,6 +42,20 @@ export interface StoredMessage extends ChatEnvelope {
 export interface PendingMessage {
   id: string;
   opaqueBase64: string;
+}
+
+/** Bounded latest-state record: one entry per message, emoji, and participant. */
+export interface StoredReaction extends ChatReactionMutation {
+  id: string;
+  sender: string;
+  createdAt: number;
+  cursor?: number;
+}
+
+export interface ReactionSummary {
+  emoji: ChatEmojiShortcut;
+  count: number;
+  viewerActive: boolean;
 }
 
 export interface RoomIdentity {
@@ -64,9 +84,12 @@ export interface StoredRoom {
   lastCursor: number;
   messages: StoredMessage[];
   pending: PendingMessage[];
+  /** Optional for version-1 cached rooms written before reactions existed. */
+  reactions?: StoredReaction[];
   autoApprove?: boolean;
   inviteToken?: string;
   host?: RoomHostIdentity;
+  coordinatorKeyMode?: CoordinatorKeyMode;
   joinRequestSent?: boolean;
   createdAt?: number;
   updatedAt?: number;
@@ -105,10 +128,12 @@ export class ChatRoomSession {
     if (this.timer) window.clearInterval(this.timer);
     this.timer = null;
     window.removeEventListener("online", this.handleOnline);
+    window.removeEventListener("offline", this.handleOffline);
     await this.sync();
     if (this.stopped || generation !== this.lifecycleGeneration) return;
     this.timer = window.setInterval(() => void this.sync(), 4_000);
     window.addEventListener("online", this.handleOnline);
+    window.addEventListener("offline", this.handleOffline);
   }
 
   stop(): void {
@@ -117,6 +142,7 @@ export class ChatRoomSession {
     if (this.timer) window.clearInterval(this.timer);
     this.timer = null;
     window.removeEventListener("online", this.handleOnline);
+    window.removeEventListener("offline", this.handleOffline);
     void this.client?.close();
     this.client = null;
   }
@@ -160,6 +186,46 @@ export class ChatRoomSession {
       this.emit();
       await this.syncOnce();
     });
+  }
+
+  async setReaction(targetMessageId: string, emoji: ChatEmojiShortcut, active: boolean): Promise<void> {
+    await this.runExclusive(async () => {
+      if (this.stopped || this.status.connection !== "connected") {
+        throw new Error("The coordinator must be connected before you can react");
+      }
+      if (this.room.joinRequestSent) throw new Error("Wait for the host to admit you before reacting");
+      if (!this.room.messages.some((message) => message.id === targetMessageId)) {
+        throw new Error("That message is no longer available for reactions");
+      }
+      if (!(CHAT_EMOJI_SHORTCUTS as readonly string[]).includes(emoji)) {
+        throw new Error("That emoji is not available as a reaction");
+      }
+      const event = await signChatEnvelope({
+        type: "message",
+        id: crypto.randomUUID(),
+        sender: this.room.stablePubkey,
+        name: this.room.name,
+        avatar: this.room.avatar,
+        badgeLabel: this.room.badgeLabel,
+        badgeEmoji: this.room.badgeEmoji,
+        content: `${active ? "Reacted" : "Removed reaction"} ${emoji}`,
+        createdAt: Date.now(),
+        reaction: { targetMessageId, emoji, active },
+      }, this.signer);
+      const encrypted = await encryptMessage(decodeState(this.room.stateBase64), event);
+      this.room.stateBase64 = encodeState(encrypted.state);
+      this.applyReaction(event);
+      this.room.pending = [...this.room.pending, { id: event.id, opaqueBase64: encrypted.opaqueBase64 }];
+      this.persist();
+      this.emit();
+      await this.syncOnce();
+    });
+  }
+
+  async toggleReaction(targetMessageId: string, emoji: ChatEmojiShortcut): Promise<void> {
+    const current = reactionSummary(this.room, targetMessageId, this.room.stablePubkey)
+      .find((reaction) => reaction.emoji === emoji);
+    await this.setReaction(targetMessageId, emoji, !current?.viewerActive);
   }
 
   setIdentity(identity: RoomIdentity): void {
@@ -247,8 +313,7 @@ export class ChatRoomSession {
       if (this.stopped) return;
       this.markServerOnline();
     } catch (error) {
-      this.serverWasOnline = false;
-      this.status = { connection: "offline", detail: error instanceof Error ? error.message : "Coordinator unavailable" };
+      this.markServerOffline(error instanceof Error ? error.message : "Coordinator unavailable");
       await this.client?.close();
       this.client = null;
     } finally {
@@ -258,6 +323,7 @@ export class ChatRoomSession {
   }
 
   private handleOnline = () => void this.sync();
+  private handleOffline = () => this.markServerOffline("Browser offline");
 
   private markServerOnline(detail?: string): void {
     this.status = { connection: "connected", detail };
@@ -265,6 +331,20 @@ export class ChatRoomSession {
     if (this.serverWasOnline) return;
     this.serverWasOnline = true;
     window.dispatchEvent(new CustomEvent(SERVER_ONLINE_EVENT, {
+      detail: {
+        coordinatorPubkey: this.room.coordinatorPubkey,
+        roomId: this.room.id,
+      },
+    }));
+  }
+
+  private markServerOffline(detail: string): void {
+    const alreadyOffline = this.status.connection === "offline";
+    this.serverWasOnline = false;
+    this.status = { connection: "offline", detail };
+    this.emit();
+    if (alreadyOffline) return;
+    window.dispatchEvent(new CustomEvent(SERVER_OFFLINE_EVENT, {
       detail: {
         coordinatorPubkey: this.room.coordinatorPubkey,
         roomId: this.room.id,
@@ -318,6 +398,7 @@ export class ChatRoomSession {
       const posted = await client.postGroupMessage(pending.opaqueBase64);
       this.room.lastCursor = Math.max(this.room.lastCursor, posted.cursor);
       this.room.messages = this.room.messages.map((message) => message.id === pending.id ? { ...message, cursor: posted.cursor, pending: false } : message);
+      this.room.reactions = (this.room.reactions ?? []).map((reaction) => reaction.id === pending.id ? { ...reaction, cursor: posted.cursor } : reaction);
       this.room.pending = this.room.pending.filter((message) => message.id !== pending.id);
     }
   }
@@ -333,7 +414,9 @@ export class ChatRoomSession {
         });
         state = decoded.state;
         this.room.lastCursor = Math.max(this.room.lastCursor, message.cursor);
-        if (decoded.envelope && !this.room.messages.some((entry) => entry.id === decoded.envelope?.id)) {
+        if (decoded.envelope?.reaction) {
+          this.applyReaction({ ...decoded.envelope, cursor: message.cursor });
+        } else if (decoded.envelope && !this.room.messages.some((entry) => entry.id === decoded.envelope?.id)) {
           this.room.messages = [...this.room.messages, { ...decoded.envelope, cursor: message.cursor }];
           if (shouldNotify && decoded.envelope.sender !== this.room.stablePubkey) {
             notificationCenter.enqueue({
@@ -363,6 +446,22 @@ export class ChatRoomSession {
     for (const listener of this.listeners) listener();
   }
 
+  private applyReaction(envelope: ChatEnvelope & { cursor?: number }): void {
+    const reaction = envelope.reaction;
+    if (!reaction || !hasValidChatEnvelopeAuth(envelope) || !this.room.messages.some((message) => message.id === reaction.targetMessageId)) return;
+    const next: StoredReaction = {
+      id: envelope.id,
+      sender: envelope.sender,
+      createdAt: envelope.createdAt,
+      cursor: envelope.cursor,
+      ...reaction,
+    };
+    const key = reactionKey(next);
+    const prior = (this.room.reactions ?? []).find((entry) => reactionKey(entry) === key);
+    if (prior && !isLaterReaction(next, prior)) return;
+    this.room.reactions = [...(this.room.reactions ?? []).filter((entry) => reactionKey(entry) !== key), next];
+  }
+
   private runExclusive<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.operationQueue.then(operation, operation);
     this.operationQueue = result.then(() => undefined, () => undefined);
@@ -370,7 +469,7 @@ export class ChatRoomSession {
   }
 }
 
-export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity }): Promise<StoredRoom> {
+export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity; coordinatorKeyMode?: CoordinatorKeyMode }): Promise<StoredRoom> {
   const secret = generateSecretKey();
   const signer = new BrowserNostrSigner(secret);
   const stablePubkey = await signer.getPublicKey();
@@ -397,9 +496,11 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
     lastCursor: 0,
     messages: [],
     pending: [],
+    reactions: [],
     autoApprove: input.autoApprove ?? true,
     inviteToken: createInviteToken(),
     host: normalizeRoomHostIdentity({ name, pubkey: stablePubkey, avatar }),
+    coordinatorKeyMode: input.coordinatorKeyMode,
     createdAt: Date.now(),
   };
   saveRoom(room);
@@ -426,8 +527,10 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
     lastCursor: 0,
     messages: [],
     pending: [],
+    reactions: [],
     inviteToken: input.invite.inviteToken,
     host: normalizeRoomHostIdentity(input.invite.host),
+    coordinatorKeyMode: input.invite.coordinatorKeyMode,
     joinRequestSent: true,
     createdAt: Date.now(),
   };
@@ -657,13 +760,32 @@ function readStoredRoom(raw: string | null): StoredRoom | null {
       || !Array.isArray(room.pending)
       || !room.pending.every(isPendingMessage)) return null;
     const stored = room as unknown as StoredRoom;
+    if (stored.coordinatorKeyMode !== "ephemeral" && stored.coordinatorKeyMode !== "persistent") {
+      delete stored.coordinatorKeyMode;
+    }
     const host = normalizeRoomHostIdentity(room.host);
     if (host) stored.host = host;
     else delete stored.host;
     const expectedHostPubkey = stored.isHost
       ? stored.stablePubkey
       : verifiedCreatorPubkeyFromStoredState(stored);
+    const cachedReactions = Array.isArray(room.reactions)
+      ? room.reactions.filter(isStoredReaction)
+      : [];
     stored.messages = stored.messages.map((message) => sanitizeChatEnvelopeHostBadge(message, expectedHostPubkey));
+    for (const message of stored.messages) {
+      if (message.reaction && isChatReactionMutation(message.reaction) && hasValidChatEnvelopeAuth(message)) {
+        cachedReactions.push({
+          id: message.id,
+          sender: message.sender,
+          createdAt: message.createdAt,
+          cursor: message.cursor,
+          ...message.reaction,
+        });
+      }
+    }
+    stored.messages = stored.messages.filter((message) => !message.reaction || !isChatReactionMutation(message.reaction) || !hasValidChatEnvelopeAuth(message));
+    stored.reactions = normalizeReactionProjection(cachedReactions);
     return stored;
   } catch {
     return null;
@@ -727,4 +849,50 @@ function verifiedCreatorPubkeyFromStoredState(room: StoredRoom): string | undefi
 
 function isPendingMessage(value: unknown): value is PendingMessage {
   return isRecord(value) && typeof value.id === "string" && typeof value.opaqueBase64 === "string";
+}
+
+export function reactionSummary(room: Pick<StoredRoom, "reactions">, targetMessageId: string, viewerPubkey: string): ReactionSummary[] {
+  const summaries = new Map<ChatEmojiShortcut, ReactionSummary>();
+  for (const reaction of room.reactions ?? []) {
+    if (reaction.targetMessageId !== targetMessageId || !reaction.active) continue;
+    const summary = summaries.get(reaction.emoji) ?? { emoji: reaction.emoji, count: 0, viewerActive: false };
+    summary.count += 1;
+    summary.viewerActive ||= reaction.sender === viewerPubkey;
+    summaries.set(reaction.emoji, summary);
+  }
+  return [...summaries.values()];
+}
+
+function isStoredReaction(value: unknown): value is StoredReaction {
+  if (!isRecord(value)) return false;
+  const validMutation = isChatReactionMutation({
+    targetMessageId: value.targetMessageId,
+    emoji: value.emoji,
+    active: value.active,
+  });
+  return validMutation
+    && typeof value.id === "string"
+    && typeof value.sender === "string"
+    && typeof value.createdAt === "number"
+    && Number.isFinite(value.createdAt)
+    && (value.cursor === undefined || (typeof value.cursor === "number" && Number.isFinite(value.cursor)));
+}
+
+function normalizeReactionProjection(reactions: StoredReaction[]): StoredReaction[] {
+  const latest = new Map<string, StoredReaction>();
+  for (const reaction of reactions) {
+    const prior = latest.get(reactionKey(reaction));
+    if (!prior || isLaterReaction(reaction, prior)) latest.set(reactionKey(reaction), reaction);
+  }
+  return [...latest.values()];
+}
+
+function reactionKey(reaction: Pick<StoredReaction, "targetMessageId" | "emoji" | "sender">): string {
+  return `${reaction.targetMessageId}\u0000${reaction.emoji}\u0000${reaction.sender}`;
+}
+
+function isLaterReaction(next: StoredReaction, prior: StoredReaction): boolean {
+  if (next.cursor !== undefined && prior.cursor !== undefined && next.cursor !== prior.cursor) return next.cursor > prior.cursor;
+  if (next.createdAt !== prior.createdAt) return next.createdAt > prior.createdAt;
+  return next.id > prior.id;
 }

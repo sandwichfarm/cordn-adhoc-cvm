@@ -5,11 +5,16 @@
   import type { CoordinatorIdentity } from "../crypto/key-manager";
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
   import type { ConfigStore } from "../config/config.svelte";
-  import { createInviteUrl, normalizeRoomHostIdentity } from "../chat/invite";
+  import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
+  import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, rememberActiveHostRoom, removeStoredRoom, ROOMS_CHANGED_EVENT, rotateRoomInvite, saveRoom, signerForStoredRoom, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createHostedRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reactionSummary, rememberActiveHostRoom, removeStoredRoom, ROOMS_CHANGED_EVENT, rotateRoomInvite, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, signerForStoredRoom, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import type { RemoteJoinRequest } from "../chat/coordinator-client";
+  import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
   import CoordinatorSettings from "./CoordinatorSettings.svelte";
+  import ChatRoute from "./ChatRoute.svelte";
+  import PassphrasePrompt from "./PassphrasePrompt.svelte";
   import LifecyclePanel from "./LifecyclePanel.svelte";
   import InviteInbox from "./InviteInbox.svelte";
   import MessageAuthor from "./MessageAuthor.svelte";
@@ -19,13 +24,12 @@
   import PresenceControl from "./PresenceControl.svelte";
   import ResourceMonitor from "./ResourceMonitor.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
+  import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
   import StartupSignalField from "./StartupSignalField.svelte";
   import UserProfile from "./UserProfile.svelte";
   import WorkspaceNav from "./WorkspaceNav.svelte";
   import { userProfileStore } from "../identity/user-profile.svelte";
-
-  const emojiShortcuts = ["👍", "❤️", "😂", "🎉", "👋", "✨"];
 
   interface Props {
     coordinator: CoordinatorStore;
@@ -35,6 +39,8 @@
     relayUrls: string[];
     currentUrl: string;
     homeCoordinatorPubkey?: string;
+    identityReady: boolean;
+    locked?: boolean;
     onNavigate: (href: string) => void;
   }
 
@@ -50,7 +56,9 @@
     rooms: StoredRoom[];
   }
 
-  let { coordinator, config, identity, coordinatorPubkey, relayUrls, currentUrl, homeCoordinatorPubkey, onNavigate }: Props = $props();
+  type CoordinatorReachability = "online" | "connecting" | "offline" | "unknown";
+
+  let { coordinator, config, identity, coordinatorPubkey, relayUrls, currentUrl, homeCoordinatorPubkey, identityReady, locked = false, onNavigate }: Props = $props();
   let title = $state("");
   let inviteUrl = $state("");
   let qrUrl = $state("");
@@ -62,6 +70,7 @@
   let hostedRooms = $state<HostedRoomEntry[]>([]);
   let homeJoinedRooms = $state<StoredRoom[]>([]);
   let remoteRooms = $state<StoredRoom[]>([]);
+  let previousLocalRooms = $state<StoredRoom[]>([]);
   let composer = $state("");
   let revision = $state(0);
   let roomConnection = $state<"connecting" | "connected" | "offline">("connecting");
@@ -87,6 +96,16 @@
   let mobileToolsOpen = $state(false);
   let refreshState = $state<"idle" | "refreshing" | "refreshed">("idle");
   let roomRemovalTarget = $state<StoredRoom | null>(null);
+  let reactionPickerMessageId = $state<string | null>(null);
+  let reactionError = $state("");
+  let embeddedChatContext = $state<ChatPaneContext | null>(null);
+  let remoteCoordinatorReachability = $state<Record<string, CoordinatorReachability>>({});
+  let reachabilityProbeGeneration = 0;
+  let reachabilityTimer: number | null = null;
+  let reachabilityTargetsSignature = "";
+  let browserOnline = $state(typeof navigator === "undefined" ? true : navigator.onLine);
+  let lastSyncedRouteContext = "";
+  const reachabilityProbe = new SimplePoolNostrInstanceNetwork(1_500);
 
   const dialogOpen = $derived(shareDialogOpen || createDialogOpen || roomRemovalTarget !== null);
   const remoteServers = $derived.by(() => {
@@ -105,40 +124,86 @@
     }
     return Object.values(groups);
   });
+  const previousLocalServers = $derived.by(() => {
+    const groups: Record<string, RemoteServerGroup> = {};
+    for (const storedRoom of previousLocalRooms) {
+      const group = groups[storedRoom.coordinatorPubkey];
+      if (group) {
+        group.rooms.push(storedRoom);
+      } else {
+        groups[storedRoom.coordinatorPubkey] = {
+          pubkey: storedRoom.coordinatorPubkey,
+          origin: storedRoom.coordinatorOrigin,
+          rooms: [storedRoom],
+        };
+      }
+    }
+    return Object.values(groups);
+  });
   const selectedRemoteServer = $derived(remoteServers.find((server) => server.pubkey === selectedServerPubkey));
+  const selectedPreviousLocalServer = $derived(previousLocalServers.find((server) => server.pubkey === selectedServerPubkey));
+  const selectedExternalServer = $derived(selectedRemoteServer ?? selectedPreviousLocalServer);
   const selectedServerIsHome = $derived(!selectedServerPubkey || selectedServerPubkey === coordinatorPubkey);
+  const selectedServerIsPreviousLocal = $derived(!selectedServerIsHome && selectedPreviousLocalServer !== undefined);
   const selectedServerName = $derived(selectedServerIsHome
     ? config.coordinatorName || "My coordinator"
-    : `Coordinator ${shortKey(selectedServerPubkey || coordinatorPubkey)}`
+    : selectedServerIsPreviousLocal
+      ? `Previous local ${shortKey(selectedServerPubkey)}`
+      : `Coordinator ${shortKey(selectedServerPubkey || coordinatorPubkey)}`
   );
   const selectedServerRoomCount = $derived(selectedServerIsHome
     ? hostedRooms.length + homeJoinedRooms.length
-    : selectedRemoteServer?.rooms.length ?? 0
+    : selectedRemoteServer?.rooms.length
+      ?? selectedPreviousLocalServer?.rooms.length
+      ?? (activeIntentInvite?.coordinatorPubkey === selectedServerPubkey ? 1 : 0)
   );
-  const joinedChatCount = $derived(homeJoinedRooms.length + remoteRooms.filter((storedRoom) => !storedRoom.isHost).length);
+  const activeIntentInvite = $derived(parseInviteUrl(currentUrl));
+  const activeIntentHost = $derived(activeIntentInvite?.host
+    ? { ...activeIntentInvite.host, avatar: undefined }
+    : undefined);
+  const hasChatIntent = $derived(new URL(currentUrl).pathname.startsWith("/chat/"));
+  const intentStoredRoom = $derived.by(() => {
+    if (revision < 0 || !activeIntentInvite) return null;
+    return loadRoom(activeIntentInvite.groupId, activeIntentInvite.coordinatorPubkey);
+  });
+  const intentTargetsCurrentHostedRoom = $derived(Boolean(
+    intentStoredRoom?.isHost && intentStoredRoom.coordinatorPubkey === coordinatorPubkey,
+  ));
+  const embeddedChatActive = $derived(hasChatIntent && !intentTargetsCurrentHostedRoom);
   const localRoomReady = $derived(
     coordinator.status === "running" && room !== null && session !== null && roomConnection === "connected"
   );
-  const localCoordinatorStatus = $derived.by(() => {
-    if (localRoomReady) return "ready";
-    if (coordinator.status === "running" && room !== null && session !== null && roomConnection === "offline") return "error";
-    return "neutral";
-  });
+  const localCoordinatorStatus = $derived<CoordinatorReachability>(
+    !browserOnline
+      ? "offline"
+      : coordinator.status === "running"
+      ? "online"
+      : coordinator.status === "starting" || coordinator.status === "stopping"
+        ? "connecting"
+        : "offline"
+  );
   const localCoordinatorStatusLabel = $derived.by(() => {
-    if (localCoordinatorStatus === "ready") return "Coordinator and local room connected";
-    if (localCoordinatorStatus === "error") return "Coordinator running; local room offline";
-    if (coordinator.status === "running") {
-      return room !== null && session !== null
-        ? "Coordinator running; connecting local room"
-        : "Coordinator running; no local room selected";
-    }
-    return room !== null && session !== null
-      ? `Coordinator ${coordinator.status}; local room ${roomConnection}`
-      : `Coordinator ${coordinator.status}; local room not ready`;
+    if (localCoordinatorStatus === "online") return "Coordinator online";
+    if (coordinator.status === "starting") return "Coordinator starting";
+    if (coordinator.status === "stopping") return "Coordinator stopping";
+    return "Coordinator offline";
   });
 
   $effect(() => {
     if (revision >= 0) void tick().then(() => messageList?.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" }));
+  });
+
+  $effect(() => {
+    const coordinatorTarget = embeddedChatActive ? activeIntentInvite?.coordinatorPubkey : undefined;
+    const routeContext = embeddedChatActive
+      ? `remote:${coordinatorTarget ?? ""}:${activeIntentInvite?.groupId ?? ""}`
+      : "local";
+    if (routeContext !== lastSyncedRouteContext) {
+      lastSyncedRouteContext = routeContext;
+      selectedServerPubkey = coordinatorTarget ?? coordinatorPubkey;
+      probeRemoteCoordinatorsIfTargetsChanged();
+    }
+    if (!embeddedChatActive && embeddedChatContext) embeddedChatContext = null;
   });
 
   $effect(() => {
@@ -194,7 +259,7 @@
     if (session) {
       roomConnection = session.status.connection;
       roomConnectionDetail = session.status.detail;
-      const nextRoom = { ...session.room, messages: [...session.room.messages], pending: [...session.room.pending] };
+      const nextRoom = { ...session.room, messages: [...session.room.messages], pending: [...session.room.pending], reactions: [...(session.room.reactions ?? [])] };
       const receivedMessage = nextRoom.messages.some((message) => !knownMessageIds.has(message.id) && message.sender !== nextRoom.stablePubkey);
       knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
       room = nextRoom;
@@ -232,8 +297,8 @@
     for (const candidate of candidates) {
       const latest = loadRoom(candidate.id, candidate.coordinatorPubkey) ?? candidate;
       try {
-        openHostChat(latest);
         const entry = buildHostedRoomEntry(latest);
+        openHostChat(entry.room);
         inviteUrl = entry.inviteUrl;
         qrUrl = entry.qrUrl;
         return;
@@ -244,6 +309,11 @@
   }
 
   function buildHostedRoomEntry(nextRoom: StoredRoom): HostedRoomEntry {
+    const coordinatorKeyMode = coordinator.persistenceEnabled ? "persistent" : "ephemeral";
+    if (nextRoom.coordinatorKeyMode !== coordinatorKeyMode) {
+      nextRoom = { ...nextRoom, coordinatorKeyMode };
+      saveRoom(nextRoom);
+    }
     const createdInviteUrl = createInviteUrl(nextRoom.coordinatorOrigin ?? window.location.origin, {
       groupId: nextRoom.id,
       coordinatorPubkey: nextRoom.coordinatorPubkey,
@@ -251,6 +321,7 @@
       title: nextRoom.title,
       inviteToken: nextRoom.inviteToken,
       host: hostIdentityForRoom(nextRoom),
+      coordinatorKeyMode,
     });
     return {
       room: nextRoom,
@@ -285,12 +356,136 @@
     }
   }
 
+  function reachabilityTargets(): Array<{ pubkey: string; relayUrls: string[] }> {
+    const targets: Record<string, string[]> = {};
+    const addRoom = (storedRoom: StoredRoom) => {
+      if (!storedRoom.coordinatorPubkey || storedRoom.coordinatorPubkey === coordinatorPubkey) return;
+      const relays = targets[storedRoom.coordinatorPubkey] ?? [];
+      for (const relayUrl of storedRoom.relayUrls) {
+        if (!relays.includes(relayUrl)) relays.push(relayUrl);
+      }
+      targets[storedRoom.coordinatorPubkey] = relays;
+    };
+
+    for (const storedRoom of remoteRooms) addRoom(storedRoom);
+    for (const storedRoom of previousLocalRooms) addRoom(storedRoom);
+    if (activeIntentInvite && activeIntentInvite.coordinatorPubkey !== coordinatorPubkey) {
+      const relays = targets[activeIntentInvite.coordinatorPubkey] ?? [];
+      for (const relayUrl of activeIntentInvite.relayUrls) {
+        if (!relays.includes(relayUrl)) relays.push(relayUrl);
+      }
+      targets[activeIntentInvite.coordinatorPubkey] = relays;
+    }
+
+    return Object.entries(targets).map(([pubkey, relayUrls]) => ({ pubkey, relayUrls }));
+  }
+
+  function reachabilitySignature(targets = reachabilityTargets()): string {
+    return targets
+      .map((target) => `${target.pubkey}:${[...target.relayUrls].sort().join(",")}`)
+      .sort()
+      .join("|");
+  }
+
+  function probeRemoteCoordinatorsIfTargetsChanged(): void {
+    const targets = reachabilityTargets();
+    const signature = reachabilitySignature(targets);
+    if (signature === reachabilityTargetsSignature) return;
+    reachabilityTargetsSignature = signature;
+    void probeRemoteCoordinators(targets);
+  }
+
+  function externalCoordinatorReachability(pubkey: string): CoordinatorReachability {
+    const measured = remoteCoordinatorReachability[pubkey];
+    if (embeddedChatActive && activeIntentInvite?.coordinatorPubkey === pubkey) {
+      const connection = embeddedChatContext?.connection;
+      if (connection === "connected") return "online";
+      if (measured) return measured;
+      if (connection === "connecting") return "connecting";
+      if (connection === "offline" || connection === "deleted") return "offline";
+    }
+    return measured ?? "unknown";
+  }
+
+  function reachabilityLabel(state: CoordinatorReachability): string {
+    if (state === "online") return "Coordinator online";
+    if (state === "connecting") return "Checking coordinator reachability";
+    if (state === "offline") return "Coordinator offline";
+    return "Coordinator status unknown";
+  }
+
+  function setExternalCoordinatorReachability(pubkey: string, state: CoordinatorReachability): void {
+    if (!pubkey || pubkey === coordinatorPubkey || remoteCoordinatorReachability[pubkey] === state) return;
+    remoteCoordinatorReachability = { ...remoteCoordinatorReachability, [pubkey]: state };
+  }
+
+  function handleCoordinatorReachabilityEvent(event: Event, state: "online" | "offline"): void {
+    const pubkey = (event as CustomEvent<{ coordinatorPubkey?: string }>).detail?.coordinatorPubkey;
+    if (!pubkey) return;
+    if (state === "online") {
+      // A successful room sync is fresher evidence than an older heartbeat
+      // request that may still be in flight.
+      reachabilityProbeGeneration += 1;
+      setExternalCoordinatorReachability(pubkey, "online");
+      return;
+    }
+    // A room sync can fail while its coordinator remains reachable (for example,
+    // after that room is deleted). Treat the failure as uncertainty and let the
+    // coordinator heartbeat decide whether the server itself is offline.
+    setExternalCoordinatorReachability(pubkey, "connecting");
+    void probeRemoteCoordinators();
+  }
+
+  async function probeRemoteCoordinators(targets = reachabilityTargets()): Promise<void> {
+    const generation = ++reachabilityProbeGeneration;
+    const targetKeys = targets.map((target) => target.pubkey);
+    const nextState: Record<string, CoordinatorReachability> = {};
+    for (const target of targets) {
+      nextState[target.pubkey] = remoteCoordinatorReachability[target.pubkey] ?? "connecting";
+    }
+    if (Object.keys(remoteCoordinatorReachability).some((pubkey) => !targetKeys.includes(pubkey))
+      || targets.some((target) => remoteCoordinatorReachability[target.pubkey] === undefined)) {
+      remoteCoordinatorReachability = nextState;
+    }
+
+    if (!navigator.onLine) {
+      if (generation === reachabilityProbeGeneration) {
+        remoteCoordinatorReachability = Object.fromEntries(targets.map((target) => [target.pubkey, "offline"]));
+      }
+      return;
+    }
+
+    const results = await Promise.all(targets.map(async (target) => ({
+      pubkey: target.pubkey,
+      online: await reachabilityProbe.isRunning(target.pubkey, target.relayUrls, []),
+    })));
+    if (generation !== reachabilityProbeGeneration) return;
+
+    const previous = remoteCoordinatorReachability;
+    const resolved: Record<string, CoordinatorReachability> = {};
+    for (const result of results) resolved[result.pubkey] = result.online ? "online" : "offline";
+    remoteCoordinatorReachability = resolved;
+    for (const result of results) {
+      if (result.online && previous[result.pubkey] === "offline") {
+        window.dispatchEvent(new CustomEvent(SERVER_ONLINE_EVENT, {
+          detail: { coordinatorPubkey: result.pubkey },
+        }));
+      }
+    }
+  }
+
   function refreshRemoteRooms() {
     const rooms = listRooms();
     homeJoinedRooms = rooms.filter((storedRoom) =>
       storedRoom.coordinatorPubkey === coordinatorPubkey && !storedRoom.isHost
     );
-    remoteRooms = rooms.filter((storedRoom) => storedRoom.coordinatorPubkey !== coordinatorPubkey);
+    previousLocalRooms = rooms.filter((storedRoom) =>
+      storedRoom.isHost && storedRoom.coordinatorPubkey !== coordinatorPubkey
+    );
+    remoteRooms = rooms.filter((storedRoom) =>
+      !storedRoom.isHost && storedRoom.coordinatorPubkey !== coordinatorPubkey
+    );
+    probeRemoteCoordinatorsIfTargetsChanged();
   }
 
   async function openCreateDialog() {
@@ -348,6 +543,7 @@
         coordinatorOrigin: window.location.origin,
         autoApprove: newRoomAutoApprove,
         identity: currentHostIdentity(),
+        coordinatorKeyMode: coordinator.persistenceEnabled ? "persistent" : "ephemeral",
       });
       const entry = buildHostedRoomEntry(created);
       openHostChat(created);
@@ -372,6 +568,18 @@
   }
 
   function openShareDialog() {
+    if (room) {
+      const entry = buildHostedRoomEntry(room);
+      room = entry.room;
+      if (session) session.room.coordinatorKeyMode = entry.room.coordinatorKeyMode;
+      hostedRooms = hostedRooms.map((candidate) => (
+        candidate.room.id === entry.room.id && candidate.room.coordinatorPubkey === entry.room.coordinatorPubkey
+          ? entry
+          : candidate
+      ));
+      inviteUrl = entry.inviteUrl;
+      qrUrl = entry.qrUrl;
+    }
     copyState = "idle";
     refreshState = "idle";
     shareDialogOpen = true;
@@ -411,15 +619,33 @@
     mobileToolsOpen = false;
     selectedServerPubkey = coordinatorPubkey;
     const latest = loadRoom(entry.room.id, entry.room.coordinatorPubkey) ?? entry.room;
-    openHostChat(latest);
-    inviteUrl = entry.inviteUrl;
-    qrUrl = entry.qrUrl;
+    const refreshedEntry = buildHostedRoomEntry(latest);
+    openHostChat(refreshedEntry.room);
+    hostedRooms = hostedRooms.map((candidate) => (
+      candidate.room.id === refreshedEntry.room.id
+        && candidate.room.coordinatorPubkey === refreshedEntry.room.coordinatorPubkey
+        ? refreshedEntry
+        : candidate
+    ));
+    inviteUrl = refreshedEntry.inviteUrl;
+    qrUrl = refreshedEntry.qrUrl;
+    if (hasChatIntent) onNavigate("/");
   }
 
   function navigateFromRail(href: string): void {
     mobileRailOpen = false;
     mobileToolsOpen = false;
     onNavigate(href);
+  }
+
+  function handleEmbeddedChatContext(context: ChatPaneContext | null): void {
+    embeddedChatContext = context;
+  }
+
+  function handleEmbeddedRoomStored(storedRoom: StoredRoom): void {
+    refreshRemoteRooms();
+    revision += 1;
+    selectedServerPubkey = storedRoom.coordinatorPubkey;
   }
 
   function openSettings(): void {
@@ -458,6 +684,29 @@
     composerInput?.focus();
   }
 
+  async function setReaction(targetMessageId: string, emoji: ChatEmojiShortcut, active: boolean): Promise<void> {
+    if (!session) return;
+    reactionError = "";
+    try {
+      await session.setReaction(targetMessageId, emoji, active);
+      reactionPickerMessageId = null;
+      await tick();
+      document.getElementById(`host-add-reaction-${targetMessageId}`)?.focus();
+    } catch (cause) {
+      reactionError = cause instanceof Error ? cause.message : "Could not update reaction";
+    }
+  }
+
+  async function toggleReaction(targetMessageId: string, emoji: ChatEmojiShortcut): Promise<void> {
+    if (!session) return;
+    reactionError = "";
+    try {
+      await session.toggleReaction(targetMessageId, emoji);
+    } catch (cause) {
+      reactionError = cause instanceof Error ? cause.message : "Could not update reaction";
+    }
+  }
+
   function canSendMessages(): boolean {
     return session?.status.connection === "connected" && room?.joinRequestSent !== true;
   }
@@ -474,7 +723,10 @@
     const target = roomRemovalTarget;
     if (!target?.isHost) return;
 
-    await coordinator.deleteHostedRoom(target.id);
+    await coordinator.deleteHostedRoom({
+      id: target.id,
+      coordinatorPubkey: target.coordinatorPubkey,
+    });
     const deletingActiveRoom = room?.id === target.id && room.coordinatorPubkey === target.coordinatorPubkey;
     if (deletingActiveRoom) {
       unsubscribeSession?.();
@@ -483,7 +735,9 @@
       session = null;
     }
     removeStoredRoom(target);
-    const remainingRooms = hostedRooms.filter((entry) => entry.room.id !== target.id);
+    const remainingRooms = hostedRooms.filter((entry) => (
+      entry.room.id !== target.id || entry.room.coordinatorPubkey !== target.coordinatorPubkey
+    ));
     hostedRooms = remainingRooms;
 
     if (deletingActiveRoom) {
@@ -520,6 +774,9 @@
   }
 
   onDestroy(() => {
+    reachabilityProbeGeneration += 1;
+    if (reachabilityTimer !== null) window.clearInterval(reachabilityTimer);
+    reachabilityTimer = null;
     unsubscribeSession?.();
     session?.stop();
   });
@@ -528,6 +785,9 @@
       if (event.key !== "Escape") return;
       serverMenuOpen = false;
       managementOpen = false;
+      const targetMessageId = reactionPickerMessageId;
+      reactionPickerMessageId = null;
+      if (targetMessageId) void tick().then(() => document.getElementById(`host-add-reaction-${targetMessageId}`)?.focus());
       mobileRailOpen = false;
       mobileToolsOpen = false;
       if (shareDialogOpen) closeShareDialog();
@@ -537,10 +797,32 @@
     hostedRooms = listRooms()
       .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
       .map(buildHostedRoomEntry);
-    restoreHostChat();
     refreshRemoteRooms();
-    if (config.autostart && config.presenceState !== "offline" && coordinator.status === "idle") void coordinator.start();
+    const intendedHostedRoom = activeIntentInvite
+      ? hostedRooms.find((entry) => entry.room.id === activeIntentInvite?.groupId
+        && entry.room.coordinatorPubkey === activeIntentInvite?.coordinatorPubkey)
+      : undefined;
+    if (intendedHostedRoom) selectRoom(intendedHostedRoom);
+    else restoreHostChat();
+    if (activeIntentInvite && !intendedHostedRoom) selectedServerPubkey = activeIntentInvite.coordinatorPubkey;
+    if (!locked && config.autostart && config.presenceState !== "offline" && coordinator.status === "idle") void coordinator.start();
     const compactQuery = window.matchMedia("(max-width: 900px)");
+    const markCoordinatorOnline = (event: Event) => handleCoordinatorReachabilityEvent(event, "online");
+    const markCoordinatorOffline = (event: Event) => handleCoordinatorReachabilityEvent(event, "offline");
+    const markBrowserOffline = () => {
+      browserOnline = false;
+      reachabilityProbeGeneration += 1;
+      remoteCoordinatorReachability = Object.fromEntries(
+        reachabilityTargets().map((target) => [target.pubkey, "offline"] as const),
+      );
+    };
+    const recheckBrowserOnline = () => {
+      browserOnline = true;
+      void probeRemoteCoordinators();
+    };
+    const recheckWhenVisible = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) void probeRemoteCoordinators();
+    };
     const syncCompactViewport = () => {
       compactViewport = compactQuery.matches;
       if (!compactViewport) {
@@ -551,9 +833,23 @@
     syncCompactViewport();
     compactQuery.addEventListener("change", syncCompactViewport);
     window.addEventListener(ROOMS_CHANGED_EVENT, refreshRemoteRooms);
+    window.addEventListener(SERVER_ONLINE_EVENT, markCoordinatorOnline);
+    window.addEventListener(SERVER_OFFLINE_EVENT, markCoordinatorOffline);
+    window.addEventListener("offline", markBrowserOffline);
+    window.addEventListener("online", recheckBrowserOnline);
+    document.addEventListener("visibilitychange", recheckWhenVisible);
     window.addEventListener("keydown", closeDialogsOnEscape);
+    reachabilityTimer = window.setInterval(() => void probeRemoteCoordinators(), 12_000);
     return () => {
+      reachabilityProbeGeneration += 1;
+      if (reachabilityTimer !== null) window.clearInterval(reachabilityTimer);
+      reachabilityTimer = null;
       window.removeEventListener(ROOMS_CHANGED_EVENT, refreshRemoteRooms);
+      window.removeEventListener(SERVER_ONLINE_EVENT, markCoordinatorOnline);
+      window.removeEventListener(SERVER_OFFLINE_EVENT, markCoordinatorOffline);
+      window.removeEventListener("offline", markBrowserOffline);
+      window.removeEventListener("online", recheckBrowserOnline);
+      document.removeEventListener("visibilitychange", recheckWhenVisible);
       window.removeEventListener("keydown", closeDialogsOnEscape);
       compactQuery.removeEventListener("change", syncCompactViewport);
     };
@@ -568,15 +864,11 @@
         {homeCoordinatorPubkey}
         homeCoordinatorName={config.coordinatorName}
         coordinatorStatus={coordinator.status}
-        {soundsEnabled}
-        activeRoomTitle={room?.title}
-        activeRoomCoordinatorPubkey={room?.coordinatorPubkey}
-        activeRoomHost={room ? hostIdentityForRoom(room) : undefined}
-        roomConnectionStatus={room && session ? roomConnection : undefined}
-        onToggleSounds={room ? toggleSounds : undefined}
-        roomActionKind={room ? "delete" : undefined}
-        roomActionLabel={room ? `Delete room ${room.title}` : undefined}
-        onRoomAction={room ? () => roomRemovalTarget = room : undefined}
+        soundsEnabled={embeddedChatActive ? embeddedChatContext?.soundsEnabled ?? false : soundsEnabled}
+        activeRoomTitle={embeddedChatActive ? embeddedChatContext?.room?.title ?? activeIntentInvite?.title : room?.title}
+        activeRoomCoordinatorPubkey={embeddedChatActive ? embeddedChatContext?.room?.coordinatorPubkey ?? activeIntentInvite?.coordinatorPubkey : room?.coordinatorPubkey}
+        activeRoomHost={embeddedChatActive ? embeddedChatContext?.host ?? activeIntentHost : room ? hostIdentityForRoom(room) : undefined}
+        roomConnectionStatus={embeddedChatActive ? embeddedChatContext?.connection ?? undefined : room && session ? roomConnection : undefined}
         showRoomBrowser={false}
         {onNavigate}
       />
@@ -591,7 +883,7 @@
           onclick={toggleMobileRail}
         >
           <span aria-hidden="true">#</span>
-          <span>{room?.title || "Rooms"}</span>
+          <span>{embeddedChatActive ? embeddedChatContext?.room?.title ?? activeIntentInvite?.title ?? "Room" : room?.title || "Rooms"}</span>
           <strong>{selectedServerRoomCount}</strong>
         </button>
         {#if mobileToolsOpen && compactViewport}
@@ -605,7 +897,7 @@
           aria-hidden={compactViewport && !mobileToolsOpen}
           inert={compactViewport && !mobileToolsOpen}
         >
-          <PresenceControl {config} {coordinator} {coordinatorPubkey} {relayUrls} />
+          {#if !locked}<PresenceControl {config} {coordinator} {coordinatorPubkey} {relayUrls} />{/if}
           <InviteInbox {onNavigate} />
           <NotificationCenter />
           <UserProfile
@@ -618,21 +910,27 @@
             onBadgeLabelChange={(label) => config.setHostBadgeLabel(label)}
             onBadgeEmojiChange={(emoji) => config.setHostBadgeEmoji(emoji)}
           />
-          <button class:pending={coordinator.restartRequired} class="settings-button" type="button" aria-label="Settings" onclick={openSettings}>
-            <span aria-hidden="true">⚙</span>
-            <span class="hidden md:inline">Settings</span>
-            {#if coordinator.restartRequired}<span class="settings-pip" aria-label="Restart required"></span>{/if}
-          </button>
+          {#if !locked}
+            <button class:pending={coordinator.restartRequired} class="settings-button" type="button" aria-label="Settings" onclick={openSettings}>
+              <span aria-hidden="true">⚙</span>
+              <span class="hidden md:inline">Settings</span>
+              {#if coordinator.restartRequired}<span class="settings-pip" aria-label="Restart required"></span>{/if}
+            </button>
+          {/if}
         </div>
-        <LifecyclePanel {coordinator} compact onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
-        <button
-          class:active={managementOpen}
-          class="manage-toggle"
-          type="button"
-          aria-pressed={managementOpen}
-          aria-label={managementOpen ? "Close management interface" : "Open management interface"}
-          onclick={toggleManagement}
-        >{managementOpen ? "Host" : "Manage"}</button>
+        {#if locked}
+          <button class="manage-toggle" type="button" aria-label="Unlock coordinator" onclick={() => onNavigate("/")}>Unlock</button>
+        {:else}
+          <LifecyclePanel {coordinator} compact onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+          <button
+            class:active={managementOpen}
+            class="manage-toggle"
+            type="button"
+            aria-pressed={managementOpen}
+            aria-label={managementOpen ? "Close management interface" : "Open management interface"}
+            onclick={toggleManagement}
+          >{managementOpen ? "Host" : "Manage"}</button>
+        {/if}
         <button
           class:active={mobileToolsOpen}
           class="mobile-tools-toggle"
@@ -668,32 +966,51 @@
                   <button
                     class="channel-context-button"
                     type="button"
+                    aria-label={`Browse ${selectedServerName}. ${selectedServerIsHome ? localCoordinatorStatusLabel : reachabilityLabel(externalCoordinatorReachability(selectedServerPubkey))}. ${selectedServerRoomCount} ${selectedServerRoomCount === 1 ? "room" : "rooms"}.`}
                     aria-haspopup="menu"
                     aria-expanded={serverMenuOpen}
                     onclick={() => serverMenuOpen = !serverMenuOpen}
                   >
                     {#if selectedServerIsHome}
                       <span
-                        class:ready={localCoordinatorStatus === "ready"}
-                        class:error={localCoordinatorStatus === "error"}
+                        class:online={localCoordinatorStatus === "online"}
+                        class:connecting={localCoordinatorStatus === "connecting"}
+                        class:offline={localCoordinatorStatus === "offline"}
                         class="channel-server-dot"
-                        data-testid="local-coordinator-status"
+                        data-testid="selected-coordinator-status"
+                        data-coordinator-pubkey={coordinatorPubkey}
                         data-state={localCoordinatorStatus}
                         role="img"
                         aria-label={localCoordinatorStatusLabel}
                         title={localCoordinatorStatusLabel}
                       ></span>
                     {:else}
-                      <span class="channel-server-dot remote" aria-hidden="true"></span>
+                      <span
+                        class:online={externalCoordinatorReachability(selectedServerPubkey) === "online"}
+                        class:connecting={externalCoordinatorReachability(selectedServerPubkey) === "connecting"}
+                        class:offline={externalCoordinatorReachability(selectedServerPubkey) === "offline"}
+                        class:unknown={externalCoordinatorReachability(selectedServerPubkey) === "unknown"}
+                        class="channel-server-dot"
+                        data-testid="selected-coordinator-status"
+                        data-coordinator-pubkey={selectedServerPubkey}
+                        data-state={externalCoordinatorReachability(selectedServerPubkey)}
+                        role="img"
+                        aria-label={reachabilityLabel(externalCoordinatorReachability(selectedServerPubkey))}
+                        title={reachabilityLabel(externalCoordinatorReachability(selectedServerPubkey))}
+                      ></span>
                     {/if}
                     <span class="channel-context-copy">
                       <strong>{selectedServerName}</strong>
-                      <small>{selectedServerIsHome ? `${relayUrls.length} relay ${relayUrls.length === 1 ? "path" : "paths"}` : serverHost(selectedRemoteServer?.origin)}</small>
+                      <small>{selectedServerIsHome
+                        ? `${localCoordinatorStatusLabel} · ${relayUrls.length} relay ${relayUrls.length === 1 ? "path" : "paths"}`
+                        : selectedServerIsPreviousLocal
+                          ? `${reachabilityLabel(externalCoordinatorReachability(selectedServerPubkey))} · key changed`
+                          : `${reachabilityLabel(externalCoordinatorReachability(selectedServerPubkey))} · ${serverHost(selectedRemoteServer?.origin ?? activeIntentInvite?.coordinatorOrigin)}`}</small>
                     </span>
                     <span class="channel-count" title={`${selectedServerRoomCount} ${selectedServerRoomCount === 1 ? "room" : "rooms"}`}>{selectedServerRoomCount}</span>
                     <span class="channel-chevron" aria-hidden="true">{serverMenuOpen ? "↑" : "↓"}</span>
                   </button>
-                  {#if selectedServerIsHome}
+                  {#if selectedServerIsHome && !locked}
                     <button
                       class:pending={coordinator.restartRequired}
                       class="channel-settings"
@@ -715,10 +1032,12 @@
                       onclick={() => { selectedServerPubkey = coordinatorPubkey; serverMenuOpen = false; }}
                     >
                       <span
-                        class:ready={localCoordinatorStatus === "ready"}
-                        class:error={localCoordinatorStatus === "error"}
+                        class:online={localCoordinatorStatus === "online"}
+                        class:connecting={localCoordinatorStatus === "connecting"}
+                        class:offline={localCoordinatorStatus === "offline"}
                         class="channel-server-dot"
                         data-testid="local-coordinator-menu-status"
+                        data-coordinator-pubkey={coordinatorPubkey}
                         data-state={localCoordinatorStatus}
                         role="img"
                         aria-label={localCoordinatorStatusLabel}
@@ -734,17 +1053,79 @@
                         role="menuitem"
                         onclick={() => { selectedServerPubkey = server.pubkey; serverMenuOpen = false; }}
                       >
-                        <span class="channel-server-dot remote" aria-hidden="true"></span>
-                        <span><strong>Coordinator {shortKey(server.pubkey)}</strong><small>{serverHost(server.origin)}</small></span>
+                        <span
+                          class:online={externalCoordinatorReachability(server.pubkey) === "online"}
+                          class:connecting={externalCoordinatorReachability(server.pubkey) === "connecting"}
+                          class:offline={externalCoordinatorReachability(server.pubkey) === "offline"}
+                          class:unknown={externalCoordinatorReachability(server.pubkey) === "unknown"}
+                          class="channel-server-dot"
+                          data-testid={`coordinator-menu-status-${server.pubkey}`}
+                          data-coordinator-pubkey={server.pubkey}
+                          data-state={externalCoordinatorReachability(server.pubkey)}
+                          role="img"
+                          aria-label={reachabilityLabel(externalCoordinatorReachability(server.pubkey))}
+                        ></span>
+                        <span><strong>Coordinator {shortKey(server.pubkey)}</strong><small>{reachabilityLabel(externalCoordinatorReachability(server.pubkey))} · {serverHost(server.origin)}</small></span>
                         <span>{server.rooms.length}</span>
                       </button>
                     {/each}
+                    {#if activeIntentInvite
+                      && activeIntentInvite.coordinatorPubkey !== coordinatorPubkey
+                      && !remoteServers.some((server) => server.pubkey === activeIntentInvite?.coordinatorPubkey)}
+                      <button
+                        class:active={selectedServerPubkey === activeIntentInvite.coordinatorPubkey}
+                        type="button"
+                        role="menuitem"
+                        onclick={() => { selectedServerPubkey = activeIntentInvite.coordinatorPubkey; serverMenuOpen = false; }}
+                      >
+                        <span
+                          class:online={externalCoordinatorReachability(activeIntentInvite.coordinatorPubkey) === "online"}
+                          class:connecting={externalCoordinatorReachability(activeIntentInvite.coordinatorPubkey) === "connecting"}
+                          class:offline={externalCoordinatorReachability(activeIntentInvite.coordinatorPubkey) === "offline"}
+                          class:unknown={externalCoordinatorReachability(activeIntentInvite.coordinatorPubkey) === "unknown"}
+                          class="channel-server-dot"
+                          data-testid={`coordinator-menu-status-${activeIntentInvite.coordinatorPubkey}`}
+                          data-coordinator-pubkey={activeIntentInvite.coordinatorPubkey}
+                          data-state={externalCoordinatorReachability(activeIntentInvite.coordinatorPubkey)}
+                          role="img"
+                          aria-label={reachabilityLabel(externalCoordinatorReachability(activeIntentInvite.coordinatorPubkey))}
+                        ></span>
+                        <span><strong>Coordinator {shortKey(activeIntentInvite.coordinatorPubkey)}</strong><small>{reachabilityLabel(externalCoordinatorReachability(activeIntentInvite.coordinatorPubkey))} · {serverHost(activeIntentInvite.coordinatorOrigin)}</small></span>
+                        <span>1</span>
+                      </button>
+                    {/if}
+                    {#if previousLocalServers.length > 0}
+                      <p class="channel-server-group-label">Previous local sessions</p>
+                      {#each previousLocalServers as server (server.pubkey)}
+                        <button
+                          class:active={selectedServerPubkey === server.pubkey}
+                          type="button"
+                          role="menuitem"
+                          onclick={() => { selectedServerPubkey = server.pubkey; serverMenuOpen = false; }}
+                        >
+                          <span
+                            class:online={externalCoordinatorReachability(server.pubkey) === "online"}
+                            class:connecting={externalCoordinatorReachability(server.pubkey) === "connecting"}
+                            class:offline={externalCoordinatorReachability(server.pubkey) === "offline"}
+                            class:unknown={externalCoordinatorReachability(server.pubkey) === "unknown"}
+                            class="channel-server-dot"
+                            data-testid={`coordinator-menu-status-${server.pubkey}`}
+                            data-coordinator-pubkey={server.pubkey}
+                            data-state={externalCoordinatorReachability(server.pubkey)}
+                            role="img"
+                            aria-label={reachabilityLabel(externalCoordinatorReachability(server.pubkey))}
+                          ></span>
+                          <span><strong>Previous local {shortKey(server.pubkey)}</strong><small>{reachabilityLabel(externalCoordinatorReachability(server.pubkey))} · key changed; retained on this device.</small></span>
+                          <span>{server.rooms.length}</span>
+                        </button>
+                      {/each}
+                    {/if}
                   </div>
                 {/if}
               </div>
               <div class="channel-browser-header">
                 <span>Channels</span>
-                {#if selectedServerIsHome}
+                {#if selectedServerIsHome && !locked}
                   <button type="button" aria-label="New room" title={coordinator.status === "running" ? "New room" : "Start the coordinator to create a room"} disabled={coordinator.status !== "running"} onclick={() => void openCreateDialog()}>＋</button>
                 {/if}
               </div>
@@ -752,7 +1133,7 @@
                 <div class="channel-list">
                   {#each hostedRooms as entry (entry.room.id)}
                     <button
-                      class:active={entry.room.id === room?.id}
+                      class:active={!embeddedChatActive && entry.room.id === room?.id}
                       class="channel-row"
                       type="button"
                       aria-label={`Open room ${entry.room.title}, hosted by ${hostIdentityForRoom(entry.room).name}`}
@@ -766,6 +1147,7 @@
                   {/each}
                   {#each homeJoinedRooms as joinedRoom (`${joinedRoom.coordinatorPubkey}:${joinedRoom.id}`)}
                     <button
+                      class:active={embeddedChatActive && activeIntentInvite?.groupId === joinedRoom.id && activeIntentInvite?.coordinatorPubkey === joinedRoom.coordinatorPubkey}
                       class="channel-row"
                       type="button"
                       aria-label={`Open joined room ${joinedRoom.title}, hosted by ${hostIdentityForRoom(joinedRoom).name}`}
@@ -783,25 +1165,40 @@
                     </button>
                   {/if}
                 </div>
-              {:else if selectedRemoteServer}
+              {:else if selectedRemoteServer || selectedPreviousLocalServer}
                 <div class="channel-list">
-                  {#each selectedRemoteServer.rooms as remoteRoom (`${remoteRoom.coordinatorPubkey}:${remoteRoom.id}`)}
+                  {#if selectedServerIsPreviousLocal}
+                    <p class="channel-previous-guidance">This session belongs to a previous local coordinator key. Open it to leave its saved copy; the current coordinator cannot delete it.</p>
+                  {/if}
+                  {#each selectedExternalServer.rooms as remoteRoom (`${remoteRoom.coordinatorPubkey}:${remoteRoom.id}`)}
                       <button
+                        class:active={embeddedChatActive && activeIntentInvite?.groupId === remoteRoom.id && activeIntentInvite?.coordinatorPubkey === remoteRoom.coordinatorPubkey}
                         class="channel-row"
                         type="button"
-                        aria-label={`Open room ${remoteRoom.title}, hosted by ${hostIdentityForRoom(remoteRoom).name}, on ${serverHost(selectedRemoteServer.origin)}`}
+                        aria-label={selectedServerIsPreviousLocal
+                          ? `Open previous local session ${remoteRoom.title}, hosted by ${hostIdentityForRoom(remoteRoom).name}`
+                          : `Open room ${remoteRoom.title}, hosted by ${hostIdentityForRoom(remoteRoom).name}, on ${serverHost(selectedExternalServer.origin)}`}
                         onclick={() => navigateFromRail(remoteRoomHref(remoteRoom))}
                       >
                         <span class="channel-active-mark" aria-hidden="true"></span>
                         <span class="channel-hash" aria-hidden="true">#</span>
-                        <span class="truncate">{remoteRoom.title}</span>
+                        <span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>
                         <RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact />
                       </button>
                   {/each}
                 </div>
+              {:else if activeIntentInvite && activeIntentInvite.coordinatorPubkey === selectedServerPubkey}
+                <div class="channel-list">
+                  <button class="channel-row active" type="button" aria-current="page">
+                    <span class="channel-active-mark" aria-hidden="true"></span>
+                    <span class="channel-hash" aria-hidden="true">#</span>
+                    <span class="truncate">{activeIntentInvite.title || "Invited room"}</span>
+                    <RoomHostBadge host={activeIntentHost ?? { name: "Unknown host", pubkey: "" }} compact />
+                  </button>
+                </div>
               {/if}
             </nav>
-            {#if room}
+            {#if room && !embeddedChatActive}
               <div class="room-tools" aria-label={`Controls for ${room.title}`}>
                 <button class="share-trigger" type="button" aria-label="Share" aria-haspopup="dialog" onclick={openShareDialog}>
                   <span>Share</span>
@@ -827,11 +1224,36 @@
       </aside>
 
       <section class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
-        {#if localRoomReady}
+        {#if embeddedChatActive}
+          {#key currentUrl}
+            <ChatRoute
+              embedded
+              {currentUrl}
+              {homeCoordinatorPubkey}
+              homeCoordinatorName={config.coordinatorName}
+              coordinatorStatus={coordinator.status}
+              {coordinator}
+              {coordinatorPubkey}
+              {identityReady}
+              onContextChange={handleEmbeddedChatContext}
+              onRoomStored={handleEmbeddedRoomStored}
+              onNavigate={navigateFromRail}
+            />
+          {/key}
+        {:else if locked}
+          <PassphrasePrompt embedded {coordinator} />
+        {:else if localRoomReady}
           {@const composerEnabled = true}
-          <div class="flex h-full min-h-0 flex-col">{#if roomConnectionDetail}<p class="host-connection-banner">{roomConnectionDetail}</p>{/if}
-            <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">{#if room.messages.length === 0}<div class="flex h-full items-center justify-center"><p class="max-w-sm text-center text-sm leading-6 text-[#82958a]">Your room is ready. Share the invite from the left and this chat will stay connected to the coordinator.</p></div>{/if}{#each room.messages as message (message.id)}<article class:mine={message.sender === room.stablePubkey} class="host-message"><MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} /><p>{message.content}</p></article>{/each}</div>
-            <form class="shrink-0 border-t border-[#293832] p-3 sm:p-4" onsubmit={(event) => { event.preventDefault(); void send(); }}><div class="mb-2 flex gap-1 overflow-x-auto pb-1">{#each emojiShortcuts as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div><div class="flex gap-2"><input bind:this={composerInput} bind:value={composer} class="host-input min-w-0 flex-1" disabled={!composerEnabled} placeholder={roomConnection === "offline" ? "Room offline" : roomConnection === "connecting" ? "Connecting…" : "Message as host"} /><button class="host-primary px-4 sm:px-5" disabled={!composerEnabled || !composer.trim()}>Send</button></div><p class:unavailable={!composerEnabled} class="host-composer-status">{roomConnection === "offline" ? "Cached messages are read-only while this room is offline." : roomConnection === "connecting" ? "Connecting this room…" : "Connected. Messages are end-to-end encrypted."}</p></form>
+          <div class="room-pane flex h-full min-h-0 flex-col">{#if roomConnectionDetail}<p class="host-connection-banner">{roomConnectionDetail}</p>{/if}
+            <RoomActionsMenu
+              roomTitle={room.title}
+              {soundsEnabled}
+              removalMode="delete"
+              onToggleSounds={toggleSounds}
+              onRemove={() => roomRemovalTarget = room}
+            />
+            <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">{#if room.messages.length === 0}<div class="flex h-full items-center justify-center"><p class="max-w-sm text-center text-sm leading-6 text-[#82958a]">Your room is ready. Share the invite from the left and this chat will stay connected to the coordinator.</p></div>{/if}{#each room.messages as message (message.id)}{@const reactions = reactionSummary(room, message.id, room.stablePubkey)}<article class:mine={message.sender === room.stablePubkey} class="host-message"><MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} /><p>{message.content}</p><div class="reaction-controls" role="group" aria-label={`Reactions for message from ${message.name}`}><button id={`host-add-reaction-${message.id}`} type="button" class="reaction-add" aria-label="Add reaction" aria-haspopup="menu" aria-expanded={reactionPickerMessageId === message.id} disabled={!composerEnabled} onclick={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}>+</button>{#each reactions as reaction (reaction.emoji)}<button type="button" class:pressed={reaction.viewerActive} class="reaction-chip" aria-pressed={reaction.viewerActive} aria-label={`${reaction.viewerActive ? "Remove" : "Add"} ${reaction.emoji} reaction, ${reaction.count} participant${reaction.count === 1 ? "" : "s"}`} disabled={!composerEnabled} onclick={() => void toggleReaction(message.id, reaction.emoji)}>{reaction.emoji} {reaction.count}</button>{/each}{#if reactionPickerMessageId === message.id}<div class="reaction-picker" role="menu" aria-label={`Choose reaction for message from ${message.name}`}>{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" role="menuitem" aria-label={`React ${emoji}`} disabled={!composerEnabled} onclick={() => void setReaction(message.id, emoji, true)}>{emoji}</button>{/each}</div>{/if}</div></article>{/each}</div>
+            <form class="shrink-0 border-t border-[#293832] p-3 sm:p-4" onsubmit={(event) => { event.preventDefault(); void send(); }}><div class="mb-2 flex gap-1 overflow-x-auto pb-1">{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div><div class="flex gap-2"><input bind:this={composerInput} bind:value={composer} class="host-input min-w-0 flex-1" disabled={!composerEnabled} placeholder={roomConnection === "offline" ? "Room offline" : roomConnection === "connecting" ? "Connecting…" : "Message as host"} /><button class="host-primary px-4 sm:px-5" disabled={!composerEnabled || !composer.trim()}>Send</button></div><p class:unavailable={!composerEnabled} class="host-composer-status">{roomConnection === "offline" ? "Cached messages are read-only while this room is offline." : roomConnection === "connecting" ? "Connecting this room…" : "Connected. Messages are end-to-end encrypted."}</p>{#if reactionError}<p class="reaction-error" role="status">{reactionError}</p>{/if}</form>
           </div>
         {:else if coordinator.status !== "running" || (room && session)}
           <div class="startup-stage">
@@ -886,7 +1308,6 @@
                     : "Closing relay paths and securing coordinator state."}
                 </p>
                 <div class="startup-actions">
-                  {#if joinedChatCount > 0}<button type="button" data-testid="open-chats" onclick={() => navigateFromRail("/chats")}>Open chats</button>{/if}
                   <button type="button" onclick={openSettings}>Review settings</button>
                   <button class="startup-primary" type="button" disabled={coordinator.status !== "idle"} onclick={() => void wakeCoordinator()}>
                     {coordinator.status === "stopping" ? "Stopping…" : config.presenceState === "offline" ? "Wake coordinator" : "Start coordinator"}
@@ -995,6 +1416,9 @@
                   <small>Enabled by default. Turn off to admit guests manually.</small>
                 </span>
               </label>
+              {#if !coordinator.persistenceEnabled}
+                <p class="coordinator-key-warning" data-testid="ephemeral-coordinator-warning">This coordinator uses a temporary key. Reloading creates a new identity and moves this room to Previous local sessions. Save the coordinator key in Settings to keep hosting it across reloads.</p>
+              {/if}
               {#if relayUrls.length === 0}<p class="text-xs text-[#ffaaa3]">Add an enabled relay before starting a room.</p>{/if}
               {#if error}<p class="text-xs text-[#ffaaa3]">{error}</p>{/if}
             </div>
@@ -1027,6 +1451,9 @@
                 <div>
                   <p class="text-sm font-medium text-[#e8f5eb]">Scan to join</p>
                   <p class="mt-2 text-xs leading-5 text-[#91a59a]">This invite carries the coordinator identity and relay hints needed to enter the encrypted room.</p>
+                  {#if !coordinator.persistenceEnabled}
+                    <p class="coordinator-key-warning" data-testid="ephemeral-invite-warning">This host key is temporary. If the host reloads, this room becomes read-only and a new invite is required. Save the coordinator key in Settings to keep this invite valid across reloads.</p>
+                  {/if}
                 </div>
                 <code class="share-url">{inviteUrl}</code>
                 <div class="share-actions">
@@ -1077,6 +1504,7 @@
   .host-commandbar :global(.presence-trigger:hover:not(:disabled)), .host-commandbar :global(.presence-trigger[aria-expanded="true"]), .host-commandbar :global(.inbox-trigger:hover), .host-commandbar :global(.inbox-trigger.pending), .host-commandbar :global(.notification-trigger:hover), .host-commandbar :global(.notification-trigger[aria-expanded="true"]), .host-commandbar :global(.user-trigger:hover), .host-commandbar :global(.user-trigger[aria-expanded="true"]) { background: #101713; }
   .host-commandbar :global(.compact-controls) { height: 2.65rem; gap: .25rem; border: 0; border-right: 1px solid #202d25; background: transparent; padding: .3rem .4rem; }
   .host-layout { position: relative; width: 100%; max-width: 100%; overflow: hidden; grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .host-chat { width: 100%; max-width: 100%; }
   .host-layout:not(.management-open) .management-main { display: none; }
   .host-layout.management-open { grid-template-columns: minmax(21rem, 28rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .host-layout.management-open .host-chat { display: none; }
@@ -1113,19 +1541,22 @@
   .channel-server-menu strong, .channel-server-menu small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .channel-server-menu strong { font-size: .65rem; font-weight: 600; }
   .channel-server-menu small { margin-top: .18rem; color: #73867a; font-size: .52rem; }
-  .channel-server-menu > button > span:last-child { color: #7cf59d; font-size: .58rem; }
+  .channel-server-menu > button > span:last-child { color: #91a59a; font-size: .58rem; }
+  .channel-server-group-label { margin: .35rem .6rem .05rem; color: #a5a66f; font-size: .48rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
   .channel-browser-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #202d25; padding: .5rem .55rem .5rem .75rem; color: #728378; font-size: .58rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
   .channel-browser-header button { display: grid; width: 1.6rem; height: 1.6rem; place-items: center; color: #82958a; font-size: .85rem; }
   .channel-browser-header button:hover { background: #17241b; color: #7cf59d; }
   .channel-browser-header button:disabled { cursor: not-allowed; opacity: .25; }
-  .channel-server-dot { width: .38rem; height: .38rem; border-radius: 999px; background: #718277; }
-  .channel-server-dot.ready { background: #7cf59d; box-shadow: 0 0 7px rgb(124 245 157 / .3); }
-  .channel-server-dot.error { background: #ffaaa3; box-shadow: 0 0 7px rgb(255 170 163 / .3); }
-  .channel-server-dot.remote { background: #f4c46d; box-shadow: 0 0 7px rgb(244 196 109 / .25); }
+  .channel-server-dot { width: .38rem; height: .38rem; flex: 0 0 auto; border-radius: 999px; background: #39473f; box-shadow: none; }
+  .channel-server-dot.online { background: #7cf59d; box-shadow: 0 0 0 3px rgb(124 245 157 / .07), 0 0 8px rgb(124 245 157 / .3); }
+  .channel-server-dot.connecting { background: #d4bc69; box-shadow: 0 0 7px rgb(212 188 105 / .2); animation: coordinator-status-pulse 1.5s ease-in-out infinite; }
+  .channel-server-dot.offline { background: #59675f; box-shadow: none; }
+  .channel-server-dot.unknown { background: #344139; box-shadow: none; }
   .channel-list { display: grid; gap: .12rem; padding: .35rem; }
   .channel-empty { display: flex; width: 100%; align-items: center; justify-content: space-between; border: 1px dashed #293832; padding: .65rem .7rem; color: #82958a; text-align: left; font-size: .68rem; }
   .channel-empty:hover { border-color: #7cf59d; color: #dfffe7; }
   .channel-empty:disabled { cursor: default; border-color: #202d25; color: #546159; opacity: .65; }
+  .channel-previous-guidance, .coordinator-key-warning { margin: .35rem .7rem .15rem; color: #d9d68e; font-size: .58rem; line-height: 1.5; }
   .channel-row { position: relative; display: grid; width: 100%; grid-template-columns: .15rem auto minmax(0, 1fr) auto; align-items: center; gap: .55rem; border: 1px solid transparent; padding: .55rem .55rem .55rem .2rem; color: #91a59a; text-align: left; font-size: .72rem; }
   .channel-row:hover { background: #111a14; color: #dfffe7; }
   .channel-row.active { background: #17241b; color: #effff2; }
@@ -1211,6 +1642,13 @@
   .host-message { max-width: min(78%, 42rem); border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem; color: #e4f2e7; }
   .host-message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
   .host-message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
+  .room-pane { position: relative; }
+  .reaction-add, .reaction-chip, .reaction-picker button { border: 1px solid #34483a; background: #0b110d; color: #c6eccc; }
+  .reaction-controls { position: relative; display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .55rem; }
+  .reaction-add, .reaction-chip, .reaction-picker button { min-height: 1.8rem; padding: .2rem .45rem; font-size: .72rem; }
+  .reaction-chip.pressed { border-color: #7cf59d; background: #173323; }
+  .reaction-picker { display: flex; gap: .25rem; width: 100%; padding-top: .2rem; }
+  .reaction-error { margin-top: .45rem; color: #ffaaa3; font-size: .65rem; }
   .startup-stage { position: relative; display: grid; height: 100%; place-items: center; overflow: hidden; padding: 2rem; background: radial-gradient(circle at 50% 45%, rgb(35 72 47 / .18), transparent 34%), #101614; }
   .startup-stage::before { position: absolute; inset: 0; background-image: linear-gradient(rgb(124 245 157 / .025) 1px, transparent 1px), linear-gradient(90deg, rgb(124 245 157 / .025) 1px, transparent 1px); background-size: 48px 48px; content: ""; mask-image: radial-gradient(circle at center, black, transparent 72%); }
   .startup-content { position: relative; z-index: 1; width: min(38rem, 100%); max-height: 100%; overflow-y: auto; text-align: center; }
@@ -1318,6 +1756,7 @@
   }
 
   @keyframes qr-refresh { from { opacity: .25; transform: scale(.975); } }
+  @keyframes coordinator-status-pulse { 50% { opacity: .38; } }
 
   @media (max-height: 520px) {
     .startup-kicker { display: none; }
@@ -1333,5 +1772,6 @@
   @media (prefers-reduced-motion: reduce) {
     .share-qr img { animation: none; }
     .host-rail { transition: none; }
+    .channel-server-dot.connecting { animation: none; }
   }
 </style>

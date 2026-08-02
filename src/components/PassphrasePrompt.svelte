@@ -1,20 +1,18 @@
 <script lang="ts">
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
-  import { listRooms } from "../chat/room-store";
 
   interface Props {
     coordinator: CoordinatorStore;
-    onOpenChats: () => void;
+    embedded?: boolean;
   }
 
-  let { coordinator, onOpenChats }: Props = $props();
+  let { coordinator, embedded = false }: Props = $props();
   let passphrase = $state("");
-  const hasJoinedChats = listRooms().some((room) => !room.isHost);
 </script>
 
-<main class="operator-field unlock-page">
+<section class:embedded class="operator-field unlock-page" data-testid="coordinator-unlock">
   <div class="unlock-shell">
-    <header class="unlock-bar"><strong>Cordn</strong><span>Ad-Hoc MLS</span></header>
+    {#if !embedded}<header class="unlock-bar"><strong>CAHMLS</strong><span>Cordn Ad-Hoc MLS</span></header>{/if}
     <section class="unlock-stage">
       <div class="unlock-card">
         <p class="unlock-kicker">Coordinator locked</p>
@@ -26,14 +24,6 @@
           {#if coordinator.passphraseError}<p class="unlock-error" data-testid="passphrase-error">{coordinator.passphraseError}</p>{/if}
           <button class="unlock-primary" type="submit">Unlock coordinator</button>
         </form>
-
-        {#if hasJoinedChats}
-          <button class="chat-escape" data-testid="open-chats" type="button" onclick={onOpenChats}>
-            <span><strong>Open chats</strong><small>Keep this coordinator locked and offline</small></span>
-            <span aria-hidden="true">→</span>
-          </button>
-        {/if}
-
         <details class="reset-key">
           <summary>Coordinator recovery</summary>
           <p>Create a new coordinator identity only if this key is no longer needed. This cannot be undone.</p>
@@ -42,11 +32,13 @@
       </div>
     </section>
   </div>
-</main>
+</section>
 
 <style>
   .unlock-page { width: 100%; height: 100dvh; max-height: 100dvh; overflow: hidden; color: #dfffe7; }
+  .unlock-page.embedded { height: 100%; max-height: 100%; background: #101614; }
   .unlock-shell { display: grid; width: min(70rem, 100%); height: 100%; margin-inline: auto; grid-template-rows: auto minmax(0, 1fr); border-inline: 1px solid #21352a; background: rgb(7 12 9 / .82); }
+  .embedded .unlock-shell { width: 100%; border: 0; }
   .unlock-bar { display: flex; align-items: baseline; gap: .75rem; border-bottom: 1px solid #21352a; padding: .75rem 1rem; }
   .unlock-bar strong { color: #f0fff3; font-size: 1.05rem; }
   .unlock-bar span { color: #718277; font-size: .58rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
@@ -62,12 +54,6 @@
   .unlock-error { color: #ffaaa3; font-size: .68rem; }
   .unlock-primary { min-height: 2.85rem; border: 1px solid #7cf59d; background: #7cf59d; color: #08110b; font-size: .72rem; font-weight: 700; }
   .unlock-primary:hover { background: #c5ffcf; }
-  .chat-escape { display: flex; width: 100%; min-height: 3.3rem; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .7rem; border: 1px solid #3c5544; padding: .65rem .75rem; color: #bfeac8; text-align: left; }
-  .chat-escape:hover { border-color: #7cf59d; background: #101a13; }
-  .chat-escape strong, .chat-escape small { display: block; }
-  .chat-escape strong { font-size: .72rem; }
-  .chat-escape small { margin-top: .2rem; color: #718277; font-size: .55rem; font-weight: 400; }
-  .chat-escape > span:last-child { color: #7cf59d; }
   .reset-key { margin-top: .8rem; border-top: 1px solid #202d25; padding-top: .7rem; }
   .reset-key summary { cursor: pointer; color: #718277; font-size: .58rem; }
   .reset-key p { margin-top: .65rem; color: #66786d; font-size: .58rem; line-height: 1.55; }

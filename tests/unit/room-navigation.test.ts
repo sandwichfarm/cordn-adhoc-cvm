@@ -186,6 +186,23 @@ describe("room navigation persistence", () => {
     expect(loaded).not.toHaveProperty("host");
   });
 
+  it("ignores malformed optional coordinator-key metadata without hiding a room", () => {
+    const room = storedRoom({
+      id: "malformed-key-mode",
+      title: "Malformed key mode",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+    });
+    localStorage.setItem(currentRoomKey(room), JSON.stringify({
+      ...room,
+      coordinatorKeyMode: "occasionally",
+    }));
+
+    const loaded = loadRoom(room.id, room.coordinatorPubkey);
+    expect(loaded).toMatchObject({ id: room.id });
+    expect(loaded).not.toHaveProperty("coordinatorKeyMode");
+  });
+
   it("keeps identical room ids isolated by coordinator", () => {
     const first = storedRoom({
       id: "shared-group-id",

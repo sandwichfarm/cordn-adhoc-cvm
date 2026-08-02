@@ -1,9 +1,22 @@
+import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { generateSecretKey } from "nostr-tools";
+import { bytesToHex } from "nostr-tools/utils";
 
 import { startMockRelay, type MockRelay } from "./mock-relay";
 
 let relay: MockRelay;
+
+function createStoredRoomPrivateFixture(): {
+  anonymousSecretKey: string;
+  keyPackagePrivateBase64: string;
+} {
+  return {
+    anonymousSecretKey: bytesToHex(generateSecretKey()),
+    keyPackagePrivateBase64: Buffer.from(generateSecretKey()).toString("base64"),
+  };
+}
 
 test.beforeAll(async () => {
   relay = await startMockRelay();
@@ -94,6 +107,38 @@ async function expectInsideViewport(locator: import("@playwright/test").Locator)
   })).toBe(true);
 }
 
+async function openRoomActions(
+  page: import("@playwright/test").Page,
+  roomTitle: string,
+): Promise<import("@playwright/test").Locator> {
+  const navigation = page.getByTestId("workspace-navigation");
+  await expect(navigation.getByRole("button", { name: "More room actions" })).toHaveCount(0);
+  const trigger = page.getByRole("button", { name: "More room actions" });
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  const menu = page.getByRole("menu", { name: `Room actions for ${roomTitle}` });
+  await expect(menu).toBeVisible();
+  return menu;
+}
+
+async function expectEmbeddedChatFillsHostPane(page: import("@playwright/test").Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => {
+    const pane = document.querySelector<HTMLElement>('[data-testid="host-chat"]');
+    const route = pane?.querySelector<HTMLElement>('[data-testid="chat-route"]');
+    const cached = route?.querySelector<HTMLElement>('[data-testid="cached-room-view"]');
+    if (!pane || !route || !cached) return false;
+    const paneBounds = pane.getBoundingClientRect();
+    const routeBounds = route.getBoundingClientRect();
+    const cachedBounds = cached.getBoundingClientRect();
+    const aligned = (left: number, right: number) => (
+      Math.abs(left - paneBounds.left) <= 1
+      && Math.abs(right - paneBounds.right) <= 1
+    );
+    return aligned(routeBounds.left, routeBounds.right)
+      && aligned(cachedBounds.left, cachedBounds.right);
+  })).toBe(true);
+}
+
 async function enablePersistence(page: import("@playwright/test").Page, passphrase: string): Promise<void> {
   const settings = await openCoordinatorSettings(page, true);
   await settings.getByRole("button", { name: "Enable persistence" }).click();
@@ -144,12 +189,21 @@ async function createRoom(page: import("@playwright/test").Page, title: string):
   await expect(dialog).toBeHidden();
 }
 
+async function navigateWithinShell(page: import("@playwright/test").Page, href: string): Promise<void> {
+  await page.evaluate((nextHref) => {
+    const target = new URL(nextHref, window.location.origin);
+    window.history.pushState({}, "", `${target.pathname}${target.search}${target.hash}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, href);
+}
+
 async function seedJoinedRoom(
   page: import("@playwright/test").Page,
   title: string,
   coordinatorPubkey = "a".repeat(64),
 ): Promise<void> {
-  await page.evaluate(({ title, coordinatorPubkey, relayUrl }) => {
+  const privateFixture = createStoredRoomPrivateFixture();
+  await page.evaluate(({ title, coordinatorPubkey, relayUrl, privateFixture }) => {
     const id = title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const room = {
       version: 1,
@@ -162,8 +216,12 @@ async function seedJoinedRoom(
       stablePubkey: "b".repeat(64),
       isHost: false,
       stateBase64: "",
-      keyPackage: { reference: "ref", publicBase64: "public", privateBase64: "private" },
-      anonymousSecretKey: "01".repeat(32),
+      keyPackage: {
+        reference: "ref",
+        publicBase64: "public",
+        privateBase64: privateFixture.keyPackagePrivateBase64,
+      },
+      anonymousSecretKey: privateFixture.anonymousSecretKey,
       lastCursor: 0,
       messages: [],
       pending: [],
@@ -173,7 +231,7 @@ async function seedJoinedRoom(
     };
     const key = `cordn-adhoc-chat-room:v2:${encodeURIComponent(coordinatorPubkey)}:${encodeURIComponent(id)}`;
     localStorage.setItem(key, JSON.stringify(room));
-  }, { title, coordinatorPubkey, relayUrl: relay.url });
+  }, { title, coordinatorPubkey, relayUrl: relay.url, privateFixture });
 }
 
 test("generates copyable identity on first load", async ({ page }) => {
@@ -193,19 +251,18 @@ test("generates copyable identity on first load", async ({ page }) => {
   await closeCoordinatorSettings(settings);
 });
 
-test("opens joined chats without starting an unprotected local coordinator", async ({ page }) => {
+test("browses joined chats from the root shell without starting an unprotected local coordinator", async ({ page }) => {
   await page.goto("/");
   await seedJoinedRoom(page, "Elsewhere lounge");
   await page.reload();
 
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
-  await page.getByTestId("open-chats").click();
-
-  await expect(page).toHaveURL(/\/chats$/);
-  const lobby = page.getByTestId("chat-lobby");
-  await expect(lobby).toHaveAttribute("data-coordinator-locked", "false");
-  await expect(lobby).toHaveAttribute("data-coordinator-status", "idle");
-  await expect(lobby.getByRole("button", { name: "Open room Elsewhere lounge" })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("operator-shell")).toBeVisible();
+  await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
+  await page.locator(".channel-context-button").click();
+  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem").nth(1).click();
+  await expect(page.getByRole("button", { name: /Open room Elsewhere lounge/ })).toBeVisible();
 });
 
 test("browses cached chats while a persisted coordinator stays locked", async ({ page }) => {
@@ -215,17 +272,16 @@ test("browses cached chats while a persisted coordinator stays locked", async ({
   await page.reload();
 
   await expect(page.getByRole("heading", { name: "Unlock Cordn Ad-Hoc" })).toBeVisible();
-  await page.getByTestId("open-chats").click();
-
-  const lobby = page.getByTestId("chat-lobby");
-  await expect(lobby).toHaveAttribute("data-coordinator-locked", "true");
-  await expect(lobby).toHaveAttribute("data-coordinator-status", "idle");
-  await lobby.getByRole("button", { name: "Open room Locked-out lounge" }).click();
+  await expect(page.getByTestId("operator-shell")).toBeVisible();
+  await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
+  await page.locator(".channel-context-button").click();
+  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem").nth(1).click();
+  await page.getByRole("button", { name: /Open room Locked-out lounge/ }).click();
   await expect(page.getByTestId("cached-room-view")).toContainText("Locked-out lounge");
   await expect(page.locator(".presence-control")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 667 });
   await expect.poll(() => page.evaluate(() => {
-    const header = document.querySelector<HTMLElement>(".chat-global-nav");
+    const header = document.querySelector<HTMLElement>(".workspace-nav");
     const visibleControls = [...(header?.querySelectorAll<HTMLElement>("button, a") ?? [])]
       .filter((control) => control.getClientRects().length > 0)
       .map((control) => {
@@ -239,26 +295,23 @@ test("browses cached chats while a persisted coordinator stays locked", async ({
     };
   })).toEqual({ pageFits: true, headerFits: true, controlsFit: true });
 
-  const workspaceLink = page.getByRole("link", { name: "Open my coordinator workspace" });
-  if (await workspaceLink.isVisible()) {
-    await workspaceLink.click();
-  } else {
-    await page.getByRole("button", { name: /^Rooms,/ }).click();
-    await page.getByTestId("room-switcher").getByRole("button", { name: "Workspace" }).click();
-  }
+  await page.getByRole("link", { name: "CAHMLS home" }).click();
   await expect(page.getByRole("heading", { name: "Unlock Cordn Ad-Hoc" })).toBeVisible();
 });
 
-test("chat index bypasses autostart and owns viewport scrolling", async ({ page }) => {
+test("legacy chat index canonicalizes to the root shell and honors autostart", async ({ page }) => {
   await page.goto("/");
+  await configureMockRelay(page);
   const settings = await openCoordinatorSettings(page, true);
   await settings.getByLabel("Toggle autostart").check();
   await closeCoordinatorSettings(settings);
 
   await page.setViewportSize({ width: 390, height: 667 });
   await page.goto("/chat");
-  const lobby = page.getByTestId("chat-lobby");
-  await expect(lobby).toHaveAttribute("data-coordinator-status", "idle");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("operator-shell")).toBeVisible();
+  await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
   await expect
     .poll(() => page.evaluate(() => ({
       viewport: document.documentElement.clientHeight,
@@ -410,7 +463,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId("management-interface")).toBeVisible();
   await expect(page.getByTestId("host-chat")).toBeHidden();
   const channelBrowser = page.getByRole("navigation", { name: "Server and channel browser" });
-  const serverSelector = channelBrowser.getByRole("button", { name: /^My coordinator/ });
+  const serverSelector = channelBrowser.locator(".channel-context-button");
   await expect(serverSelector).toBeVisible();
   await serverSelector.click();
   await expect(channelBrowser.getByRole("menu", { name: "Choose coordinator" })).toBeVisible();
@@ -663,7 +716,7 @@ test("persists and honors the autostart coordinator setting", async ({ page }) =
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
 });
 
-test("Feature: invite-only chat — Scenario: a guest link opens only the private chat join flow", async ({ page, browser }) => {
+test("Feature: invite-only chat — Scenario: a guest link opens inside the unified root workspace", async ({ page, browser }) => {
   await page.goto("/");
   await configureMockRelay(page);
   await page.getByRole("button", { name: "Start", exact: true }).click();
@@ -696,13 +749,17 @@ test("Feature: invite-only chat — Scenario: a guest link opens only the privat
   const guest = await guestContext.newPage();
   await guest.goto(inviteLink!);
 
+  await expect(guest).toHaveURL(/\/$/);
+  await expect(guest.getByTestId("operator-shell")).toBeVisible();
+  await expect(guest.getByTestId("workspace-navigation")).toHaveCount(1);
+  await expect(guest.getByTestId("invite-panel")).toBeVisible();
   await expect(guest.getByTestId("chat-route")).toBeVisible();
-  await expect(guest.getByTestId("operator-shell")).toHaveCount(0);
+  await expect(guest.getByText("Choose a name, then join the encrypted room.")).toHaveCount(0);
+  await expect(guest.getByRole("button", { name: "Join chat" })).toHaveCount(0);
+  await expect(guest.getByTestId("cached-room-view")).toBeVisible({ timeout: 35_000 });
   await expect(guest.getByRole("heading", { name: "BDD room" })).toBeVisible();
-  await expect(guest.getByText("Choose a name, then join the encrypted room.")).toBeVisible();
-  await expect(guest.getByRole("button", { name: "Join chat" })).toBeVisible();
-  await expect(guest.getByTestId("chat-route")).toHaveCSS("background-color", "rgb(11, 14, 13)");
-  expect(await guest.getByTestId("chat-route").evaluate((element) => element.clientHeight)).toBe(await guest.evaluate(() => window.innerHeight));
+  await expect(guest.locator(".host-chat > [data-testid='chat-route']")).toBeVisible();
+  await expectEmbeddedChatFillsHostPane(guest);
   await guestContext.close();
 });
 
@@ -727,15 +784,13 @@ test("refreshes a room invite without disconnecting the room and rejects the pre
   const previousContext = await browser.newContext();
   const previousGuest = await previousContext.newPage();
   await previousGuest.goto(previousInvite!);
-  await previousGuest.getByPlaceholder("e.g. River").fill("Old link");
-  await previousGuest.getByRole("button", { name: "Join chat" }).click();
+  await expect(previousGuest.getByRole("button", { name: "Join chat" })).toHaveCount(0);
   await expect(previousGuest.getByText("Your encrypted join request is with the host.")).toBeVisible();
 
   const currentContext = await browser.newContext();
   const currentGuest = await currentContext.newPage();
   await currentGuest.goto(currentInvite!);
-  await currentGuest.getByPlaceholder("e.g. River").fill("Fresh link");
-  await currentGuest.getByRole("button", { name: "Join chat" }).click();
+  await expect(currentGuest.getByRole("button", { name: "Join chat" })).toHaveCount(0);
   await expect(currentGuest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
   await expect(previousGuest.getByText("Your encrypted join request is with the host.")).toBeVisible();
   await expect(previousGuest.getByPlaceholder("Message")).toHaveCount(0);
@@ -757,28 +812,33 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   const hostedRoomRow = page.getByTestId("invite-panel").getByRole("button", { name: "Open room Working room" });
   await expect(hostedRoomRow.getByTestId("room-host-identity")).toContainText("Mara");
   await expect(hostedRoomRow.getByTestId("room-host-identity")).toContainText("host");
-  await expect(page.locator(".host-topbar").getByLabel("Mute notification sounds")).toBeVisible();
+  const hostActions = await openRoomActions(page, "Working room");
+  await expect(hostActions.getByRole("menuitemcheckbox", { name: /Mute notification sounds/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hostActions).toBeHidden();
   await expect(page.getByTestId("invite-panel").getByLabel("Mute notification sounds")).toHaveCount(0);
 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   await guest.goto(inviteLink!);
-  await expect(guest.getByTestId("invite-host")).toContainText("Invited by");
-  await expect(guest.getByTestId("invite-host").getByTestId("room-host-identity")).toContainText("Mara");
+  await expect(guest.getByRole("button", { name: "Join chat" })).toHaveCount(0);
   await expect(guest.getByTestId("active-server-context")).toContainText("Mara · host");
-  await guest.getByPlaceholder("e.g. River").fill("River");
-  await guest.getByRole("button", { name: "Join chat" }).click();
   await expect(guest.getByText("Your encrypted join request is with the host.")).toBeVisible();
 
   await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
   await expect(guest.getByLabel("Add 👍")).toBeVisible();
-  await expect(guest.locator(".chat-global-nav").getByLabel("Mute notification sounds")).toBeVisible();
+  const reachableCoordinator = guest.getByTestId("selected-coordinator-status");
+  await expect(reachableCoordinator).toHaveAttribute("data-state", "online", { timeout: 20_000 });
+  await expect(reachableCoordinator).toHaveAttribute("aria-label", /coordinator online/i);
+  const guestActions = await openRoomActions(guest, "Working room");
+  await expect(guestActions.getByRole("menuitemcheckbox", { name: /Mute notification sounds/ })).toBeVisible();
+  await expect(guestActions.getByRole("menuitem", { name: "Leave room Working room" })).toBeVisible();
+  await guest.keyboard.press("Escape");
+  await expect(guestActions).toBeHidden();
   await expect(guest.getByTestId("active-server-context")).toContainText("Mara · host");
-  await guest.getByRole("button", { name: /Rooms/ }).click();
-  const guestSwitcherRoom = guest.getByTestId("room-switcher").getByRole("button", { name: /Working room/ });
-  await expect(guestSwitcherRoom.getByTestId("room-host-identity")).toContainText("Mara");
-  await expect(guestSwitcherRoom.getByTestId("room-host-identity")).toContainText("host");
-  await guest.getByRole("button", { name: "Close room switcher" }).last().click();
+  const guestSidebarRoom = guest.getByTestId("invite-panel").getByRole("button", { name: /Open room Working room/ });
+  await expect(guestSidebarRoom.getByTestId("room-host-identity")).toContainText("Mara");
+  await expect(guestSidebarRoom.getByTestId("room-host-identity")).toContainText("host");
   await guest.getByPlaceholder("Message").fill("Hello from BDD");
   await guest.getByRole("button", { name: "Send" }).click();
   await expect(page.getByTestId("host-chat").getByText("Hello from BDD")).toBeVisible({ timeout: 15_000 });
@@ -791,14 +851,8 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
     viewportHeight: document.documentElement.clientHeight,
   }))).toEqual({ pageWidth: 390, viewportWidth: 390, pageHeight: 350, viewportHeight: 350 });
   await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(60);
-  await guest.getByRole("button", { name: "More chat actions" }).click();
-  const mobileChatActions = guest.getByRole("dialog", { name: "More chat actions" });
-  await expect(mobileChatActions).toBeVisible();
-  await expectInsideViewport(mobileChatActions);
-  await expect(mobileChatActions.getByText("Profile & signer")).toBeVisible();
-  expect(await mobileChatActions.evaluate((element) => getComputedStyle(element).overflowY)).toBe("auto");
-  await mobileChatActions.getByRole("button", { name: "Close chat actions" }).click();
-  await expect(mobileChatActions).toBeHidden();
+  await expect(guest.getByTestId("workspace-navigation")).toBeVisible();
+  await expect(guest.getByRole("button", { name: "Open host tools" })).toBeVisible();
   for (let index = 1; index <= 10; index += 1) {
     await page.getByPlaceholder("Message as host").fill(`Host note ${index}`);
     await page.getByPlaceholder("Message as host").press("Enter");
@@ -811,6 +865,89 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   await expect(hostMessage.getByTestId("message-badge")).toHaveCSS("user-select", "text");
   await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)).toBeLessThanOrEqual(2);
   await guestContext.close();
+});
+
+test("message reactions persist and synchronize", async ({ page, browser }) => {
+  test.setTimeout(75_000);
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await createRoom(page, "Reaction room");
+  const inviteLink = await page.getByTestId("invite-link").textContent();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(inviteLink!);
+  await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
+  await guest.getByPlaceholder("Message").fill("A reaction target");
+  await guest.getByRole("button", { name: "Send" }).click();
+  const hostMessage = page.locator("article.host-message").filter({ hasText: "A reaction target" });
+  await expect(hostMessage).toBeVisible({ timeout: 20_000 });
+
+  const hostPaneActions = page.getByTestId("host-chat").getByRole("button", { name: "More room actions" });
+  await expect(hostPaneActions).toBeVisible();
+  await hostPaneActions.click();
+  await expect(page.getByTestId("host-chat").getByRole("menuitem", { name: "Delete room Reaction room" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await hostMessage.getByRole("button", { name: "Add reaction" }).click();
+  await hostMessage.getByRole("menu", { name: /Choose reaction/ }).getByRole("menuitem", { name: "React 👍" }).click();
+  await expect(hostMessage.getByRole("button", { name: /Remove 👍 reaction, 1 participant/ })).toHaveAttribute("aria-pressed", "true");
+
+  const guestMessage = guest.locator("article.message").filter({ hasText: "A reaction target" });
+  await expect(guestMessage.getByRole("button", { name: /Add 👍 reaction, 1 participant/ })).toBeVisible({ timeout: 20_000 });
+  const guestPaneActions = guest.getByTestId("cached-room-view").getByRole("button", { name: "More room actions" });
+  await expect(guestPaneActions).toBeVisible();
+  await guestPaneActions.click();
+  await expect(guest.getByTestId("cached-room-view").getByRole("menuitem", { name: "Leave room Reaction room" })).toBeVisible();
+  await guest.keyboard.press("Escape");
+  await guestMessage.getByRole("button", { name: /Add 👍 reaction, 1 participant/ }).click();
+  await expect(guestMessage.getByRole("button", { name: /Remove 👍 reaction, 2 participants/ })).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+  await expect(hostMessage.getByRole("button", { name: /Remove 👍 reaction, 2 participants/ })).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+
+  await guestMessage.getByRole("button", { name: /Remove 👍 reaction, 2 participants/ }).click();
+  await expect(guestMessage.getByRole("button", { name: /Add 👍 reaction, 1 participant/ })).toBeVisible({ timeout: 20_000 });
+  await expect(hostMessage.getByRole("button", { name: /Remove 👍 reaction, 1 participant/ })).toBeVisible({ timeout: 20_000 });
+  for (const emoji of ["👍", "❤️", "😂", "🎉", "👋", "✨"]) {
+    await expect(page.getByTestId("host-chat").getByLabel(`Add ${emoji}`, { exact: true })).toBeVisible();
+  }
+  await guest.setViewportSize({ width: 390, height: 667 });
+  for (const emoji of ["👍", "❤️", "😂", "🎉", "👋", "✨"]) {
+    await expect(guest.getByTestId("chat-composer").getByLabel(`Add ${emoji}`, { exact: true })).toBeVisible();
+  }
+  await guestContext.close();
+});
+
+test("emoji shortcuts and offline cached reactions", async ({ page }) => {
+  await page.goto("/");
+  await seedJoinedRoom(page, "Offline reactions");
+  await page.evaluate(() => {
+    const key = [...Array(localStorage.length).keys()]
+      .map((index) => localStorage.key(index) ?? "")
+      .find((entry) => entry.includes("cordn-adhoc-chat-room:v2:"));
+    if (!key) throw new Error("seeded room was not found");
+    const room = JSON.parse(localStorage.getItem(key) ?? "{}");
+    room.messages = [{
+      type: "message", id: "cached-message", sender: "c".repeat(64), name: "Cached guest", content: "Still readable", createdAt: 1,
+    }];
+    room.reactions = [
+      { id: "cached-reaction", sender: "d".repeat(64), targetMessageId: "cached-message", emoji: "✨", active: true, createdAt: 2 },
+      { id: "bad-reaction", sender: "d".repeat(64), targetMessageId: "cached-message", emoji: "not-an-emoji", active: true, createdAt: 3 },
+    ];
+    localStorage.setItem(key, JSON.stringify(room));
+  });
+  await page.reload();
+  await page.locator(".channel-context-button").click();
+  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem").nth(1).click();
+  await page.getByRole("button", { name: /Open room Offline reactions/ }).click();
+  const cachedRoom = page.getByTestId("cached-room-view");
+  await expect(cachedRoom.getByText("Still readable")).toBeVisible();
+  await expect(cachedRoom.getByRole("button", { name: "Add reaction" })).toBeDisabled();
+  for (const emoji of ["👍", "❤️", "😂", "🎉", "👋", "✨"]) {
+    await expect(cachedRoom.getByLabel(`Add ${emoji}`, { exact: true })).toBeVisible();
+    await expect(cachedRoom.getByLabel(`Add ${emoji}`, { exact: true })).toBeDisabled();
+  }
 });
 
 test("hosts delete rooms and members leave with contextual confirmation", async ({ page, browser }) => {
@@ -826,15 +963,15 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   await guest.goto(inviteLink!);
-  await guest.getByPlaceholder("e.g. River").fill("River");
-  await guest.getByRole("button", { name: "Join chat" }).click();
+  await expect(guest.getByRole("button", { name: "Join chat" })).toHaveCount(0);
   await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
   await guest.getByPlaceholder("Message").fill("Keep this cached");
   await guest.getByRole("button", { name: "Send" }).click();
   await expect(page.getByTestId("host-chat").getByText("Keep this cached")).toBeVisible({ timeout: 15_000 });
 
-  const deleteTrigger = page.getByRole("button", { name: "Delete room Disposable room" });
-  await deleteTrigger.click();
+  let roomActions = await openRoomActions(page, "Disposable room");
+  await expect(roomActions.getByRole("menuitem", { name: "Leave room Disposable room" })).toHaveCount(0);
+  await roomActions.getByRole("menuitem", { name: "Delete room Disposable room" }).click();
   const deleteDialog = page.getByTestId("room-removal-dialog");
   await expect(deleteDialog.getByRole("heading", { name: "Delete #Disposable room?" })).toBeVisible();
   await expect(deleteDialog.getByTestId("room-removal-impact")).toContainText("1 cached message");
@@ -844,7 +981,8 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   await expect(deleteDialog).toBeHidden();
   await expect(page.getByTestId("invite-panel").getByRole("button", { name: "Open room Disposable room" })).toBeVisible();
 
-  await deleteTrigger.click();
+  roomActions = await openRoomActions(page, "Disposable room");
+  await roomActions.getByRole("menuitem", { name: "Delete room Disposable room" }).click();
   await deleteDialog.getByTestId("confirm-delete-room").click();
   await expect(deleteDialog).toBeHidden();
   await expect(page.getByTestId("invite-panel").getByRole("button", { name: "Open room Disposable room" })).toHaveCount(0);
@@ -853,8 +991,9 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   await expect(guest.getByTestId("room-deleted-message")).toBeVisible({ timeout: 25_000 });
   await expect(guest.getByPlaceholder("Room deleted by host")).toBeDisabled();
   await guest.setViewportSize({ width: 390, height: 350 });
-  await guest.getByRole("button", { name: "More chat actions" }).click();
-  await guest.getByRole("dialog", { name: "More chat actions" }).getByRole("button", { name: "Leave this room" }).click();
+  const guestRoomActions = await openRoomActions(guest, "Disposable room");
+  await expect(guestRoomActions.getByRole("menuitem", { name: "Delete room Disposable room" })).toHaveCount(0);
+  await guestRoomActions.getByRole("menuitem", { name: "Leave room Disposable room" }).click();
   const leaveDialog = guest.getByTestId("room-removal-dialog");
   await expect(leaveDialog.getByRole("heading", { name: "Leave #Disposable room?" })).toBeVisible();
   await expect(leaveDialog.getByTestId("room-removal-impact")).toContainText("1 cached message");
@@ -869,14 +1008,226 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   })).toEqual({ pageHeight: 350, viewportHeight: 350, fits: true });
 
   await leaveDialog.getByTestId("confirm-leave-room").click();
-  await expect(guest).toHaveURL(/\/chats$/);
-  await expect(guest.getByTestId("chat-lobby")).toBeVisible();
+  await expect(guest).toHaveURL(/\/$/);
+  await expect(guest.getByTestId("operator-shell")).toBeVisible();
+  await expect(guest.getByTestId("workspace-navigation")).toHaveCount(1);
   expect(await guest.evaluate(() => [...Array(localStorage.length).keys()].some((index) => {
     const value = localStorage.getItem(localStorage.key(index) ?? "");
     return value?.includes('"title":"Disposable room"') ?? false;
   }))).toBe(false);
 
   await guestContext.close();
+});
+
+test("switches local Delete to remote Leave without crossing same-id room identities", async ({ page }) => {
+  test.setTimeout(75_000);
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+
+  await createRoom(page, "Exact local delete target");
+  const exactLocalActions = await openRoomActions(page, "Exact local delete target");
+  await expect(exactLocalActions.getByRole("menuitem", { name: "Leave room Exact local delete target" })).toHaveCount(0);
+  await exactLocalActions.getByRole("menuitem", { name: "Delete room Exact local delete target" }).click();
+  const localDeleteDialog = page.getByTestId("room-removal-dialog");
+  await expect(localDeleteDialog.getByRole("heading", { name: "Delete #Exact local delete target?" })).toBeVisible();
+  await localDeleteDialog.getByTestId("confirm-delete-room").click();
+  await expect(localDeleteDialog).toBeHidden();
+  expect(await page.evaluate(() => [...Array(localStorage.length).keys()].every((index) => {
+    const value = localStorage.getItem(localStorage.key(index) ?? "");
+    return !value?.includes('"title":"Exact local delete target"');
+  }))).toBe(true);
+
+  await createRoom(page, "Local collision room");
+  const localInvite = await page.getByTestId("invite-link").textContent();
+  expect(localInvite).toBeTruthy();
+  const localRoom = await page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const room = JSON.parse(raw) as {
+        id?: string;
+        title?: string;
+        coordinatorPubkey?: string;
+        relayUrls?: string[];
+      };
+      if (room.title === "Local collision room"
+        && typeof room.id === "string"
+        && typeof room.coordinatorPubkey === "string"
+        && Array.isArray(room.relayUrls)) {
+        return room as Required<Pick<typeof room, "id" | "title" | "coordinatorPubkey" | "relayUrls">>;
+      }
+    }
+    return null;
+  });
+  if (!localRoom) throw new Error("Could not find the hosted collision room");
+
+  const remoteCoordinatorPubkey = "f".repeat(64);
+  const remotePrivateFixture = createStoredRoomPrivateFixture();
+  await page.evaluate(({ localRoom, remoteCoordinatorPubkey, relayUrl, remotePrivateFixture }) => {
+    const remoteRoom = {
+      version: 1,
+      id: localRoom.id,
+      title: "Remote collision room",
+      coordinatorPubkey: remoteCoordinatorPubkey,
+      coordinatorOrigin: "https://remote.example",
+      relayUrls: [relayUrl],
+      name: "Reader",
+      stablePubkey: "b".repeat(64),
+      isHost: false,
+      stateBase64: "",
+      keyPackage: {
+        reference: "remote-ref",
+        publicBase64: "public",
+        privateBase64: remotePrivateFixture.keyPackagePrivateBase64,
+      },
+      anonymousSecretKey: remotePrivateFixture.anonymousSecretKey,
+      lastCursor: 0,
+      messages: [],
+      pending: [],
+      joinRequestSent: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const key = `cordn-adhoc-chat-room:v2:${encodeURIComponent(remoteCoordinatorPubkey)}:${encodeURIComponent(remoteRoom.id)}`;
+    localStorage.setItem(key, JSON.stringify(remoteRoom));
+  }, { localRoom, remoteCoordinatorPubkey, relayUrl: relay.url, remotePrivateFixture });
+
+  await navigateWithinShell(page, localInvite!);
+  let collisionActions = await openRoomActions(page, "Local collision room");
+  await expect(collisionActions.getByRole("menuitem", { name: "Delete room Local collision room" })).toBeVisible();
+  await expect(collisionActions.getByRole("menuitem", { name: "Leave room Local collision room" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.locator(".channel-context-button").click();
+  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem", { name: /Coordinator ffffff/ }).click();
+  await page.getByRole("button", { name: /Open room Remote collision room/ }).click();
+
+  collisionActions = await openRoomActions(page, "Remote collision room");
+  const remoteLeave = collisionActions.getByRole("menuitem", { name: "Leave room Remote collision room" });
+  await expect(remoteLeave).toBeVisible();
+  await expect(collisionActions.getByRole("menuitem", { name: "Delete room Remote collision room" })).toHaveCount(0);
+  await remoteLeave.click();
+  const remoteLeaveDialog = page.getByTestId("room-removal-dialog");
+  await expect(remoteLeaveDialog.getByRole("heading", { name: "Leave #Remote collision room?" })).toBeVisible();
+  await remoteLeaveDialog.getByTestId("confirm-leave-room").click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("operator-shell")).toBeVisible();
+
+  expect(await page.evaluate(({ localRoom, remoteCoordinatorPubkey }) => {
+    const roomKey = (coordinatorPubkey: string) => (
+      `cordn-adhoc-chat-room:v2:${encodeURIComponent(coordinatorPubkey)}:${encodeURIComponent(localRoom.id)}`
+    );
+    return {
+      local: localStorage.getItem(roomKey(localRoom.coordinatorPubkey)) !== null,
+      remote: localStorage.getItem(roomKey(remoteCoordinatorPubkey)) !== null,
+    };
+  }, { localRoom, remoteCoordinatorPubkey })).toEqual({ local: true, remote: false });
+  await navigateWithinShell(page, localInvite!);
+  collisionActions = await openRoomActions(page, "Local collision room");
+  await expect(collisionActions.getByRole("menuitem", { name: "Delete room Local collision room" })).toBeVisible();
+});
+
+test("leaves a previous local host session without deleting its same-id current room", async ({ page }) => {
+  test.setTimeout(75_000);
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+
+  await createRoom(page, "Current local collision room");
+  const localInvite = await page.getByTestId("invite-link").textContent();
+  expect(localInvite).toBeTruthy();
+  const localRoom = await page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const room = JSON.parse(raw) as { id?: string; title?: string; coordinatorPubkey?: string };
+      if (room.title === "Current local collision room"
+        && typeof room.id === "string"
+        && typeof room.coordinatorPubkey === "string") return room;
+    }
+    return null;
+  });
+  if (!localRoom?.id || !localRoom.coordinatorPubkey) throw new Error("Could not find the local collision room");
+  const localRoomIdentity = {
+    id: localRoom.id,
+    coordinatorPubkey: localRoom.coordinatorPubkey,
+  };
+
+  const remoteCoordinatorPubkey = "e".repeat(64);
+  const stalePrivateFixture = createStoredRoomPrivateFixture();
+  await page.evaluate(({ localRoom, remoteCoordinatorPubkey, relayUrl, stalePrivateFixture }) => {
+    const staleRemoteRoom = {
+      version: 1,
+      id: localRoom.id,
+      title: "Stale remote host claim",
+      coordinatorPubkey: remoteCoordinatorPubkey,
+      coordinatorOrigin: "https://remote.example",
+      relayUrls: [relayUrl],
+      name: "Stale host",
+      stablePubkey: "b".repeat(64),
+      // A legacy/corrupt record can preserve this old host claim even though
+      // coordinator identity puts the room under a remote coordinator.
+      isHost: true,
+      stateBase64: "",
+      keyPackage: {
+        reference: "stale-remote-ref",
+        publicBase64: "public",
+        privateBase64: stalePrivateFixture.keyPackagePrivateBase64,
+      },
+      anonymousSecretKey: stalePrivateFixture.anonymousSecretKey,
+      lastCursor: 0,
+      messages: [],
+      pending: [],
+      joinRequestSent: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const key = `cordn-adhoc-chat-room:v2:${encodeURIComponent(remoteCoordinatorPubkey)}:${encodeURIComponent(staleRemoteRoom.id)}`;
+    localStorage.setItem(key, JSON.stringify(staleRemoteRoom));
+  }, {
+    localRoom: localRoomIdentity,
+    remoteCoordinatorPubkey,
+    relayUrl: relay.url,
+    stalePrivateFixture,
+  });
+
+  await navigateWithinShell(page, localInvite!);
+  const localActions = await openRoomActions(page, "Current local collision room");
+  await expect(localActions.getByRole("menuitem", { name: "Delete room Current local collision room" })).toBeVisible();
+  await expect(localActions.getByRole("menuitem", { name: "Leave room Current local collision room" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.locator(".channel-context-button").click();
+  const coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
+  await expect(coordinatorMenu.getByText("Previous local sessions", { exact: true })).toBeVisible();
+  await coordinatorMenu.getByRole("menuitem", { name: /Previous local eeeeee/ }).click();
+  await page.getByRole("button", { name: /Open previous local session Stale remote host claim/ }).click();
+
+  const staleActions = await openRoomActions(page, "Stale remote host claim");
+  const remoteLeave = staleActions.getByRole("menuitem", { name: "Leave room Stale remote host claim" });
+  await expect(remoteLeave).toBeVisible();
+  await expect(staleActions.getByRole("menuitem", { name: "Delete room Stale remote host claim" })).toHaveCount(0);
+  await remoteLeave.click();
+  const leaveDialog = page.getByTestId("room-removal-dialog");
+  await expect(leaveDialog.getByRole("heading", { name: "Leave #Stale remote host claim?" })).toBeVisible();
+  await leaveDialog.getByTestId("confirm-leave-room").click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("operator-shell")).toBeVisible();
+
+  expect(await page.evaluate(({ localRoom, remoteCoordinatorPubkey }) => {
+    const keyFor = (coordinatorPubkey: string) => (
+      `cordn-adhoc-chat-room:v2:${encodeURIComponent(coordinatorPubkey)}:${encodeURIComponent(localRoom.id)}`
+    );
+    return {
+      local: localStorage.getItem(keyFor(localRoom.coordinatorPubkey)) !== null,
+      remote: localStorage.getItem(keyFor(remoteCoordinatorPubkey)) !== null,
+    };
+  }, { localRoom: localRoomIdentity, remoteCoordinatorPubkey })).toEqual({ local: true, remote: false });
 });
 
 test("manual admission shows a counted, identified queue and clears it after approval", async ({ page, browser }) => {
@@ -901,8 +1252,7 @@ test("manual admission shows a counted, identified queue and clears it after app
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   await guest.goto(inviteLink!);
-  await guest.getByPlaceholder("e.g. River").fill("River");
-  await guest.getByRole("button", { name: "Join chat" }).click();
+  await expect(guest.getByRole("button", { name: "Join chat" })).toHaveCount(0);
 
   await expect(approval.getByRole("button", { name: /Approve waiting invitees, 1 request/ })).toBeEnabled({ timeout: 15_000 });
   await expect(approval.locator("article")).toHaveCount(1);
@@ -957,36 +1307,49 @@ test("a persistent host can navigate home rooms while communicating on another c
   await createRoom(remote, "Remote lounge");
   const remoteInvite = await remote.getByTestId("invite-link").textContent();
 
-  await home.goto(remoteInvite!);
+  await navigateWithinShell(home, remoteInvite!);
+  await expect(home).toHaveURL(/\/$/);
   await expect(home.getByTestId("active-server-context")).toContainText("remote");
-  await home.getByPlaceholder("e.g. River").fill("Home host");
-  await home.getByRole("button", { name: "Join chat" }).click();
+  await expect(home.getByRole("button", { name: "Join chat" })).toHaveCount(0);
   await expect(home.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
   await home.getByPlaceholder("Message").fill("Hello across coordinators");
   await home.getByRole("button", { name: "Send" }).click();
   await expect(remote.getByTestId("host-chat").getByText("Hello across coordinators")).toBeVisible({ timeout: 15_000 });
 
-  await home.getByRole("button", { name: "Rooms" }).click();
-  const switcher = home.getByTestId("room-switcher");
-  await expect(switcher.getByText("My coordinator", { exact: true })).toBeVisible();
-  await expect(switcher.getByRole("button", { name: /Home alpha/ })).toBeVisible();
-  await expect(switcher.getByRole("button", { name: /Home beta/ })).toBeVisible();
-  await expect(switcher.getByRole("button", { name: /Remote lounge/ })).toBeVisible();
+  await home.locator(".channel-context-button").click();
+  const serverMenu = home.getByRole("menu", { name: "Choose coordinator" });
+  await expect(serverMenu.getByRole("menuitem")).toHaveCount(2);
+  const homeCoordinatorPubkey = await serverMenu.getByTestId("local-coordinator-menu-status").getAttribute("data-coordinator-pubkey");
+  expect(homeCoordinatorPubkey).toMatch(/^[0-9a-f]{64}$/);
+  await serverMenu.getByRole("menuitem").filter({ hasText: "My coordinator" }).click();
+  await home.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  await expect(home.locator(".channel-context-copy strong")).toHaveText("My coordinator");
+  await expect(home.getByTestId("selected-coordinator-status")).toHaveAttribute("data-coordinator-pubkey", homeCoordinatorPubkey!);
+  await expect(home.getByRole("button", { name: /Open room Home alpha/ })).toBeVisible();
+  await expect(home.getByRole("button", { name: /Open room Home beta/ })).toBeVisible();
 
-  await switcher.getByRole("button", { name: /Home alpha/ }).click();
+  await home.getByRole("button", { name: /Open room Home alpha/ }).click();
   await expect(home.getByTestId("active-server-context")).toContainText("anon · host");
   await expect(home.getByTestId("active-server-context")).toContainText("Home alpha");
 
-  await home.goBack();
+  await home.locator(".channel-context-button").click();
+  await home.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem").nth(1).click();
+  await home.getByRole("button", { name: /Open room Remote lounge/ }).click();
   await expect(home.getByTestId("active-server-context")).toContainText("Remote lounge");
   await expect(home.getByPlaceholder("Message")).toBeVisible({ timeout: 25_000 });
   await home.getByPlaceholder("Message").fill("Back in the remote room");
   await home.getByRole("button", { name: "Send" }).click();
   await expect(remote.getByTestId("host-chat").getByText("Back in the remote room")).toBeVisible({ timeout: 15_000 });
+  const remoteCoordinatorStatus = home.getByTestId("selected-coordinator-status");
+  await expect(remoteCoordinatorStatus).toHaveAttribute("data-state", "online", { timeout: 20_000 });
 
   await remote.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(remote.getByTestId("status-badge")).toHaveText("idle");
   await expect(home.getByTestId("room-connection-offline-message")).toBeVisible({ timeout: 25_000 });
+  await expect(remoteCoordinatorStatus).toHaveAttribute("data-state", "offline", { timeout: 25_000 });
+  await expect(remoteCoordinatorStatus).not.toHaveClass(/\bonline\b/);
   await expect(home.getByTestId("guest-message-list")).toContainText("Back in the remote room");
   await expect(home.getByPlaceholder("Room offline")).toBeDisabled();
   await expect(home.getByTestId("chat-composer").getByRole("button", { name: "Send" })).toBeDisabled();
@@ -995,6 +1358,7 @@ test("a persistent host can navigate home rooms while communicating on another c
   await remote.getByRole("button", { name: "Start", exact: true }).click();
   await expect(remote.getByTestId("status-badge")).toHaveText("running");
   await expect(home.getByPlaceholder("Message")).toBeEnabled({ timeout: 25_000 });
+  await expect(remoteCoordinatorStatus).toHaveAttribute("data-state", "online", { timeout: 25_000 });
 
   await home.evaluate(() => {
     for (let index = 0; index < localStorage.length; index += 1) {
@@ -1051,7 +1415,7 @@ test("restores the last active host channel across sessions", async ({ page }) =
 
   await page.reload();
   await page.getByPlaceholder("passphrase", { exact: true }).fill("active-room-passphrase");
-  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
 
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
@@ -1066,7 +1430,7 @@ test("restores the last active host channel across sessions", async ({ page }) =
   await expect(page.getByText("No channel selected")).toBeHidden();
 });
 
-test("keeps an offline remembered host room in the startup stage", async ({ page }) => {
+test("keeps an offline remembered room in startup while its reachable coordinator remains online", async ({ page }) => {
   await page.goto("/");
   await enablePersistence(page, "offline-host-room-passphrase");
   await configureMockRelay(page);
@@ -1090,29 +1454,29 @@ test("keeps an offline remembered host room in the startup stage", async ({ page
 
   await page.reload();
   await page.getByPlaceholder("passphrase", { exact: true }).fill("offline-host-room-passphrase");
-  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
 
-  const localStatus = page.getByTestId("local-coordinator-status");
+  const localStatus = page.getByTestId("selected-coordinator-status");
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
   await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(localStatus).toHaveAttribute("data-state", "neutral");
+  await expect(localStatus).toHaveAttribute("data-state", "offline");
+  await expect(localStatus).toHaveAttribute("title", "Coordinator offline");
 
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
   await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(localStatus).toHaveAttribute("data-state", "neutral");
   await expect(page.getByTestId("status-badge")).toHaveText("running");
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
   const roomConnectionPanel = page.getByTestId("room-connection-panel");
   await expect(roomConnectionPanel).toBeVisible();
   await expect(roomConnectionPanel).toContainText("Local room offline", { timeout: 20_000 });
   await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(localStatus).toHaveAttribute("data-state", "error");
-  await expect(localStatus).toHaveAttribute("title", "Coordinator running; local room offline");
+  await expect(localStatus).toHaveAttribute("data-state", "online");
+  await expect(localStatus).toHaveAttribute("title", "Coordinator online");
 
   await page.locator(".channel-context-button").click();
-  await expect(page.getByTestId("local-coordinator-menu-status")).toHaveAttribute("data-state", "error");
+  await expect(page.getByTestId("local-coordinator-menu-status")).toHaveAttribute("data-state", "online");
 });
 
 test("blocks a second running coordinator for the same public key", async ({ page }) => {
@@ -1126,7 +1490,7 @@ test("blocks a second running coordinator for the same public key", async ({ pag
   const secondPage = await page.context().newPage();
   await secondPage.goto("/");
   await secondPage.getByPlaceholder("passphrase", { exact: true }).fill("single-instance-passphrase");
-  await secondPage.getByRole("button", { name: "Unlock" }).click();
+  await secondPage.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
   await configureMockRelay(secondPage);
   await secondPage.getByRole("button", { name: "Start", exact: true }).click();
 
@@ -1158,11 +1522,11 @@ test("persists encrypted key, rejects wrong passphrase, and unlocks after reload
   await expect(page.getByRole("heading", { name: "Unlock Cordn Ad-Hoc" })).toBeVisible();
 
   await page.getByPlaceholder("passphrase", { exact: true }).fill("wrong-passphrase");
-  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
   await expect(page.getByTestId("passphrase-error")).toContainText("Wrong passphrase");
 
   await page.getByPlaceholder("passphrase", { exact: true }).fill("phase-two-passphrase");
-  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   expect(await readCoordinatorNpub(page)).toBe(initialNpub);
 });
@@ -1293,8 +1657,18 @@ test("in-session invite redemption preserves the running home coordinator", asyn
   expect(await hostB.evaluate((coordinatorPubkey) => Object.keys(localStorage)
     .some((key) => key.startsWith(`cordn-adhoc-chat-room:v2:${encodeURIComponent(coordinatorPubkey)}:`)), remoteCoordinatorPubkey!)).toBe(true);
 
+  await createRoom(hostA, "Fresh anonymous redemption room");
+  const freshInviteLink = await hostA.getByTestId("invite-link").textContent();
+  expect(freshInviteLink).toBeTruthy();
+
   await hostB.getByRole("link", { name: "CAHMLS home" }).click();
   await expect(hostB.getByTestId("status-badge")).toHaveText("running");
+  await hostB.getByRole("button", { name: "Redeem invite" }).click();
+  const repeatRedeemer = hostB.getByTestId("invite-redeemer");
+  await repeatRedeemer.getByLabel("Invite link").fill(freshInviteLink!);
+  await repeatRedeemer.getByRole("button", { name: "Join invite" }).click();
+  expect(await hostB.getByText("Choose a name, then join the encrypted room. This invite connects only to its host coordinator.").count()).toBe(0);
+  await expect(hostB.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
   await hostAContext.close();
   await hostBContext.close();
 });

@@ -75,6 +75,10 @@
     stopScanner();
     open = false;
     onNavigate(href.href);
+    // The unified workspace remains mounted after navigation, so reset the
+    // dialog for a later invite instead of relying on component teardown.
+    rawValue = "";
+    busy = false;
     return true;
   }
 

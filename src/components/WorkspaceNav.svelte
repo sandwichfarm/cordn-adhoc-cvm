@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
+  import { parseInviteUrl, type ChatInvite, type CoordinatorKeyMode, type RoomHostIdentity } from "../chat/invite";
   import { createSameShellChatHref } from "../chat/room-navigation";
   import { hostIdentityForRoom, listRooms, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type StoredRoom } from "../chat/room-store";
   import InviteRedeemer from "./InviteRedeemer.svelte";
@@ -16,10 +16,6 @@
     activeRoomCoordinatorPubkey?: string;
     activeRoomHost?: RoomHostIdentity;
     roomConnectionStatus?: "cached" | "connecting" | "connected" | "offline" | "deleted";
-    onToggleSounds?: () => void | Promise<void>;
-    roomActionKind?: "leave" | "delete";
-    roomActionLabel?: string;
-    onRoomAction?: () => void;
     showRoomBrowser?: boolean;
     onNavigate: (href: string) => void;
   }
@@ -29,6 +25,7 @@
     title: string;
     coordinatorPubkey: string;
     coordinatorOrigin?: string;
+    coordinatorKeyMode?: CoordinatorKeyMode;
     relayUrls: string[];
     isHost: boolean;
     host: RoomHostIdentity;
@@ -51,10 +48,6 @@
     activeRoomCoordinatorPubkey,
     activeRoomHost,
     roomConnectionStatus,
-    onToggleSounds,
-    roomActionKind,
-    roomActionLabel,
-    onRoomAction,
     showRoomBrowser = true,
     onNavigate,
   }: Props = $props();
@@ -69,21 +62,18 @@
   const invite = $derived(parseInviteUrl(currentUrl));
   const storedRooms = $derived(readRooms(roomsRevision));
   const roomLinks = $derived(storedRooms.map(toRoomLink));
-  const effectiveHomeCoordinatorPubkey = $derived.by(() => {
-    if (homeCoordinatorPubkey) return homeCoordinatorPubkey;
-    const hostedPubkeys: string[] = [];
-    for (const room of roomLinks) {
-      if (room.isHost && !hostedPubkeys.includes(room.coordinatorPubkey)) hostedPubkeys.push(room.coordinatorPubkey);
-    }
-    return hostedPubkeys.length === 1 ? hostedPubkeys[0] : undefined;
-  });
+  const effectiveHomeCoordinatorPubkey = $derived(homeCoordinatorPubkey?.trim() || undefined);
   const homeRooms = $derived(effectiveHomeCoordinatorPubkey
     ? roomLinks.filter((room) => room.coordinatorPubkey === effectiveHomeCoordinatorPubkey)
     : []
   );
+  const previousLocalSessions = $derived(roomLinks.filter((room) =>
+    room.isHost && room.coordinatorPubkey !== effectiveHomeCoordinatorPubkey
+  ));
   const otherServers = $derived.by(() => {
     const groups: Record<string, ServerGroup> = {};
     for (const room of roomLinks) {
+      if (room.isHost) continue;
       if (homeRooms.some((homeRoom) => homeRoom.id === room.id && homeRoom.coordinatorPubkey === room.coordinatorPubkey)) continue;
       const existing = groups[room.coordinatorPubkey];
       if (existing) {
@@ -97,7 +87,10 @@
       }
     }
 
-    if (invite && invite.coordinatorPubkey !== effectiveHomeCoordinatorPubkey) {
+    const inviteAlreadyStored = invite
+      ? roomLinks.some((room) => room.id === invite.groupId && room.coordinatorPubkey === invite.coordinatorPubkey)
+      : false;
+    if (invite && invite.coordinatorPubkey !== effectiveHomeCoordinatorPubkey && !inviteAlreadyStored) {
       const group = groups[invite.coordinatorPubkey];
       if (!group) {
         groups[invite.coordinatorPubkey] = {
@@ -108,6 +101,7 @@
             title: invite.title || "Invited room",
             coordinatorPubkey: invite.coordinatorPubkey,
             coordinatorOrigin: invite.coordinatorOrigin,
+            coordinatorKeyMode: invite.coordinatorKeyMode,
             relayUrls: invite.relayUrls,
             isHost: false,
             host: hostIdentityForInvite(invite),
@@ -147,6 +141,17 @@
   const contextIsHome = $derived(!contextCoordinatorPubkey || Boolean(
     effectiveHomeCoordinatorPubkey && contextCoordinatorPubkey === effectiveHomeCoordinatorPubkey
   ));
+  const contextCoordinatorReachability = $derived.by<"online" | "connecting" | "offline" | "unknown">(() => {
+    if (contextIsHome) {
+      if (coordinatorStatus === "running") return "online";
+      if (coordinatorStatus === "starting" || coordinatorStatus === "stopping") return "connecting";
+      return "offline";
+    }
+    if (roomConnectionStatus === "connected") return "online";
+    if (roomConnectionStatus === "connecting") return "connecting";
+    if (roomConnectionStatus === "offline" || roomConnectionStatus === "deleted" || roomConnectionStatus === "cached") return "offline";
+    return "unknown";
+  });
   const roomCount = $derived(roomLinks.length);
 
   $effect(() => {
@@ -166,6 +171,7 @@
       title: room.title,
       coordinatorPubkey: room.coordinatorPubkey,
       coordinatorOrigin: room.coordinatorOrigin,
+      coordinatorKeyMode: room.coordinatorKeyMode,
       relayUrls: room.relayUrls,
       isHost: room.isHost,
       host: hostIdentityForRoom(room),
@@ -254,7 +260,9 @@
   onMount(() => {
     const refresh = () => roomsRevision += 1;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") open = false;
+      if (event.key === "Escape") {
+        open = false;
+      }
     };
     window.addEventListener(ROOMS_CHANGED_EVENT, refresh);
     window.addEventListener(SERVER_ONLINE_EVENT, announceServerOnline);
@@ -296,7 +304,16 @@
     {#if contextRoomTitle && contextHost}
       <RoomHostBadge host={contextHost} avatarOnly />
     {:else}
-      <span class:remote={!contextIsHome} class="server-dot" aria-hidden="true"></span>
+      <span
+        class:online={contextCoordinatorReachability === "online"}
+        class:connecting={contextCoordinatorReachability === "connecting"}
+        class:offline={contextCoordinatorReachability === "offline"}
+        class:unknown={contextCoordinatorReachability === "unknown"}
+        class="server-dot"
+        data-state={contextCoordinatorReachability}
+        role="img"
+        aria-label={`Coordinator ${contextCoordinatorReachability}`}
+      ></span>
     {/if}
     <span class="context-copy">
       {#if contextRoomTitle}
@@ -311,62 +328,20 @@
     {/if}
   </div>
 
-  {#if contextRoomTitle && (roomConnectionStatus || onToggleSounds || onRoomAction)}
+  {#if contextRoomTitle && roomConnectionStatus}
     <div class="room-utilities" aria-label={`Controls for ${contextRoomTitle}`}>
-      {#if roomConnectionStatus}
-        <span
-          class:offline={roomConnectionStatus === "offline"}
-          class:deleted={roomConnectionStatus === "deleted"}
-          class:cached={roomConnectionStatus === "cached"}
-          class:connecting={roomConnectionStatus === "connecting"}
-          class="room-connection"
-          data-testid="chat-connection-status"
-          title={`Room connection: ${roomConnectionStatus}`}
-        >
-          <span class="connection-dot" aria-hidden="true"></span>
-          <span class="connection-label">{roomConnectionStatus === "connected" ? "Room synced" : roomConnectionStatus === "deleted" ? "Room deleted" : roomConnectionStatus === "offline" ? "Room offline" : roomConnectionStatus === "cached" ? "Room cached" : "Room connecting"}</span>
-        </span>
-      {/if}
-      {#if onToggleSounds}
-        <button
-          class:enabled={soundsEnabled}
-          class="sound-toggle"
-          type="button"
-          aria-label={soundsEnabled ? "Mute notification sounds" : "Enable notification sounds"}
-          aria-pressed={soundsEnabled}
-          title={soundsEnabled ? "Notification sounds on" : "Notification sounds off"}
-          onclick={() => void onToggleSounds?.()}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 9h3.3L12 5.2v13.6L7.3 15H4z"></path>
-            {#if soundsEnabled}
-              <path d="M15.5 9.1a4 4 0 0 1 0 5.8M18 6.7a7.4 7.4 0 0 1 0 10.6"></path>
-            {:else}
-              <path d="m16 9 5 6m0-6-5 6"></path>
-            {/if}
-          </svg>
-        </button>
-      {/if}
-      {#if onRoomAction && roomActionKind && roomActionLabel}
-        <button
-          class:delete={roomActionKind === "delete"}
-          class="room-action"
-          type="button"
-          aria-label={roomActionLabel}
-          title={roomActionLabel}
-          onclick={onRoomAction}
-        >
-          {#if roomActionKind === "delete"}
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 10v7m4-7v7"></path>
-            </svg>
-          {:else}
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M10 5H5v14h5m3-4 4-3-4-3m4 3H9"></path>
-            </svg>
-          {/if}
-        </button>
-      {/if}
+      <span
+        class:offline={roomConnectionStatus === "offline"}
+        class:deleted={roomConnectionStatus === "deleted"}
+        class:cached={roomConnectionStatus === "cached"}
+        class:connecting={roomConnectionStatus === "connecting"}
+        class="room-connection"
+        data-testid="chat-connection-status"
+        title={`Room connection: ${roomConnectionStatus}`}
+      >
+        <span class="connection-dot" aria-hidden="true"></span>
+        <span class="connection-label">{roomConnectionStatus === "connected" ? "Room synced" : roomConnectionStatus === "deleted" ? "Room deleted" : roomConnectionStatus === "offline" ? "Room offline" : roomConnectionStatus === "cached" ? "Room cached" : "Room connecting"}</span>
+      </span>
     </div>
   {/if}
 
@@ -421,7 +396,7 @@
             {#each homeRooms as room (`${room.coordinatorPubkey}:${room.id}`)}
               <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
-                <span class="room-name">{room.title}</span>
+                <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
@@ -429,6 +404,30 @@
           </div>
         {/if}
       </div>
+
+      {#if previousLocalSessions.length > 0}
+        <div class="server-section previous-local-sessions">
+          <div class="server-heading">
+            <span class="server-avatar previous" aria-hidden="true">↺</span>
+            <span class="min-w-0">
+              <strong>Previous local sessions</strong>
+              <small>Coordinator key changed; these rooms are retained on this device.</small>
+            </span>
+            <span class="server-kind previous">previous</span>
+          </div>
+          <div class="room-list">
+            {#each previousLocalSessions as room (`${room.coordinatorPubkey}:${room.id}`)}
+              <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open previous local session ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
+                <span class="hash" aria-hidden="true">#</span>
+                <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
+                <RoomHostBadge host={room.host} compact />
+                {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
+              </button>
+            {/each}
+          </div>
+          <p class="previous-local-guidance">Open a previous session to leave it from this device. It cannot be deleted by the current coordinator key.</p>
+        </div>
+      {/if}
 
       {#each otherServers as server (server.pubkey)}
         <div class="server-section">
@@ -444,7 +443,7 @@
             {#each server.rooms as room (`${room.coordinatorPubkey}:${room.id}`)}
               <button class:active={isActive(room)} class="room-row" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
-                <span class="room-name">{room.title}</span>
+                <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
                 <RoomHostBadge host={room.host} compact />
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
@@ -458,8 +457,8 @@
 
 <style>
   .workspace-nav { position: relative; display: flex; min-width: 0; align-items: center; gap: .75rem; color: #dfffe7; }
-  .brand { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: .42rem; color: inherit; text-decoration: none; }
-  .brand-camel { font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif; font-size: 1rem; line-height: 1; transform: translateY(-.05rem); }
+  .brand { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: .5rem; color: inherit; text-decoration: none; }
+  .brand-camel { display: inline-grid; width: 2.35rem; height: 1rem; flex: 0 0 2.35rem; place-items: center; overflow: visible; font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif; font-size: 1.45rem; line-height: 1; transform: translateY(-.38rem); }
   .brand-wordmark { color: #effff2; font-size: 1.08rem; font-weight: 760; letter-spacing: .12em; line-height: 1; text-shadow: 0 0 18px transparent; transition: color .18s ease, text-shadow .18s ease; }
   .brand-wordmark::after { display: block; width: 34%; height: 1px; margin-top: .38rem; background: #4c7659; content: ""; transform-origin: left; transition: width .24s ease, background .18s ease, box-shadow .18s ease; }
   .brand:hover .brand-wordmark, .brand:focus-visible .brand-wordmark { color: #fff; text-shadow: 0 0 18px rgb(124 245 157 / .18); }
@@ -471,14 +470,16 @@
   .brand-tooltip-key { color: #7cf59d; font-size: .52rem; font-weight: 720; letter-spacing: .12em; text-transform: uppercase; }
   .brand:hover .brand-tooltip, .brand:focus-visible .brand-tooltip { opacity: 1; transform: translateY(0) scale(1); }
   .active-context { display: flex; min-width: 0; align-items: center; gap: .55rem; border-left: 1px solid #293832; padding-left: .75rem; }
-  .server-dot { width: .5rem; height: .5rem; flex: 0 0 auto; border-radius: 999px; background: #7cf59d; box-shadow: 0 0 0 3px rgb(124 245 157 / .09); }
-  .server-dot.remote { background: #f4c46d; box-shadow: 0 0 0 3px rgb(244 196 109 / .09); }
+  .server-dot { width: .5rem; height: .5rem; flex: 0 0 auto; border-radius: 999px; background: #344139; box-shadow: none; }
+  .server-dot.online { background: #7cf59d; box-shadow: 0 0 0 3px rgb(124 245 157 / .09); }
+  .server-dot.connecting { background: #d4bc69; box-shadow: 0 0 0 3px rgb(212 188 105 / .07); animation: connection-pulse 1.4s ease-in-out infinite; }
+  .server-dot.offline { background: #59675f; }
   .context-copy { display: block; min-width: 0; line-height: 1.05; }
   .context-copy > span { display: block; overflow: hidden; color: #82958a; font-size: .55rem; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
   .context-copy strong { display: block; max-width: 9rem; overflow: hidden; margin-top: .25rem; color: #effff2; font-size: .72rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .context-copy > strong:first-child { margin-top: 0; }
   .remote-badge { display: none; border: 1px solid #5f4c2b; background: #21190d; padding: .2rem .35rem; color: #f4c46d; font-size: .52rem; letter-spacing: .1em; text-transform: uppercase; }
-  .room-utilities { display: flex; flex: 0 0 auto; align-items: center; gap: .1rem; }
+  .room-utilities { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: .1rem; }
   .room-connection { display: inline-flex; align-items: center; gap: .35rem; padding: 0 .35rem; color: #8ea397; font-size: .52rem; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
   .connection-dot { width: .38rem; height: .38rem; flex: 0 0 auto; border-radius: 999px; background: #7cf59d; box-shadow: 0 0 7px rgb(124 245 157 / .28); }
   .room-connection.offline { color: #d2a16c; }
@@ -489,15 +490,6 @@
   .room-connection.cached .connection-dot { background: #718277; box-shadow: none; }
   .room-connection.connecting { color: #c2bc72; }
   .room-connection.connecting .connection-dot { background: #e4e78d; animation: connection-pulse 1.4s ease-in-out infinite; }
-  .sound-toggle { display: grid; width: 2.65rem; height: 2.65rem; flex: 0 0 auto; place-items: center; border: 0; background: transparent; color: #718277; transition: background .15s ease, color .15s ease; }
-  .sound-toggle:hover, .sound-toggle:focus-visible { background: #111a14; color: #dfffe7; outline: none; }
-  .sound-toggle.enabled { color: #9bcfa7; }
-  .sound-toggle svg { width: 1rem; height: 1rem; overflow: visible; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
-  .sound-toggle svg path:first-child { fill: currentColor; stroke: none; }
-  .room-action { display: grid; width: 2.65rem; height: 2.65rem; flex: 0 0 auto; place-items: center; border: 0; background: transparent; color: #718277; transition: background .15s ease, color .15s ease; }
-  .room-action:hover, .room-action:focus-visible { background: #1d1612; color: #efb18a; outline: none; }
-  .room-action.delete:hover, .room-action.delete:focus-visible { color: #ffaaa3; }
-  .room-action svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
   .browse-button { display: flex; flex: 0 0 auto; align-items: center; gap: .4rem; border: 1px solid #34483a; background: #0b120d; padding: .45rem .55rem; color: #c9dfce; font-size: .65rem; }
   .browse-button:hover, .browse-button[aria-expanded="true"] { border-color: #7cf59d; color: #effff2; }
   .browse-button.has-notice { border-color: #477e57; }
@@ -523,19 +515,24 @@
   .server-avatar { display: grid; width: 1.8rem; height: 1.8rem; place-items: center; border: 1px solid #3c5544; background: #121b15; color: #a8c9b0; font-size: .62rem; font-weight: 750; }
   .server-avatar.home { border-color: #477e57; color: #7cf59d; }
   .server-avatar.remote { border-color: #66522f; color: #f4c46d; }
+  .server-avatar.previous { border-color: #5d5b39; color: #e4e78d; }
   .workspace-link { border: 1px solid #34483a; padding: .35rem .5rem; color: #a9cbb1; font-size: .58rem; }
   .workspace-link:hover { border-color: #7cf59d; color: #effff2; }
   .server-kind { border: 1px solid #5f4c2b; padding: .2rem .3rem; color: #dcae59; font-size: .5rem; letter-spacing: .08em; text-transform: uppercase; }
+  .server-kind.previous { border-color: #5d5b39; color: #e4e78d; }
   .room-list { display: grid; gap: .12rem; border: 1px solid #202d25; background: #090e0b; padding: .3rem; }
   .room-row, .empty-room { display: grid; width: 100%; align-items: center; border: 1px solid transparent; background: transparent; padding: .62rem .65rem; text-align: left; }
   .room-row { grid-template-columns: auto minmax(0, 1fr) auto auto; gap: .6rem; color: #91a59a; }
   .room-row:hover { background: #111a14; color: #effff2; }
   .room-row.active { border-color: transparent; background: #17241b; color: #effff2; box-shadow: inset 3px 0 #7cf59d; }
   .hash { color: #587060; font-size: .8rem; }
-  .room-name { overflow: hidden; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+  .room-name { display: flex; min-width: 0; flex-direction: column; overflow: hidden; font-size: .72rem; }
+  .room-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .key-mode { margin-top: .08rem; color: #d6ce77; font-size: .47rem; letter-spacing: .05em; text-transform: uppercase; }
   .active-label { color: #7cf59d; font-size: .5rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
   .empty-room { grid-template-columns: 1fr auto; border-color: #293832; border-style: dashed; color: #91a59a; font-size: .68rem; }
   .empty-room:hover { border-color: #7cf59d; color: #dfffe7; }
+  .previous-local-guidance { margin: .55rem .35rem .15rem; color: #9d9e7d; font-size: .57rem; line-height: 1.45; }
 
   @media (min-width: 520px) {
     .browse-label, .remote-badge { display: block; }
