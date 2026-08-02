@@ -109,6 +109,10 @@ status: complete
 - `pnpm build` — passed
 - `git diff --check` — passed
 
+## Issues Encountered
+
+- `state.advance-plan` could not parse the legacy Current Plan/Total Plans format in `STATE.md`. The remaining SDK state updates, roadmap progress, requirement completion, metrics, decisions, and session record all succeeded.
+
 ## Self-Check: PASSED
 
 - Confirmed all seven listed implementation/test files exist.
