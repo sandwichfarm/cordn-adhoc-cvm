@@ -69,6 +69,7 @@
   let audioContext: AudioContext | null = null;
   let knownMessageIds = new Set<string>();
   let unsubscribeSession: (() => void) | null = null;
+  let unregisterAnonymousSession: (() => void) | null = null;
   let pendingRemoteSigner: ReturnType<typeof userProfileStore.createNip46Request>["signer"] | null = null;
   let disposed = false;
   let followLatest = true;
@@ -169,14 +170,40 @@
     await requireRoomSigner(nextRoom, signer);
     if (disposed) return;
     unsubscribeSession?.();
+    unregisterAnonymousSession?.();
+    unregisterAnonymousSession = null;
     session?.stop();
     knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
     followLatest = true;
     room = nextRoom;
     session = new ChatRoomSession(nextRoom, signer);
+    const attachedSession = session;
     connection = session.status.connection;
     connectionDetail = session.status.detail;
     unsubscribeSession = session.subscribe(update);
+    if (userProfileStore.method === "anonymous" && userProfileStore.activeSigner === signer) {
+      const stablePubkey = await signer.getPublicKey();
+      unregisterAnonymousSession = userProfileStore.registerAnonymousSession({
+        stablePubkey,
+        retire: () => {
+          if (session !== attachedSession) return;
+          unsubscribeSession?.();
+          unsubscribeSession = null;
+          attachedSession.discard();
+          session = null;
+          connection = "cached";
+          connectionDetail = "Local identity was retired";
+          update();
+        },
+        restore: async () => {
+          const restored = loadRoom(nextRoom.id, nextRoom.coordinatorPubkey);
+          const activeSigner = userProfileStore.activeSigner;
+          if (!restored || userProfileStore.method !== "anonymous" || !activeSigner) return;
+          await requireRoomSigner(restored, activeSigner);
+          if (!disposed) await attach(restored, activeSigner);
+        },
+      });
+    }
     void session.start();
     update();
     onRoomStored?.(nextRoom);
@@ -305,6 +332,8 @@
     }
     unsubscribeSession?.();
     unsubscribeSession = null;
+    unregisterAnonymousSession?.();
+    unregisterAnonymousSession = null;
     session?.discard();
     session = null;
     removeStoredRoom(target);
@@ -359,6 +388,8 @@
     if (pendingRemoteSigner) userProfileStore.cancelNip46Request(pendingRemoteSigner);
     pendingRemoteSigner = null;
     unsubscribeSession?.();
+    unregisterAnonymousSession?.();
+    unregisterAnonymousSession = null;
     session?.stop();
   });
 

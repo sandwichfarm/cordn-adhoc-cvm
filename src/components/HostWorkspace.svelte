@@ -88,6 +88,7 @@
   let selectedServerPubkey = $state("");
   let copyState = $state<"idle" | "copied">("idle");
   let unsubscribeSession: (() => void) | null = null;
+  let unregisterAnonymousSession: (() => void) | null = null;
   let roomNameInput: HTMLInputElement | undefined = $state();
   let pendingJoinRequests = $state<RemoteJoinRequest[]>([]);
   let managementOpen = $state(false);
@@ -275,14 +276,40 @@
     if (!signer) throw new Error("The host chat signer is unavailable");
     await requireRoomSigner(nextRoom, signer);
     unsubscribeSession?.();
+    unregisterAnonymousSession?.();
+    unregisterAnonymousSession = null;
     session?.stop();
     knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
     room = nextRoom;
     pendingJoinRequests = [];
     session = new ChatRoomSession(nextRoom, signer);
+    const attachedSession = session;
     roomConnection = session.status.connection;
     roomConnectionDetail = session.status.detail;
     unsubscribeSession = session.subscribe(update);
+    if (userProfileStore.method === "anonymous" && userProfileStore.activeSigner === signer) {
+      const stablePubkey = await signer.getPublicKey();
+      unregisterAnonymousSession = userProfileStore.registerAnonymousSession({
+        stablePubkey,
+        retire: () => {
+          if (session !== attachedSession) return;
+          unsubscribeSession?.();
+          unsubscribeSession = null;
+          attachedSession.discard();
+          session = null;
+          roomConnection = "connecting";
+          roomConnectionDetail = "Local identity was retired";
+          update();
+        },
+        restore: async () => {
+          const restored = loadRoom(nextRoom.id, nextRoom.coordinatorPubkey);
+          const activeSigner = userProfileStore.activeSigner;
+          if (!restored || userProfileStore.method !== "anonymous" || !activeSigner) return;
+          await requireRoomSigner(restored, activeSigner);
+          await openHostChat(restored);
+        },
+      });
+    }
     autoApprove = nextRoom.autoApprove !== false;
     rememberActiveHostRoom(nextRoom);
     void session.start();
@@ -724,6 +751,8 @@
     if (deletingActiveRoom) {
       unsubscribeSession?.();
       unsubscribeSession = null;
+      unregisterAnonymousSession?.();
+      unregisterAnonymousSession = null;
       session?.discard();
       session = null;
     }
@@ -769,6 +798,8 @@
     if (reachabilityTimer !== null) window.clearInterval(reachabilityTimer);
     reachabilityTimer = null;
     unsubscribeSession?.();
+    unregisterAnonymousSession?.();
+    unregisterAnonymousSession = null;
     session?.stop();
   });
   onMount(() => {

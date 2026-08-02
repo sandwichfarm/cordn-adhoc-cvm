@@ -298,3 +298,17 @@ test("keeps a stale remote room readable without granting a mismatched signer se
   await expect(roomActions.getByRole("menuitem", { name: `Leave room ${title}` })).toBeVisible();
   await expect(roomActions.getByRole("menuitem", { name: `Delete room ${title}` })).toHaveCount(0);
 });
+
+test("keeps a boundary-crossed local identity non-dismissably recovered after reload", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("cordn:v1:anonymous-identity-recovery", JSON.stringify({ version: 1 }));
+  });
+  await page.goto("/");
+
+  const recovery = page.getByTestId("identity-rotation-dialog");
+  await expect(recovery.getByRole("heading", { name: "Recover local identity" })).toBeVisible();
+  await expect(recovery.getByRole("button", { name: "Create new identity" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(recovery).toBeVisible();
+  await expect(page.getByTestId("user-profile").locator(".user-trigger")).toHaveCount(0);
+});

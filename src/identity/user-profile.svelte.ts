@@ -164,8 +164,8 @@ export class UserProfileStore {
     this.error = "";
     const candidate = await prepareAnonymousIdentityReplacement();
     try {
+      if (!hasRecoveryMarker() && !writeRecoveryMarker()) throw new Error("Unable to set the local recovery boundary");
       if (!candidate.commit()) throw new Error("Unable to write the new local identity");
-      if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
       this.anonymousSigner = candidate.signer;
       this.pubkey = candidate.pubkey;
       this.profile = null;
@@ -173,6 +173,7 @@ export class UserProfileStore {
       this.error = "";
       this.recoveryRequired = false;
       this.initialized = true;
+      if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
     } catch {
       candidate.abort();
       this.enterRecovery("Unable to create a new local identity. No identity is active. Try again.");

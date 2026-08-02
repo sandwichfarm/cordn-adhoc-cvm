@@ -9,6 +9,7 @@
     userProfileStore,
   } from "../identity/user-profile.svelte";
   import IdentityRotationDialog from "./IdentityRotationDialog.svelte";
+  import { anonymousMembershipImpact } from "../chat/room-store";
 
   interface Props {
     anonymousName?: string;
@@ -39,6 +40,7 @@
   let remoteSigner: NostrConnectSigner | null = null;
   let remoteAbort: AbortController | null = null;
   let rotationDialog = $state<"confirm" | "recovery" | null>(null);
+  let membershipCount = $state(0);
   let completionAnnouncement = $state("");
 
   const shortKey = $derived(userProfileStore.pubkey
@@ -113,7 +115,9 @@
     open = false;
   }
 
-  function openRotationDialog(): void {
+  async function openRotationDialog(): Promise<void> {
+    const impact = await anonymousMembershipImpact(userProfileStore.pubkey);
+    membershipCount = impact.count;
     rotationDialog = "confirm";
   }
 
@@ -195,7 +199,7 @@
             />
           </label>
           <p>Your generated avatar and identity are device-local and persist in this browser. No account is required.</p>
-          <button class="rotate-identity" type="button" onclick={openRotationDialog}>Rotate identity…</button>
+          <button class="rotate-identity" type="button" onclick={() => void openRotationDialog()}>Rotate identity…</button>
         </div>
         <div class="user-menu-section">
           <span class="section-label">Connect a Nostr identity</span>
@@ -292,7 +296,7 @@
   {#if rotationDialog}
     <IdentityRotationDialog
       variant={rotationDialog}
-      membershipCount={0}
+      {membershipCount}
       onConfirm={rotationDialog === "recovery" ? recoverIdentity : rotateIdentity}
       onClose={() => {
         if (rotationDialog === "confirm") {
