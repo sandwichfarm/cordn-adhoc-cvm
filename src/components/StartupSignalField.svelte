@@ -31,7 +31,7 @@
 
   const textures = [asciiField(3), asciiField(11), asciiField(19), asciiField(29)];
   let field: HTMLDivElement | undefined = $state();
-  let applySignal: ((nextSignal: StartupSignalPresentation) => void) | undefined;
+  let applySignal = $state<((nextSignal: StartupSignalPresentation) => void) | undefined>();
 
   type MotionPreference = "normal" | "reduced";
   let motionPreference = $state<MotionPreference>("reduced");
@@ -47,7 +47,6 @@
   }
 
   function signalColor(nextSignal: StartupSignalPresentation): string {
-    if (nextSignal.recoveryState === "retrying") return "#e4e78d";
     if (nextSignal.recoveryState === "exhausted") return "#779184";
     return "#7cf59d";
   }
@@ -64,53 +63,16 @@
     let ambient: gsap.core.Timeline | undefined;
     const media = gsap.matchMedia(field);
     const context = gsap.context(() => {
-      const updateTargets = (nextSignal: StartupSignalPresentation) => {
-        const energy = signalEnergy(nextSignal);
-        const forward = nextSignal.forwardPercent;
-        const state = motionState(nextSignal);
-        const targets = [field, ".ring-plane", ".ascii-ring"];
-        const values = {
-          "--signal-forward": forward,
-          "--signal-energy": energy,
-          "--signal-phase-color": signalColor(nextSignal),
-          "--signal-mask-offset": `${(forward - 85) * .12}%`,
-        };
-
-        gsap.killTweensOf(targets);
-        gsap.killTweensOf(ambient);
-        if (preference === "reduced") {
-          gsap.set(field, values);
-          gsap.set(".ring-plane", { rotation: (forward - 85) * .08, scale: .94 + energy * .06 });
-          gsap.set(".ascii-ring", { "--ring-energy": energy });
-          return;
-        }
-
-        gsap.to(field, { ...values, duration: .32, ease: "sine.out", overwrite: true });
-        gsap.to(".ring-plane", {
-          rotation: (forward - 85) * .08,
-          scale: .94 + energy * .06,
-          duration: state === "retrying" ? .4 : .28,
-          ease: "sine.out",
-          overwrite: true,
-        });
-        gsap.to(".ascii-ring", { "--ring-energy": energy, duration: .28, ease: "sine.out", overwrite: true });
-        if (ambient) gsap.to(ambient, { timeScale: energy, duration: .28, ease: "sine.out", overwrite: true });
-      };
-
-      media.add("(prefers-reduced-motion: reduce)", () => {
-        preference = "reduced";
-        motionPreference = "reduced";
-        gsap.killTweensOf([field, ".ring-plane", ".ascii-ring"]);
-        return () => {
-          ambient = undefined;
-        };
-      });
-      media.add("(prefers-reduced-motion: no-preference)", () => {
-        preference = "normal";
-        motionPreference = "normal";
-        gsap.set(".ascii-ring", { transformOrigin: "50% 50%" });
-        gsap.set(".ascii-texture", { transformOrigin: "50% 50%" });
-        gsap.set(".ring-plane", { xPercent: -50, yPercent: -50 });
+      const ambientTargets = [
+        ".ascii-bed .ascii-texture",
+        ".ring-outer",
+        ".ring-middle",
+        ".ring-inner",
+        ".ring-outer .ascii-texture",
+        ".ring-middle .ascii-texture",
+        ".ring-inner .ascii-texture",
+      ];
+      const createAmbient = () => {
         ambient = gsap.timeline({ repeat: -1, yoyo: true, defaults: { ease: "sine.inOut" } });
         ambient
           .to(".ascii-bed .ascii-texture", { xPercent: -.65, yPercent: .8, opacity: .8, duration: 15 }, 0)
@@ -120,8 +82,91 @@
           .to(".ring-outer .ascii-texture", { xPercent: -1.8, yPercent: 1.1, rotation: 1.2, duration: 12 }, 0)
           .to(".ring-middle .ascii-texture", { xPercent: 1.4, yPercent: -1.6, rotation: -1.4, duration: 9 }, 0)
           .to(".ring-inner .ascii-texture", { xPercent: -1, yPercent: -1.2, rotation: .9, duration: 7 }, 0);
-        return () => {
+        return ambient;
+      };
+      const destroyAmbient = () => {
+        ambient?.kill();
+        ambient = undefined;
+      };
+      const updateTargets = (nextSignal: StartupSignalPresentation) => {
+        const energy = signalEnergy(nextSignal);
+        const forward = nextSignal.forwardPercent;
+        const state = motionState(nextSignal);
+        const settled = nextSignal.mode === "resting" || nextSignal.recoveryState === "exhausted";
+        const targets = [field, ".ring-plane", ".ascii-ring"];
+        const values = {
+          "--signal-forward": forward,
+          "--signal-energy": energy,
+          "--signal-phase-color": signalColor(nextSignal),
+          "--signal-mask-offset": `${(forward - 85) * .12}%`,
+        };
+
+        gsap.killTweensOf(targets);
+        if (preference === "reduced") {
+          destroyAmbient();
+          gsap.set(field, values);
+          gsap.set(".ring-plane", { rotation: (forward - 85) * .08, scale: .94 + energy * .06 });
+          gsap.set(".ascii-ring", { "--ring-energy": energy });
+          gsap.set(ambientTargets, { clearProps: "transform,opacity" });
+          return;
+        }
+
+        if (settled) {
+          // Context owns every field tween, including a previously-created
+          // ambient timeline. Killing the scoped set prevents an old loop
+          // from continuing after this terminal state has been rendered.
+          context.getTweens().forEach((tween) => tween.kill());
           ambient = undefined;
+          gsap.to(field, { ...values, duration: .32, ease: "sine.out", overwrite: true });
+          gsap.to(".ring-plane", {
+            rotation: (forward - 85) * .08,
+            scale: .94 + energy * .06,
+            duration: .32,
+            ease: "sine.out",
+            overwrite: true,
+          });
+          gsap.to(".ascii-ring", { "--ring-energy": energy, duration: .32, ease: "sine.out", overwrite: true });
+          gsap.to(".ascii-bed .ascii-texture", { xPercent: 0, yPercent: 0, rotation: 0, opacity: .64, duration: .32, ease: "sine.out", overwrite: true });
+          gsap.to(".ring-outer", { scale: 1, opacity: .62, duration: .32, ease: "sine.out", overwrite: true });
+          gsap.to(".ring-middle", { scale: 1, opacity: .5, duration: .32, ease: "sine.out", overwrite: true });
+          gsap.to(".ring-inner", { scale: 1, opacity: .58, duration: .32, ease: "sine.out", overwrite: true });
+          gsap.to(".ring-outer .ascii-texture", { xPercent: 0, yPercent: 0, rotation: 0, duration: .32, ease: "sine.out", overwrite: true });
+          gsap.to(".ring-middle .ascii-texture", { xPercent: 0, yPercent: 0, rotation: 0, duration: .32, ease: "sine.out", overwrite: true });
+          gsap.to(".ring-inner .ascii-texture", { xPercent: 0, yPercent: 0, rotation: 0, duration: .32, ease: "sine.out", overwrite: true });
+          return;
+        }
+
+        const activeAmbient = ambient ?? createAmbient();
+        activeAmbient.play();
+        gsap.to(field, { ...values, duration: .32, ease: "sine.out", overwrite: true });
+        gsap.to(".ring-plane", {
+          rotation: (forward - 85) * .08,
+          scale: .94 + energy * .06,
+          duration: state === "retrying" ? .4 : .28,
+          ease: "sine.out",
+          overwrite: true,
+        });
+        gsap.to(".ascii-ring", { "--ring-energy": energy, duration: .28, ease: "sine.out", overwrite: true });
+        gsap.to(activeAmbient, { timeScale: energy, duration: .28, ease: "sine.out", overwrite: true });
+      };
+
+      media.add("(prefers-reduced-motion: reduce)", () => {
+        preference = "reduced";
+        motionPreference = "reduced";
+        destroyAmbient();
+        gsap.killTweensOf([field, ".ring-plane", ".ascii-ring"]);
+        updateTargets(signal);
+      });
+      media.add("(prefers-reduced-motion: no-preference)", () => {
+        preference = "normal";
+        motionPreference = "normal";
+        gsap.set(".ascii-ring", { transformOrigin: "50% 50%" });
+        gsap.set(".ascii-texture", { transformOrigin: "50% 50%" });
+        gsap.set(".ring-plane", { xPercent: -50, yPercent: -50 });
+        createAmbient();
+        updateTargets(signal);
+        return () => {
+          destroyAmbient();
         };
       });
 
@@ -131,6 +176,7 @@
 
     return () => {
       applySignal = undefined;
+      destroyAmbient();
       media.revert();
       context.revert();
     };

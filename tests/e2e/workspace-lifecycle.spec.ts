@@ -199,6 +199,17 @@ async function expectStartupMasks(page: import("@playwright/test").Page): Promis
   ]);
 }
 
+async function expectStartupFieldStatic(field: import("@playwright/test").Locator): Promise<void> {
+  await field.evaluate((element) => new Promise<void>((resolve) => window.setTimeout(resolve, 450)));
+  const beforeTransforms = await field.locator(".ascii-bed .ascii-texture, .ring-plane, .ascii-ring, .ascii-ring .ascii-texture").evaluateAll((elements) => (
+    elements.map((element) => getComputedStyle(element).transform)
+  ));
+  await field.page().waitForTimeout(650);
+  await expect.poll(() => field.locator(".ascii-bed .ascii-texture, .ring-plane, .ascii-ring, .ascii-ring .ascii-texture").evaluateAll((elements) => (
+    elements.map((element) => getComputedStyle(element).transform)
+  ))).toEqual(beforeTransforms);
+}
+
 async function openRoomActions(
   page: import("@playwright/test").Page,
   roomTitle: string,
@@ -568,6 +579,7 @@ test("startup signal follows retry and exhaustion truth", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Retry recovery" })).toHaveCount(0);
   await expect(startup).toHaveAttribute("data-recovery-state", "exhausted");
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-state", "exhausted");
+  await expectStartupFieldStatic(page.getByTestId("startup-ascii-field"));
   await expect(startup).toHaveAttribute("data-recovery-completed", "1");
   await expect(startup).toContainText(`Couldn’t restore # ${fixture.roomName}`);
   await expect(startup).toContainText("Check your connection, then retry recovery.");
@@ -2028,6 +2040,8 @@ test("startup uses exactly three masked ASCII reveals", async ({ page }) => {
   await expectShellControlsUsable(page);
   await expectStartupMasks(page);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-preference", "normal");
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-mode", "active");
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", "retrying");
   const bedTexture = page.getByTestId("startup-ascii-field").locator(".ascii-bed .ascii-texture");
   const initialTransform = await bedTexture.evaluate((element) => getComputedStyle(element).transform);
   await page.waitForTimeout(650);

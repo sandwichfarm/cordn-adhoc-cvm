@@ -33,6 +33,8 @@ export function projectStartupSignal(
     total,
     roomName: progress.roomRecovery.roomName,
     forwardPercent,
-    mode: status === "stopping" ? "resting" : "active",
+    // Stopping and the brief running-room handoff settle without extending
+    // coordinator lifecycle ownership into the decorative field.
+    mode: status === "stopping" || status === "running" ? "resting" : "active",
   };
 }

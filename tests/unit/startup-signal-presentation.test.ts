@@ -77,8 +77,9 @@ describe("projectStartupSignal", () => {
   test.each([
     ["starting", "active"],
     ["stopping", "resting"],
-    ["running", "active"],
-  ] satisfies Array<[CoordinatorStatus, "active" | "resting"]>)("uses a resting field only while status is %s", (status, mode) => {
+    ["running", "resting"],
+    ["idle", "active"],
+  ] satisfies Array<[CoordinatorStatus, "active" | "resting"]>)("uses a resting field for terminal coordinator states (%s)", (status, mode) => {
     expect(projectStartupSignal(progress(), status).mode).toBe(mode);
   });
 
