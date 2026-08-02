@@ -38,6 +38,7 @@ import {
   ANONYMOUS_IDENTITY_STORAGE_KEY,
   prepareAnonymousIdentityReplacement,
 } from "../../src/identity/anonymous-identity";
+import * as anonymousIdentity from "../../src/identity/anonymous-identity";
 import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
 import { loadRoom, ROOMS_CHANGED_EVENT, saveRoom, type StoredRoom } from "../../src/chat/room-store";
 
@@ -366,6 +367,27 @@ describe("user profile helpers", () => {
     expect(loadRoom(stored.id, stored.coordinatorPubkey)?.anonymousSecretKey).toBeUndefined();
     expect(loadRoom(stored.id, stored.coordinatorPubkey)?.inviteToken).toBeUndefined();
     expect(store.recoveryRequired).toBe(false);
+  });
+
+  test("clears recovery busy state when replacement candidate generation fails so it can retry", async () => {
+    localStorage.setItem(ANONYMOUS_IDENTITY_STORAGE_KEY, "{");
+    const store = new UserProfileStore();
+    await store.initialize("River");
+    const prepareSpy = vi.spyOn(anonymousIdentity, "prepareAnonymousIdentityReplacement").mockRejectedValueOnce(new Error("Web Crypto unavailable"));
+
+    try {
+      await expect(store.recoverAnonymousIdentity()).rejects.toThrow("Unable to create a new local identity. No identity is active. Try again.");
+      expect(store.rotationInProgress).toBe(false);
+      expect(store.recoveryRequired).toBe(true);
+
+      await store.recoverAnonymousIdentity();
+    } finally {
+      prepareSpy.mockRestore();
+    }
+
+    expect(store.rotationInProgress).toBe(false);
+    expect(store.recoveryRequired).toBe(false);
+    expect(store.activeSigner).not.toBeNull();
   });
 
   test("retires matching local room authority and every live session before publishing a replacement", async () => {

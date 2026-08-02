@@ -175,11 +175,12 @@ export class UserProfileStore {
     if (!this.recoveryRequired || this.rotationInProgress) return;
     this.rotationInProgress = true;
     this.error = "";
-    const candidate = await prepareAnonymousIdentityReplacement();
+    let candidate: Awaited<ReturnType<typeof prepareAnonymousIdentityReplacement>> | null = null;
     let journal: MembershipRetirementJournal | null = null;
     let crossedBoundary = false;
     let wroteRecoveryMarker = false;
     try {
+      candidate = await prepareAnonymousIdentityReplacement();
       // Recovery is an explicit consent boundary: the corrupt identity cannot
       // prove ownership of pre-provenance rooms, so retire their local authority
       // before any replacement signer is published.
@@ -200,7 +201,7 @@ export class UserProfileStore {
       this.initialized = true;
       if (!clearRecoveryMarker()) throw new Error("Unable to acknowledge the new local identity");
     } catch {
-      candidate.abort();
+      candidate?.abort();
       if (!crossedBoundary) {
         try {
           journal?.rollback();
