@@ -47,7 +47,7 @@ Declared values (must be multiples of 4):
 | 2xl | 48px | Not used by new phase UI |
 | 3xl | 64px | Not used by new phase UI |
 
-Exceptions: retain the existing compact profile trigger dimensions. All newly introduced dialog controls, including the close control, Cancel, Rotate identity, and Create new identity, have a minimum 44px block size and a visible 2px focus treatment.
+Exceptions: retain the existing compact profile trigger dimensions. All newly introduced dialog controls, including the close control, `Keep current identity`, `Rotate identity`, and `Create new identity`, have a minimum 44px block size and a visible 2px focus treatment. No rendered Phase 15 CTA may be labeled `Cancel`.
 
 ---
 
@@ -75,7 +75,7 @@ All utility labels remain uppercase with existing terminal letter spacing. Trunc
 | Accent (10%) | `#87ff9f` | Keyboard-focus outline, selected/open profile trigger border, and non-destructive actionable text only |
 | Destructive | `#dc6f66` | Confirmed identity rotation / recovery action only; pair with `#ffaaa3` only for destructive error text |
 
-Accent reserved for: visible focus, the open/selected user-menu trigger, and the non-destructive Cancel action hover/focus. It is not a fill for every button, status label, room, or identity detail. The rotation trigger in the menu is a muted destructive-outline action; the solid destructive fill appears only inside the final confirmation dialog.
+Accent reserved for: visible focus, the open/selected user-menu trigger, and the non-destructive `Keep current identity` action hover/focus. It is not a fill for every button, status label, room, or identity detail. The rotation trigger in the menu is a muted destructive-outline action; the solid destructive fill appears only inside the final confirmation dialog.
 
 ---
 
@@ -109,7 +109,7 @@ Corrupt-identity recovery copy is distinct and must never silently create a repl
 
 In anonymous mode, the existing local-profile help text must state that the generated avatar and identity are device-local and persist in this browser. It must not describe the coordinator key as the user's identity. The public-key summary is presentational only; do not add copy/export controls or display a full secret/key value.
 
-Selecting `Rotate identity…` keeps the profile menu’s current context but opens the modal confirmation above its scrim. The modal kicker is `Privacy boundary`; dialog title is `Rotate local identity?`; it presents the count-aware membership impact and the coordinator-hosted-data clarification before the user can confirm. The default focus is `Keep current identity`, preventing an accidental destructive Enter keypress.
+Selecting `Rotate identity…` keeps the profile menu’s current context but opens the modal confirmation above its scrim. The modal kicker is `Privacy boundary`; dialog title is `Rotate local identity?`. Its visual hierarchy is fixed: show the title first; the count-aware affected-membership line second in the 14px emphasis style; the local-access consequences, new-invite requirement, and coordinator-hosted-data clarification third as 12px body copy; and the destructive `Rotate identity` action last in the footer. The default focus is `Keep current identity`, preventing an accidental destructive Enter keypress.
 
 On confirmation, disable every dialog action, suppress Escape/backdrop dismissal, change the confirm label to `Rotating…`, and expose that busy state through an `aria-live="polite"` status. Once complete, close both dialog and menu, update the header avatar/public-key summary atomically, and announce exactly `Identity rotated. Local room access was removed.` in a visually hidden polite live region. Do not show a toast, banner, room-by-room removal list, or redundant status card.
 
@@ -122,7 +122,7 @@ When durable anonymous identity material is missing, malformed, wrong-length, or
 ### Accessibility and responsive behavior
 
 - The menu trigger remains a real button with an accurate expanded state and `aria-haspopup="dialog"`; `Rotate identity…` is keyboard reachable in the normal menu order.
-- Each dialog uses `aria-labelledby` and `aria-describedby`, traps focus through native modal behavior, returns focus to the user-menu trigger after cancel/error, and closes only when a non-busy user requests cancellation.
+- Each dialog uses `aria-labelledby` and `aria-describedby`, traps focus through native modal behavior, returns focus to the user-menu trigger after non-destructive dismissal/error, and closes only when a non-busy user requests dismissal.
 - The dialog uses `width: min(29rem, calc(100vw - 1rem))`, `max-height: calc(100dvh - 1rem)`, and scrolls only its body. Long display names and key summaries ellipsize rather than widening the header; explanatory copy wraps at word boundaries.
 - No new animation is introduced. Respect reduced motion by retaining the existing static dialog/menu transitions (none required) and never use motion to communicate loss of access or completion.
 - Maintain current high-contrast terminal colors and visible focus; do not use color alone to indicate destructive state—destructive copy and button labels identify it in text.
