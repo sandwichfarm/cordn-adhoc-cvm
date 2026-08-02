@@ -44,7 +44,14 @@
     try {
       const signer = userProfileStore.activeSigner;
       if (!signer) throw new Error("Local identity is not ready");
-      const created = await createHostedRoom({ title, coordinatorPubkey, relayUrls, autoApprove, signer });
+      const created = await createHostedRoom({
+        title,
+        coordinatorPubkey,
+        relayUrls,
+        autoApprove,
+        signer,
+        identityOwner: userProfileStore.method === "anonymous" ? "anonymous" : "external",
+      });
       inviteUrl = createInviteUrl(window.location.origin, {
         groupId: created.id,
         coordinatorPubkey,

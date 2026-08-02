@@ -417,6 +417,7 @@ describe("room signer authority", () => {
       coordinatorPubkey: "a".repeat(64),
       relayUrls: ["wss://relay.example"],
       signer,
+      identityOwner: "anonymous",
     });
 
     expect(room.stablePubkey).toBe(stablePubkey);
@@ -469,6 +470,7 @@ describe("composite room authority retirement", () => {
       coordinatorPubkey: "a".repeat(64),
       isHost: false,
       stablePubkey,
+      identityOwner: "anonymous",
       anonymousSecretKey: bytesToHex(secret),
       stateBase64: "private-state",
       keyPackage: { reference: "private-ref", publicBase64: "public", privateBase64: "private" },
@@ -506,6 +508,32 @@ describe("composite room authority retirement", () => {
       pending: matching.pending,
       inviteToken: matching.inviteToken,
       messages: matching.messages,
+    });
+  });
+
+  it("does not retire external room authority that shares the anonymous public key", async () => {
+    const signer = new BrowserNostrSigner(new Uint8Array(32).fill(13));
+    const stablePubkey = await signer.getPublicKey();
+    const external = storedRoom({
+      id: "external-shared-key",
+      title: "External authority",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      stablePubkey,
+      identityOwner: "external",
+      stateBase64: "external-private-state",
+      keyPackage: { reference: "external-ref", publicBase64: "public", privateBase64: "private" },
+      inviteToken: "external-invite",
+    });
+    saveRoom(external);
+
+    const journal = await retireAnonymousMemberships(stablePubkey);
+
+    expect(journal.count).toBe(0);
+    expect(loadRoom(external.id, external.coordinatorPubkey)).toMatchObject({
+      stateBase64: "external-private-state",
+      keyPackage: external.keyPackage,
+      inviteToken: "external-invite",
     });
   });
 });

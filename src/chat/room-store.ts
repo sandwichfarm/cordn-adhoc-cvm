@@ -64,6 +64,9 @@ export interface RoomIdentity {
   badgeEmoji?: string;
 }
 
+/** Which kind of signer owned the room when its local authority was created. */
+export type RoomIdentityOwner = "anonymous" | "external";
+
 export interface StoredRoom {
   version: 1;
   id: string;
@@ -76,6 +79,8 @@ export interface StoredRoom {
   badgeLabel?: string;
   badgeEmoji?: string;
   stablePubkey: string;
+  /** Durable signer provenance. Missing only on records written before Phase 15. */
+  identityOwner?: RoomIdentityOwner;
   /** Retired records retain display cache only and must never create a session. */
   membershipStatus?: "active" | "retired";
   isHost: boolean;
@@ -480,7 +485,7 @@ export class ChatRoomSession {
   }
 }
 
-export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; signer: NostrSigner; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity; coordinatorKeyMode?: CoordinatorKeyMode }): Promise<StoredRoom> {
+export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; signer: NostrSigner; identityOwner: RoomIdentityOwner; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity; coordinatorKeyMode?: CoordinatorKeyMode }): Promise<StoredRoom> {
   const stablePubkey = await input.signer.getPublicKey();
   const key = await createKeyPackage(stablePubkey);
   const state = await createRoomState(key.keyPackage, key.privateKeyPackage);
@@ -498,6 +503,7 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
     badgeLabel: input.identity?.badgeLabel?.trim() || "host",
     badgeEmoji: input.identity?.badgeEmoji,
     stablePubkey,
+    identityOwner: input.identityOwner,
     isHost: true,
     stateBase64: encodeState(state),
     keyPackage: key.stored,
@@ -515,7 +521,7 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
   return room;
 }
 
-export async function createJoiningRoom(input: { invite: ChatInvite; name: string; signer: NostrSigner; avatar?: string }): Promise<StoredRoom> {
+export async function createJoiningRoom(input: { invite: ChatInvite; name: string; signer: NostrSigner; identityOwner: RoomIdentityOwner; avatar?: string }): Promise<StoredRoom> {
   const stablePubkey = await input.signer.getPublicKey();
   const key = await createKeyPackage(stablePubkey);
   const room: StoredRoom = {
@@ -528,6 +534,7 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
     name: input.name.trim() || "Anonymous",
     avatar: input.avatar,
     stablePubkey,
+    identityOwner: input.identityOwner,
     isHost: false,
     stateBase64: "",
     keyPackage: key.stored,
@@ -662,7 +669,7 @@ export async function retireAnonymousMemberships(stablePubkey: string): Promise<
 }
 
 async function belongsToAnonymousMembership(room: StoredRoom, stablePubkey: string): Promise<boolean> {
-  if (room.stablePubkey === stablePubkey) return true;
+  if (room.identityOwner) return room.identityOwner === "anonymous" && room.stablePubkey === stablePubkey;
   const encoded = room.anonymousSecretKey;
   if (!encoded || !/^[0-9a-f]{64}$/i.test(encoded)) return false;
   try {
@@ -907,6 +914,9 @@ function readStoredRoom(raw: string | null): StoredRoom | null {
     const stored = room as unknown as StoredRoom;
     if (stored.membershipStatus !== "active" && stored.membershipStatus !== "retired") {
       delete stored.membershipStatus;
+    }
+    if (stored.identityOwner !== "anonymous" && stored.identityOwner !== "external") {
+      delete stored.identityOwner;
     }
     if (stored.anonymousSecretKey !== undefined && (typeof stored.anonymousSecretKey !== "string" || !/^[0-9a-f]{64}$/i.test(stored.anonymousSecretKey))) {
       delete stored.anonymousSecretKey;

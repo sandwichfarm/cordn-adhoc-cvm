@@ -572,6 +572,7 @@
         autoApprove: newRoomAutoApprove,
         identity: currentHostIdentity(),
         signer: userProfileStore.activeSigner ?? (() => { throw new Error("Local identity is not ready"); })(),
+        identityOwner: userProfileStore.method === "anonymous" ? "anonymous" : "external",
         coordinatorKeyMode: coordinator.persistenceEnabled ? "persistent" : "ephemeral",
       });
       const entry = buildHostedRoomEntry(created);

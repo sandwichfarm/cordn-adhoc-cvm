@@ -53,6 +53,7 @@ function anonymousRoom(stablePubkey: string, coordinatorPubkey = "a".repeat(64))
     relayUrls: ["wss://relay.example"],
     name: "River",
     stablePubkey,
+    identityOwner: "anonymous",
     stateBase64: "",
     keyPackage: { reference: "rotation-key", publicBase64: "", privateBase64: "private" },
     lastCursor: 0,

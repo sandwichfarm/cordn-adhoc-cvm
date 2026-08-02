@@ -402,6 +402,7 @@
         invite,
         name,
         signer,
+        identityOwner: userProfileStore.method === "anonymous" ? "anonymous" : "external",
         avatar: userProfileStore.avatarUrl,
       });
       if (disposed) return;
