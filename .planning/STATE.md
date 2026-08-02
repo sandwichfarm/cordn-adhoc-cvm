@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 17
 current_phase_name: Full-Viewport Startup Motion
 status: executing
-stopped_at: Phase 17 UI-SPEC approved
-last_updated: "2026-08-02T22:07:40.544Z"
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-08-02T23:05:26.868Z"
 last_activity: 2026-08-02
-last_activity_desc: Phase 16 verified and complete, transitioned to Phase 17
+last_activity_desc: Phase 17 execution started
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 
 ## Current Position
 
-Phase: 17 — Full-Viewport Startup Motion
-Plan: 0 of TBD
+Phase: 17 (Full-Viewport Startup Motion) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-02 — Phase 16 verified and complete, transitioned to Phase 17
+Last activity: 2026-08-02 — Phase 17 execution started
 
-Progress: [███████░░░░░░░░░░░░░] 2/6 phases (33%)
+Progress: [███████░░░░░░░░░░░░░] 2/6 phases ([█████████░] 91%)
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [███████░░░░░░░░░░░░░] 2/6 pha
 | Phase 15 P03 | 11min | 3 tasks | 9 files |
 | Phase 16-resilient-rooms-recovery P02 | 36min | 2 tasks | 7 files |
 | Phase 16 P03 | 16min | 3 tasks | 8 files |
+| Phase 17-full-viewport-startup-motion P01 | 54m 21s | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,8 @@ Recent decisions affecting current work:
 - [Phase 16]: Local chat renders only after a completed recovery state and an attached connected exact session.
 - [Phase 16]: An exhausted room can be deleted only through its exact contextual confirmation, after which startup resumes on the existing transport.
 - [Phase 16]: Multi-room recovery preserves the remembered exact room as the active channel after every room is restored.
+- [Phase ?]: Startup is pane-scoped to host-chat; global header and rail remain usable.
+- [Phase ?]: Signal animation consumes a typed read-only projection of coordinator startup progress.
 
 ### Pending Todos
 
@@ -109,6 +112,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T21:19:56.857Z
-Stopped at: Phase 17 UI-SPEC approved
-Resume file: .planning/phases/17-full-viewport-startup-motion/17-UI-SPEC.md
+Last session: 2026-08-02T23:05:26.862Z
+Stopped at: Completed 17-01-PLAN.md
+Resume file: None

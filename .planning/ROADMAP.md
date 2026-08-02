@@ -76,7 +76,11 @@ and closes with repeatable delivery guidance and automated proof.
   3. Startup motion responds to current recovery progress without obscuring status information.
   4. Users with reduced-motion enabled retain readable startup status and progress while nonessential motion is suppressed.
 
-**Plans**: TBD
+**Plans**: 1/2 plans executed
+
+- [x] 17-01-PLAN.md
+- [ ] 17-02-PLAN.md
+
 **UI hint**: yes
 
 ### Phase 18: Unified Presence, Notifications & Controls
@@ -129,7 +133,7 @@ and closes with repeatable delivery guidance and automated proof.
 |-------|----------------|--------|-----------|
 | 15. Identity Continuity & Membership Integrity | 3/3 | Complete    | 2026-08-02 |
 | 16. Resilient Rooms & Recovery | 3/3 | In Progress|  |
-| 17. Full-Viewport Startup Motion | 0/TBD | Not started | - |
+| 17. Full-Viewport Startup Motion | 1/2 | In Progress|  |
 | 18. Unified Presence, Notifications & Controls | 0/TBD | Not started | - |
 | 19. Grouped Conversations & Reactions | 0/TBD | Not started | - |
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
