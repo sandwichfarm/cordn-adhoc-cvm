@@ -1057,6 +1057,14 @@ export function saveRoom(room: StoredRoom): void {
 }
 
 export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubkey">): void {
+  // Resolve the validated preference while the room still exists. Once storage is
+  // removed loadLastOpenRoom can no longer distinguish this exact composite room
+  // from a stale/corrupt preference.
+  const remembered = loadLastOpenRoom(room.coordinatorPubkey);
+  if (remembered && sameRoomIdentity(remembered, room)) {
+    forgetLastOpenRoom(room.coordinatorPubkey);
+  }
+
   const currentKey = roomStorageKey(room.coordinatorPubkey, room.id);
   const current = readStoredRoom(localStorage.getItem(currentKey));
   if (sameRoomIdentity(current, room)) localStorage.removeItem(currentKey);
@@ -1064,9 +1072,6 @@ export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubke
   const legacyKey = `${ROOM_KEY_PREFIX}${room.id}`;
   const legacy = readStoredRoom(localStorage.getItem(legacyKey));
   if (sameRoomIdentity(legacy, room)) localStorage.removeItem(legacyKey);
-
-  const activeHostKey = `${ACTIVE_HOST_ROOM_KEY_PREFIX}${room.coordinatorPubkey}`;
-  if (localStorage.getItem(activeHostKey) === room.id) localStorage.removeItem(activeHostKey);
 
   window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, {
     detail: { roomId: room.id, coordinatorPubkey: room.coordinatorPubkey, action: "removed" },

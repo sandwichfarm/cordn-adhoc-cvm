@@ -323,32 +323,44 @@
     return isCurrentCoordinatorHost(target) ? "delete" : "leave";
   }
 
+  function removalCoordinatorLabel(target: Pick<StoredRoom, "coordinatorPubkey">): string {
+    if (target.coordinatorPubkey === homeCoordinatorPubkey || target.coordinatorPubkey === coordinatorPubkey) {
+      return homeCoordinatorName || "My coordinator";
+    }
+    return `Coordinator ${target.coordinatorPubkey.slice(0, 6)}…${target.coordinatorPubkey.slice(-4)}`;
+  }
+
   function requestRoomRemoval(target: StoredRoom): void {
     roomRemovalTarget = { room: target, mode: removalModeFor(target) };
   }
 
-  async function removeCurrentRoom(): Promise<void> {
+  async function removeCurrentRoom(): Promise<boolean> {
     const removal = roomRemovalTarget;
-    if (!removal) return;
+    if (!removal) return false;
     const { room: target, mode } = removal;
-    if (mode === "delete") {
-      if (!isCurrentCoordinatorHost(target)) {
-        throw new Error("Open the coordinator that hosts this room before deleting it");
+    try {
+      const latest = loadRoom(target.id, target.coordinatorPubkey);
+      if (!latest || !sameRoomIdentity(latest, target) || removalModeFor(latest) !== mode) return false;
+      if (mode === "delete") {
+        if (!isCurrentCoordinatorHost(latest)) return false;
+        await coordinator.deleteHostedRoom({
+          id: latest.id,
+          coordinatorPubkey: latest.coordinatorPubkey,
+        });
       }
-      await coordinator.deleteHostedRoom({
-        id: target.id,
-        coordinatorPubkey: target.coordinatorPubkey,
-      });
+      unsubscribeSession?.();
+      unsubscribeSession = null;
+      unregisterAnonymousSession?.();
+      unregisterAnonymousSession = null;
+      session?.discard();
+      session = null;
+      removeStoredRoom(latest);
+      room = null;
+      navigate(mode === "delete" ? "/" : "/chats");
+      return true;
+    } catch {
+      return false;
     }
-    unsubscribeSession?.();
-    unsubscribeSession = null;
-    unregisterAnonymousSession?.();
-    unregisterAnonymousSession = null;
-    session?.discard();
-    session = null;
-    removeStoredRoom(target);
-    room = null;
-    navigate(mode === "delete" ? "/" : "/chats");
   }
 
   async function initializeRoute(): Promise<void> {
@@ -705,6 +717,8 @@
     <RoomRemovalDialog
       mode={roomRemovalTarget.mode}
       roomTitle={roomRemovalTarget.room.title}
+      hostLabel={hostIdentityForRoom(roomRemovalTarget.room).name}
+      coordinatorLabel={removalCoordinatorLabel(roomRemovalTarget.room)}
       messageCount={roomRemovalTarget.room.messages.length}
       pendingInviteCount={roomRemovalTarget.mode === "delete" ? session?.pendingJoinRequests.length ?? 0 : 0}
       joinRequestPending={roomRemovalTarget.mode === "leave" && roomRemovalTarget.room.joinRequestSent === true}

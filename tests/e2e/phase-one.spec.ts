@@ -1031,6 +1031,8 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   const deleteDialog = page.getByTestId("room-removal-dialog");
   await expect(deleteDialog.getByRole("heading", { name: "Delete #Disposable room?" })).toBeVisible();
   await expect(deleteDialog.getByTestId("room-removal-impact")).toContainText("1 cached message");
+  await expect(deleteDialog.getByTestId("room-removal-impact")).toContainText("Coordinator");
+  await expect(deleteDialog.getByTestId("room-removal-impact")).toContainText("Host");
   await expect(deleteDialog.getByTestId("room-removal-impact")).toContainText("This cannot be undone");
   await expect(deleteDialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
@@ -1073,6 +1075,59 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   }))).toBe(false);
 
   await guestContext.close();
+});
+
+test("active room removal selects the previous room, then next, then the coordinator empty state", async ({ page }) => {
+  test.setTimeout(75_000);
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await createRoom(page, "Adjacent first");
+  await createRoom(page, "Adjacent middle");
+  await createRoom(page, "Adjacent last");
+
+  const deleteFromRail = async (title: string) => {
+    const row = page.locator(".channel-row").filter({ hasText: title });
+    const trigger = row.getByRole("button", { name: `More actions for # ${title}` });
+    await trigger.click();
+    await page.getByRole("menu", { name: `Room actions for ${title}` }).getByRole("menuitem", { name: `Delete room ${title}` }).click();
+    await page.getByTestId("confirm-delete-room").click();
+  };
+
+  await page.getByRole("button", { name: /Open room Adjacent middle/ }).click();
+  await deleteFromRail("Adjacent middle");
+  await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent last");
+
+  await deleteFromRail("Adjacent last");
+  await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent first");
+
+  await deleteFromRail("Adjacent first");
+  await expect(page.getByTestId("coordinator-empty-state")).toContainText("No rooms for this coordinator");
+  await expect(page.getByTestId("coordinator-empty-state")).toContainText("Create a room or open a current invite to add one here.");
+  await expect(page.getByTestId("coordinator-empty-content")).toBeVisible();
+});
+
+test("room removal missing-target failure stays contextual and safe", async ({ page }) => {
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await createRoom(page, "Safe removal");
+  const roomActions = await openRoomActions(page, "Safe removal");
+  await roomActions.getByRole("menuitem", { name: "Delete room Safe removal" }).click();
+  const dialog = page.getByTestId("room-removal-dialog");
+  await page.evaluate(() => {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith("cordn-adhoc-chat-room:v2:")) localStorage.removeItem(key);
+    }
+  });
+  await dialog.getByTestId("confirm-delete-room").click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("alert")).toHaveText("Couldn’t delete # Safe removal. Try again.");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
 });
 
 test("sidebar room actions do not open the row before deleting its exact host room", async ({ page }) => {

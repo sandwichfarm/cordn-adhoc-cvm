@@ -295,6 +295,12 @@
     return coordinator && effectiveHomeCoordinatorPubkey && room.isHost && room.membershipStatus !== "retired" && room.coordinatorPubkey === effectiveHomeCoordinatorPubkey ? "delete" : "leave";
   }
 
+  function coordinatorLabelFor(room: Pick<StoredRoom, "coordinatorPubkey">): string {
+    return room.coordinatorPubkey === effectiveHomeCoordinatorPubkey
+      ? homeCoordinatorName || "My coordinator"
+      : `Coordinator ${shortKey(room.coordinatorPubkey)}`;
+  }
+
   function requestRemoval(room: RoomLink, origin: HTMLButtonElement | undefined): void {
     const latest = loadRoom(room.id, room.coordinatorPubkey);
     if (!latest) return;
@@ -303,15 +309,25 @@
     removalOrigin = origin ?? null;
   }
 
-  async function confirmRemoval(): Promise<void> {
+  async function confirmRemoval(): Promise<boolean> {
     const target = removalTarget;
     const snapshot = removalRoom;
-    if (!target || !snapshot) return;
-    const latest = loadRoom(target.roomId, target.coordinatorPubkey);
-    if (!latest || latest.id !== target.roomId || latest.coordinatorPubkey !== target.coordinatorPubkey) throw new Error(`Unable to leave # ${snapshot.title}. Please try again.`);
-    if (removalModeFor(latest) === "delete") await coordinator?.deleteHostedRoom({ id: target.roomId, coordinatorPubkey: target.coordinatorPubkey });
-    removeStoredRoom({ id: target.roomId, coordinatorPubkey: target.coordinatorPubkey });
-    if (isActive(snapshot)) navigate("/");
+    if (!target || !snapshot) return false;
+    try {
+      const latest = loadRoom(target.roomId, target.coordinatorPubkey);
+      if (!latest || latest.id !== target.roomId || latest.coordinatorPubkey !== target.coordinatorPubkey) return false;
+      const mode = removalModeFor(snapshot);
+      if (removalModeFor(latest) !== mode) return false;
+      if (mode === "delete") {
+        if (!coordinator) return false;
+        await coordinator.deleteHostedRoom({ id: target.roomId, coordinatorPubkey: target.coordinatorPubkey });
+      }
+      removeStoredRoom({ id: target.roomId, coordinatorPubkey: target.coordinatorPubkey });
+      if (isActive(snapshot)) navigate("/");
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function closeRemoval(): void {
@@ -535,7 +551,7 @@
     </div>
   {/if}
   {#if removalRoom}
-    <RoomRemovalDialog mode={removalModeFor(removalRoom)} roomTitle={removalRoom.title} messageCount={removalRoom.messages.length} joinRequestPending={removalRoom.joinRequestSent === true} onConfirm={confirmRemoval} onClose={closeRemoval} />
+    <RoomRemovalDialog mode={removalModeFor(removalRoom)} roomTitle={removalRoom.title} hostLabel={hostIdentityForRoom(removalRoom).name} coordinatorLabel={coordinatorLabelFor(removalRoom)} messageCount={removalRoom.messages.length} joinRequestPending={removalRoom.joinRequestSent === true} onConfirm={confirmRemoval} onClose={closeRemoval} />
   {/if}
 </nav>
 

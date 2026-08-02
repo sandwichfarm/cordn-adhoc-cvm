@@ -716,17 +716,54 @@
     navigateFromRail(remoteRoomHref(nextRoom));
   }
 
+  function roomsForCoordinator(pubkey: string): StoredRoom[] {
+    if (pubkey === coordinatorPubkey) {
+      return [...hostedRooms.map((entry) => entry.room), ...homeJoinedRooms];
+    }
+    return remoteServers.find((server) => server.pubkey === pubkey)?.rooms
+      ?? previousLocalServers.find((server) => server.pubkey === pubkey)?.rooms
+      ?? [];
+  }
+
+  function coordinatorLabelFor(pubkey: string): string {
+    if (pubkey === coordinatorPubkey) return config.coordinatorName || "My coordinator";
+    if (previousLocalServers.some((server) => server.pubkey === pubkey)) return `Previous local ${shortKey(pubkey)}`;
+    return `Coordinator ${shortKey(pubkey)}`;
+  }
+
+  async function openCoordinatorRoom(nextRoom: StoredRoom): Promise<void> {
+    if (nextRoom.isHost && nextRoom.coordinatorPubkey === coordinatorPubkey) {
+      const entry = hostedRooms.find((candidate) => sameRoomIdentity(candidate.room, nextRoom));
+      if (entry) await selectRoom(entry);
+      return;
+    }
+    openStoredRoomFromRail(nextRoom);
+  }
+
+  function showCoordinatorEmpty(pubkey: string): void {
+    selectedServerPubkey = pubkey;
+    serverMenuOpen = false;
+    if (!hasChatIntent) return;
+    onNavigate("/");
+    // The route-context effect also reacts to the URL transition. Restore the
+    // explicit coordinator selection after that transition has settled.
+    window.setTimeout(() => {
+      selectedServerPubkey = pubkey;
+    }, 0);
+  }
+
   function selectCoordinator(pubkey: string): void {
     selectedServerPubkey = pubkey;
     serverMenuOpen = false;
     const remembered = loadLastOpenRoom(pubkey);
-    if (!remembered) return;
-    if (pubkey === coordinatorPubkey && remembered.isHost) {
-      const entry = hostedRooms.find((candidate) => sameRoomIdentity(candidate.room, remembered));
-      if (entry) void selectRoom(entry);
+    const available = roomsForCoordinator(pubkey);
+    const nextRoom = (remembered && available.find((candidate) => sameRoomIdentity(candidate, remembered))) ?? available[0];
+    if (nextRoom) {
+      void openCoordinatorRoom(nextRoom);
       return;
     }
-    openStoredRoomFromRail(remembered);
+    if (activeIntentInvite?.coordinatorPubkey === pubkey) return;
+    showCoordinatorEmpty(pubkey);
   }
 
   function handleEmbeddedChatContext(context: ChatPaneContext | null): void {
@@ -814,43 +851,58 @@
     return target.isHost && target.membershipStatus !== "retired" && target.coordinatorPubkey === coordinatorPubkey ? "delete" : "leave";
   }
 
-  async function removeCurrentStoredRoom(): Promise<void> {
+  async function removeCurrentStoredRoom(): Promise<boolean> {
     const target = roomRemovalTarget;
-    if (!target) return;
-    const latest = loadRoom(target.id, target.coordinatorPubkey);
-    if (!latest || !sameRoomIdentity(latest, target)) {
-      throw new Error(`Unable to ${roomRemovalMode} # ${target.title}. Please try again.`);
-    }
+    if (!target) return false;
+    const frozenMode = roomRemovalMode;
+    const orderedRooms = roomsForCoordinator(target.coordinatorPubkey);
+    const targetIndex = orderedRooms.findIndex((candidate) => sameRoomIdentity(candidate, target));
+    if (targetIndex < 0) return false;
+    const fallback = targetIndex > 0 ? orderedRooms[targetIndex - 1] : orderedRooms[targetIndex + 1];
+    try {
+      const latest = loadRoom(target.id, target.coordinatorPubkey);
+      if (!latest || !sameRoomIdentity(latest, target) || removalModeFor(latest) !== frozenMode) return false;
+      if (frozenMode === "delete") {
+        await coordinator.deleteHostedRoom({ id: latest.id, coordinatorPubkey: latest.coordinatorPubkey });
+      }
+      const deletingActiveHostRoom = Boolean(room && sameRoomIdentity(room, target));
+      const deletingActiveEmbeddedRoom = Boolean(activeIntentInvite
+        && activeIntentInvite.groupId === target.id
+        && activeIntentInvite.coordinatorPubkey === target.coordinatorPubkey);
+      if (deletingActiveHostRoom) {
+        unsubscribeSession?.();
+        unsubscribeSession = null;
+        unregisterAnonymousSession?.();
+        unregisterAnonymousSession = null;
+        session?.discard();
+        session = null;
+      }
+      removeStoredRoom(latest);
+      hostedRooms = hostedRooms.filter((entry) => !sameRoomIdentity(entry.room, target));
+      homeJoinedRooms = homeJoinedRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
+      remoteRooms = remoteRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
+      previousLocalRooms = previousLocalRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
 
-    if (roomRemovalMode === "delete") {
-      if (removalModeFor(latest) !== "delete") throw new Error(`Unable to delete # ${target.title}. Please try again.`);
-      await coordinator.deleteHostedRoom({ id: latest.id, coordinatorPubkey: latest.coordinatorPubkey });
-    }
-    const deletingActiveRoom = room?.id === target.id && room.coordinatorPubkey === target.coordinatorPubkey;
-    if (deletingActiveRoom) {
-      unsubscribeSession?.();
-      unsubscribeSession = null;
-      unregisterAnonymousSession?.();
-      unregisterAnonymousSession = null;
-      session?.discard();
-      session = null;
-    }
-    removeStoredRoom(target);
-    const remainingRooms = hostedRooms.filter((entry) => !sameRoomIdentity(entry.room, target));
-    hostedRooms = remainingRooms;
-    homeJoinedRooms = homeJoinedRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
-    remoteRooms = remoteRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
-    previousLocalRooms = previousLocalRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
-
-    if (deletingActiveRoom) {
-      room = null;
-      inviteUrl = "";
-      qrUrl = "";
-      composer = "";
-      pendingJoinRequests = [];
-      roomConnection = "connecting";
-      roomConnectionDetail = undefined;
-      if (remainingRooms[0]) await selectRoom(remainingRooms[0]);
+      if (deletingActiveHostRoom) {
+        room = null;
+        inviteUrl = "";
+        qrUrl = "";
+        composer = "";
+        pendingJoinRequests = [];
+        roomConnection = "connecting";
+        roomConnectionDetail = undefined;
+      }
+      if (deletingActiveHostRoom || deletingActiveEmbeddedRoom) {
+        const availableFallback = fallback ? loadRoom(fallback.id, fallback.coordinatorPubkey) : null;
+        if (availableFallback && sameRoomIdentity(availableFallback, fallback)) {
+          await openCoordinatorRoom(availableFallback);
+        } else {
+          showCoordinatorEmpty(target.coordinatorPubkey);
+        }
+      }
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -1210,7 +1262,7 @@
                         class:active={selectedServerPubkey === activeIntentInvite.coordinatorPubkey}
                         type="button"
                         role="menuitem"
-                        onclick={() => { selectedServerPubkey = activeIntentInvite.coordinatorPubkey; serverMenuOpen = false; }}
+                        onclick={() => selectCoordinator(activeIntentInvite.coordinatorPubkey)}
                       >
                         <span
                           class:online={externalCoordinatorReachability(activeIntentInvite.coordinatorPubkey) === "online"}
@@ -1264,7 +1316,15 @@
                   <button type="button" aria-label="New room" title={coordinator.status === "running" ? "New room" : "Start the coordinator to create a room"} disabled={coordinator.status !== "running"} onclick={() => void openCreateDialog()}>＋</button>
                 {/if}
               </div>
-              {#if selectedServerIsHome}
+              {#if selectedServerRoomCount === 0}
+                <div class="channel-empty-state" data-testid="coordinator-empty-state">
+                  <strong>No rooms for this coordinator</strong>
+                  <span>Create a room or open a current invite to add one here.</span>
+                  {#if selectedServerIsHome}
+                    <button type="button" aria-label="Create room from coordinator sidebar" disabled={coordinator.status !== "running"} onclick={() => void openCreateDialog()}>Create room</button>
+                  {/if}
+                </div>
+              {:else if selectedServerIsHome}
                 <div class="channel-list">
                   {#each hostedRooms as entry (roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id))}
                     <div class:active={!embeddedChatActive && Boolean(room && sameRoomIdentity(entry.room, room))} class="channel-row">
@@ -1290,11 +1350,6 @@
                     <RoomActionsMenu sidebar roomTitle={joinedRoom.title} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(joinedRoom, origin)} />
                     </div>
                   {/each}
-                  {#if hostedRooms.length + homeJoinedRooms.length === 0}
-                    <button class="channel-empty" type="button" disabled={coordinator.status !== "running"} onclick={() => void openCreateDialog()}>
-                      <span>{coordinator.status === "running" ? "Create the first room" : "Rooms appear when online"}</span><span aria-hidden="true">＋</span>
-                    </button>
-                  {/if}
                 </div>
               {:else if selectedRemoteServer || selectedPreviousLocalServer}
                 <div class="channel-list">
@@ -1374,6 +1429,15 @@
           {/key}
         {:else if locked}
           <PassphrasePrompt embedded {coordinator} />
+        {:else if selectedServerRoomCount === 0 && coordinator.status !== "starting"}
+          <div class="coordinator-empty-content" data-testid="coordinator-empty-content">
+            <span aria-hidden="true">#</span>
+            <p>No rooms for this coordinator</p>
+            <small>Create a room or open a current invite to add one here.</small>
+            {#if selectedServerIsHome && coordinator.status === "running"}
+              <button class="host-primary" type="button" onclick={() => void openCreateDialog()}>Create room</button>
+            {/if}
+          </div>
         {:else if localRoomReady}
           {@const composerEnabled = true}
           <div class="room-pane flex h-full min-h-0 flex-col">{#if roomConnectionDetail}<p class="host-connection-banner">{roomConnectionDetail}</p>{/if}
@@ -1643,6 +1707,8 @@
       <RoomRemovalDialog
         mode={roomRemovalMode}
         roomTitle={roomRemovalTarget.title}
+        hostLabel={hostIdentityForRoom(roomRemovalTarget).name}
+        coordinatorLabel={coordinatorLabelFor(roomRemovalTarget.coordinatorPubkey)}
         messageCount={roomRemovalTarget.messages.length}
         pendingInviteCount={pendingJoinRequests.length}
         onConfirm={removeCurrentStoredRoom}
@@ -1714,9 +1780,20 @@
   .channel-server-dot.offline { background: #59675f; box-shadow: none; }
   .channel-server-dot.unknown { background: #344139; box-shadow: none; }
   .channel-list { display: grid; gap: .12rem; padding: .35rem; }
+  .channel-empty-state { display: grid; gap: .45rem; padding: .9rem .85rem 1rem; color: #82958a; }
+  .channel-empty-state strong { color: #dfffe7; font-size: .72rem; font-weight: 650; }
+  .channel-empty-state span { font-size: .62rem; line-height: 1.5; }
+  .channel-empty-state button { min-height: 2.75rem; margin-top: .25rem; border: 1px solid #405348; color: #cfe8d5; font-size: .65rem; }
+  .channel-empty-state button:hover:not(:disabled), .channel-empty-state button:focus-visible { border-color: #7cf59d; color: #effff2; outline: none; }
+  .channel-empty-state button:disabled { cursor: default; opacity: .45; }
   .channel-empty { display: flex; width: 100%; align-items: center; justify-content: space-between; border: 1px dashed #293832; padding: .65rem .7rem; color: #82958a; text-align: left; font-size: .68rem; }
   .channel-empty:hover { border-color: #7cf59d; color: #dfffe7; }
   .channel-empty:disabled { cursor: default; border-color: #202d25; color: #546159; opacity: .65; }
+  .coordinator-empty-content { display: grid; width: min(34rem, calc(100% - 2rem)); align-self: center; justify-self: center; justify-items: center; gap: .6rem; padding: 2rem; color: #82958a; text-align: center; }
+  .coordinator-empty-content > span { display: grid; width: 3rem; height: 3rem; place-items: center; border: 1px solid #293832; color: #52645a; font-size: 1.2rem; }
+  .coordinator-empty-content p { color: #effff2; font-size: 1.1rem; font-weight: 650; }
+  .coordinator-empty-content small { max-width: 27rem; font-size: .7rem; line-height: 1.6; }
+  .coordinator-empty-content button { min-height: 2.75rem; margin-top: .35rem; padding-inline: 1rem; }
   .channel-previous-guidance, .coordinator-key-warning { margin: .35rem .7rem .15rem; color: #d9d68e; font-size: .58rem; line-height: 1.5; }
   .channel-row { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; border: 1px solid transparent; color: #91a59a; text-align: left; font-size: .72rem; }
   .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; border: 1px solid #3b5943; border-radius: 2px; background: #102216; color: #bfeac8; font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; }

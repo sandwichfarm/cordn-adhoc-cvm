@@ -4,16 +4,20 @@
   interface Props {
     mode: "delete" | "leave";
     roomTitle: string;
+    hostLabel: string;
+    coordinatorLabel: string;
     messageCount: number;
     pendingInviteCount?: number;
     joinRequestPending?: boolean;
-    onConfirm: () => void | Promise<void>;
+    onConfirm: () => boolean | Promise<boolean>;
     onClose: () => void;
   }
 
   let {
     mode,
     roomTitle,
+    hostLabel,
+    coordinatorLabel,
     messageCount,
     pendingInviteCount = 0,
     joinRequestPending = false,
@@ -29,6 +33,7 @@
   const titleId = $derived(`room-${mode}-title`);
   const descriptionId = $derived(`room-${mode}-description`);
   const messageLabel = $derived(`${messageCount} cached ${messageCount === 1 ? "message" : "messages"}`);
+  const failureMessage = $derived(`Couldn’t ${mode} # ${roomTitle}. Try again.`);
 
   onMount(() => {
     dialog?.showModal();
@@ -44,10 +49,15 @@
     busy = true;
     error = "";
     try {
-      await onConfirm();
-      dialog?.close("confirmed");
-    } catch (cause) {
-      error = cause instanceof Error ? cause.message : `Unable to ${mode} this room`;
+      const confirmed = await onConfirm();
+      if (confirmed) {
+        dialog?.close("confirmed");
+        return;
+      }
+      error = failureMessage;
+      busy = false;
+    } catch {
+      error = failureMessage;
       busy = false;
     }
   }
@@ -79,6 +89,7 @@
     </header>
 
     <div class="dialog-body" id={descriptionId} data-testid="room-removal-impact">
+      <p class="room-context"><span>Coordinator</span> {coordinatorLabel}<br /><span>Host</span> {hostLabel}</p>
       {#if isDelete}
         <p>This closes the room on your coordinator and permanently removes its invite, host keys, and {messageLabel} from this device.</p>
         <p>Members may retain cached copies, but they will no longer be able to send or sync this room.</p>
@@ -120,6 +131,8 @@
   .icon-close:hover, .icon-close:focus-visible { background: #1d1512; color: #fff5f2; outline: none; }
   .dialog-body { min-height: 0; overflow-y: auto; padding: 1rem; color: #adbbb1; font-size: .75rem; line-height: 1.65; }
   .dialog-body p + p { margin-top: .7rem; }
+  .room-context { border-left: 2px solid #42624b; background: #0d1711; padding: .6rem .75rem; color: #dfffe7; }
+  .room-context span { display: inline-block; min-width: 6.5rem; color: #82958a; font-size: .58rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
   .warning { border-left: 2px solid #d69c62; background: #1c160e; padding: .65rem .75rem; color: #f1c38e; }
   .final-warning { color: #ffaaa3; font-weight: 650; }
   .error { border: 1px solid #773c3a; background: #24100f; padding: .65rem .75rem; color: #ffaaa3; }
