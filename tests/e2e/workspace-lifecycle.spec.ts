@@ -184,15 +184,18 @@ async function expectStartupMasks(page: import("@playwright/test").Page): Promis
     const style = getComputedStyle(element);
     return {
       hasTexture: element.querySelector(".ascii-texture") !== null,
-      hasMask: style.maskImage.includes("gradient") || style.webkitMaskImage.includes("gradient"),
+      hasMask: style.maskImage.includes("gradient"),
+      hasWebkitMask: style.webkitMaskImage.includes("gradient"),
       borderWidth: style.borderTopWidth,
+      outline: style.outlineStyle,
+      hasSvgFallback: element.querySelector("svg, circle") !== null,
       focusable: element.matches(":focus-visible") || (element as HTMLElement).tabIndex >= 0,
     };
   }));
   expect(maskDetails).toEqual([
-    { hasTexture: true, hasMask: true, borderWidth: "0px", focusable: false },
-    { hasTexture: true, hasMask: true, borderWidth: "0px", focusable: false },
-    { hasTexture: true, hasMask: true, borderWidth: "0px", focusable: false },
+    { hasTexture: true, hasMask: true, hasWebkitMask: true, borderWidth: "0px", outline: "none", hasSvgFallback: false, focusable: false },
+    { hasTexture: true, hasMask: true, hasWebkitMask: true, borderWidth: "0px", outline: "none", hasSvgFallback: false, focusable: false },
+    { hasTexture: true, hasMask: true, hasWebkitMask: true, borderWidth: "0px", outline: "none", hasSvgFallback: false, focusable: false },
   ]);
 }
 
@@ -466,7 +469,7 @@ test("does not render disconnected local chat during recovery", async ({ page })
   await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i)).toHaveCount(0);
 });
 
-test("startup recovery states stay truthful through retry and exhaustion", async ({ page }) => {
+test("startup signal follows retry and exhaustion truth", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto("/");
   await enablePersistence(page, "multi-room-recovery-passphrase");
@@ -561,8 +564,10 @@ test("startup recovery states stay truthful through retry and exhaustion", async
   const startup = page.getByTestId("startup-progress-panel");
   await expect(startup).toHaveAttribute("data-recovery-total", "2");
   await expect(startup).toHaveAttribute("data-recovery-state", "retrying");
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-state", "retrying");
   await expect(page.getByRole("button", { name: "Retry recovery" })).toHaveCount(0);
   await expect(startup).toHaveAttribute("data-recovery-state", "exhausted");
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-state", "exhausted");
   await expect(startup).toHaveAttribute("data-recovery-completed", "1");
   await expect(startup).toContainText(`Couldn’t restore # ${fixture.roomName}`);
   await expect(startup).toContainText("Check your connection, then retry recovery.");
@@ -1980,7 +1985,7 @@ test("startup handoff keeps actions reachable", async ({ page }) => {
   await expect(page.getByText("No channel selected")).toBeHidden();
 });
 
-test("startup fills the workspace content pane and keeps shell controls usable", async ({ page }) => {
+test("startup uses exactly three masked ASCII reveals", async ({ page }) => {
   const viewport = { width: 1280, height: 720 };
   await page.setViewportSize(viewport);
   await page.goto("/");

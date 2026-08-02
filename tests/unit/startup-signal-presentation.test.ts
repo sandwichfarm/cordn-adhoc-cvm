@@ -81,4 +81,28 @@ describe("projectStartupSignal", () => {
   ] satisfies Array<[CoordinatorStatus, "active" | "resting"]>)("uses a resting field only while status is %s", (status, mode) => {
     expect(projectStartupSignal(progress(), status).mode).toBe(mode);
   });
+
+  test("keeps transport and restored-room targets forward-only across an interrupted sequence", () => {
+    const targets = [
+      projectStartupSignal(progress({ percent: 20 }), "starting"),
+      projectStartupSignal(progress({ percent: 60 }), "starting"),
+      projectStartupSignal(progress({
+        phase: "restoring-rooms",
+        roomRecovery: { state: "restoring", completed: 1, total: 4, roomName: "Exact room", attempt: 1, diagnostic: "" },
+      }), "starting"),
+      projectStartupSignal(progress({
+        phase: "restoring-rooms",
+        roomRecovery: { state: "retrying", completed: 1, total: 4, roomName: "Exact room", attempt: 2, diagnostic: "" },
+      }), "starting"),
+      projectStartupSignal(progress({
+        phase: "restoring-rooms",
+        roomRecovery: { state: "exhausted", completed: 1, total: 4, roomName: "Exact room", attempt: 3, diagnostic: "" },
+      }), "starting"),
+    ];
+
+    expect(targets.map((target) => target.forwardPercent)).toEqual([20, 60, 88.75, 88.75, 88.75]);
+    expect(targets.slice(1).every((target, index) => target.forwardPercent >= targets[index]!.forwardPercent)).toBe(true);
+    expect(targets.at(-2)).toMatchObject({ recoveryState: "retrying", completed: 1, total: 4 });
+    expect(targets.at(-1)).toMatchObject({ recoveryState: "exhausted", completed: 1, total: 4 });
+  });
 });
