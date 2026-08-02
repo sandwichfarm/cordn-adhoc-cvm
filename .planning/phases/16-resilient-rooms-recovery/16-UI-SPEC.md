@@ -88,6 +88,8 @@ Accent reserved for: the selected-room marker, a visible keyboard focus treatmen
 | Reachability indicator | Use a 6–8px dot plus visible text where space permits: green only for confirmed reachable session, amber for connecting/recovering, neutral gray for cached/offline, and destructive red/square for deleted or terminally unavailable. Do not derive this state from the active row or coordinator transport alone. |
 | Startup recovery surface | Keep the existing startup field/screen mounted until coordinator transport and all recoverable hosted rooms are successful. Add a stable `Restoring rooms` stage with current-room name and aggregate progress. Do not add GSAP/masking work in this phase. |
 
+The startup recovery heading and current room name are the primary visual anchor. Aggregate progress is secondary, and the `Retry recovery` control appears only after terminal exhaustion; no other control competes with it in that state.
+
 ### Recovery state presentation
 
 | State | Visible content | Controls / prohibition |
@@ -163,11 +165,11 @@ Applicable state considerations resolved: 16 covered, 4 backstop, 0 unresolved.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS (visual anchor clarified after checker FLAG)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-08-02
