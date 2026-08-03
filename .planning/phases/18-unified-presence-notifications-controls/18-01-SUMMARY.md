@@ -91,6 +91,7 @@ status: complete
    - `dd66ee7` `test(18-01): cover durable invite resolution`
    - `340405e` `feat(18-01): suppress resolved invite replays`
    - `c01f988` `fix(18-01): validate hydrated notification entries`
+   - `445d2c4` `fix(18-01): use reactive notification dedupe sets`
 
 ## Files Created/Modified
 
@@ -125,9 +126,17 @@ status: complete
 - **Verification:** Focused notification and invite tests pass.
 - **Committed in:** `c01f988`
 
+**3. [Rule 1 - Bug] Replaced mutable native sets in reactive notification paths.**
+- **Found during:** Post-merge quality gate
+- **Issue:** The Svelte lint rule rejects native mutable `Set` instances in state-sensitive feed read, hydration, and resolution de-duplication paths.
+- **Fix:** Switched these collections to `SvelteSet` without changing their membership behavior.
+- **Files modified:** `src/notifications/notification-center.svelte.ts`
+- **Verification:** `pnpm lint && pnpm exec tsc --noEmit && pnpm test && pnpm build && git diff --check` passes.
+- **Committed in:** `445d2c4`
+
 ---
 
-**Total deviations:** 2 auto-fixed (1 Rule 1, 1 Rule 2). No scope expansion.
+**Total deviations:** 3 auto-fixed (2 Rule 1, 1 Rule 2). No scope expansion.
 
 ## Issues Encountered
 
@@ -148,8 +157,8 @@ Plan 18-02 can render the bell feed and invitation actions against stable feed/r
 ## Self-Check: PASSED
 
 - All five modified files exist.
-- Task commits `82cdad2`, `d144f84`, `5261460`, `dd66ee7`, `340405e`, and `c01f988` exist.
-- Focused Vitest, TypeScript, and diff checks pass.
+- Task commits `82cdad2`, `d144f84`, `5261460`, `dd66ee7`, `340405e`, `c01f988`, and `445d2c4` exist.
+- Full lint, TypeScript, unit, build, and diff checks pass.
 
 ---
 *Phase: 18-unified-presence-notifications-controls*
