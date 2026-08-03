@@ -316,15 +316,18 @@ The standard exposes `requestPermission()` on `Window`, while permissions remain
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | A bounded history of 100 non-actionable feed entries is appropriate for this browser-only phase. | Recommended File-Level Approach | Low; change the bound without changing the privacy/control architecture. [ASSUMED] |
-| A2 | Retaining resolved invitation IDs for seven days is a conservative bound above the current three-day replay query and accommodates short clock/reconnect variance. | Architecture Patterns | Low; the planner may instead retain exactly the replay window plus a documented margin. [ASSUMED] |
+| A1 | Selected planning default: retain at most 100 non-actionable feed entries; live pending invitations are exempt from age/capacity eviction until resolved. | Recommended File-Level Approach | Low; the named/tested bound can change without altering the privacy/control architecture. [PLANNING DEFAULT] |
+| A2 | Selected planning default: retain resolved invitation IDs for seven days. | Architecture Patterns | Low; the named/tested retention can change without altering resolution-ledger semantics. [PLANNING DEFAULT] |
 
-## Open Questions
+## Resolved Planning Defaults
 
-1. **Exact local feed capacity and resolved-ID retention margin**
-   - What we know: Feed capacity is agent discretion, and the current social subscription replays the preceding three days. [VERIFIED: CONTEXT.md; codebase graph]
-   - What's unclear: The preferred UX retention duration is not a locked product decision.
-   - Recommendation: Plan with 100 non-actionable entries and seven days of `{id,resolvedAt}` retention; never evict a pending live invite, and keep both constants named/tested. [ASSUMED]
+1. **Local feed capacity: 100 non-actionable entries**
+   - Decision: Bound durable non-actionable history at 100 entries and evict the oldest read/non-actionable records first. A live pending invitation is never evicted because of age or capacity; it remains until accepted, dismissed, or otherwise resolved. [PLANNING DEFAULT]
+   - Rationale: A deterministic cap bounds browser storage and hydration work while retaining ample concise activity history. Exempting pending live invitations prevents a capacity policy from deleting an unresolved user action. Keep the constant named and cover the eviction order plus pending-invite exemption in unit tests.
+
+2. **Resolved invitation retention: seven days**
+   - Decision: Persist only `{id,resolvedAt}` for seven days, pruning older records deterministically during hydration and insertion. [PLANNING DEFAULT]
+   - Rationale: Seven days safely exceeds the current three-day relay replay query and absorbs reconnect or clock variance without creating indefinite identity history. Keep the duration named and cover boundary pruning, reload suppression, and post-expiry re-eligibility in unit tests.
 
 ## Environment Availability
 
