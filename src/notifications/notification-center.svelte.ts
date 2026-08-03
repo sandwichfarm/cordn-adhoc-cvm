@@ -314,8 +314,13 @@ function readFeed(): FeedNotificationEntry[] {
     const entries = parsed.entries.flatMap((entry) => {
       const safe = normalizePersistedFeedEntry(entry);
       return safe ? [safe] : [];
-    });
-    return trimFeedEntries(entries.sort((left, right) => right.createdAt - left.createdAt));
+    }).sort((left, right) => right.createdAt - left.createdAt);
+    const ids = new Set<string>();
+    return trimFeedEntries(entries.filter((entry) => {
+      if (ids.has(entry.id)) return false;
+      ids.add(entry.id);
+      return true;
+    }));
   } catch {
     return [];
   }

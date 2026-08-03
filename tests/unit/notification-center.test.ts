@@ -203,4 +203,22 @@ describe("NotificationCenterStore", () => {
     store.destroy();
     reloaded.destroy();
   });
+
+  test("silently rejects malformed and duplicate persisted feed records", () => {
+    localStorage.setItem(NOTIFICATION_FEED_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      entries: [
+        { category: "new_message", key: "message", actor: "Alice", createdAt: 2, occurrences: 1, read: false },
+        { category: "new_message", key: "message", actor: "Alice", createdAt: 1, occurrences: 1, read: false },
+        { category: "room_invite", key: "", createdAt: 3, occurrences: 1, read: false },
+      ],
+    }));
+
+    const store = new NotificationCenterStore();
+
+    expect(store.feed).toEqual([
+      expect.objectContaining({ id: "new_message:message", createdAt: 2 }),
+    ]);
+    store.destroy();
+  });
 });
