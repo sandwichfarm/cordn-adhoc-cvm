@@ -799,7 +799,7 @@
   .emoji-button { flex: 0 0 auto; border: 1px solid #293832; background: #0b0e0d; padding: .2rem .4rem; font-size: .9rem; line-height: 1; }
   .emoji-button:hover { border-color: #7cf59d; background: #112219; }
   .emoji-button:disabled { cursor: not-allowed; opacity: .28; }
-  .message { max-width: min(78%, 38rem); border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem; color: #e4f2e7; }
+  .message { position: relative; max-width: min(78%, 38rem); margin-bottom: 1rem; border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem 1rem; color: #e4f2e7; }
   .message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
   .message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
   .room-pane { position: relative; }

@@ -94,11 +94,12 @@
 
 <style>
   .message-reactions {
-    position: relative;
+    position: absolute;
+    left: .75rem;
+    bottom: -.8rem;
     display: inline-flex;
     min-height: 1.6rem;
     align-items: center;
-    margin-top: .55rem;
     isolation: isolate;
   }
 

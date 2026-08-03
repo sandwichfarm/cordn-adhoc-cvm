@@ -1567,7 +1567,14 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   await expect.poll(() => hostMessage.evaluate((message) => {
     const add = message.querySelector<HTMLElement>(".reaction-add")?.getBoundingClientRect();
     const strip = message.querySelector<HTMLElement>(".reaction-strip")?.getBoundingClientRect();
-    return Boolean(add && strip && add.left < strip.left && add.right > strip.left);
+    const bubble = message.getBoundingClientRect();
+    return Boolean(add && strip
+      && add.left < strip.left
+      && add.right > strip.left
+      && add.top < bubble.bottom
+      && add.bottom > bubble.bottom
+      && strip.top < bubble.bottom
+      && strip.bottom > bubble.bottom);
   })).toBe(true);
 
   const guestMessage = guest.locator("article.message").filter({ hasText: "A reaction target" });

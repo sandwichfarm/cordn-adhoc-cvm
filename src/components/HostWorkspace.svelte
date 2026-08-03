@@ -1988,7 +1988,7 @@
   .host-connection-banner.offline { border-bottom-color: #604326; background: #21170f; color: #ffc17d; }
   .host-composer-status { margin-top: .5rem; color: #7ca087; text-align: center; font-size: .65rem; }
   .host-composer-status.unavailable { color: #a98b69; }
-  .host-message { max-width: min(78%, 42rem); border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem; color: #e4f2e7; }
+  .host-message { position: relative; max-width: min(78%, 42rem); margin-bottom: 1rem; border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem 1rem; color: #e4f2e7; }
   .host-message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
   .host-message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
   .room-pane { position: relative; }
