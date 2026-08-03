@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   DEFAULT_NOTIFICATION_CADENCE_MS,
+  NOTIFICATION_FEED_STORAGE_KEY,
   NotificationCenterStore,
 } from "../../src/notifications/notification-center.svelte";
 
@@ -178,7 +179,7 @@ describe("NotificationCenterStore", () => {
     expect(store.feed.some((entry) => entry.id === "room_invite:keep")).toBe(true);
     expect(store.feed.some((entry) => entry.id === "new_message:message-0")).toBe(false);
 
-    const persisted = JSON.stringify(localStorage);
+    const persisted = localStorage.getItem(NOTIFICATION_FEED_STORAGE_KEY) ?? "";
     expect(persisted).toContain("room_invite:keep");
     expect(persisted).not.toContain("inviteUrl");
     expect(persisted).not.toContain("message body");
