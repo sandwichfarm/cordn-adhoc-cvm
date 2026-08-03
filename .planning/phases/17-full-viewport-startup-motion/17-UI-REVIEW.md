@@ -1,8 +1,8 @@
 # Phase 17 — UI Review
 
-**Audited:** 2026-08-03 (re-audit after `f264f6a..6fec509`)
+**Audited:** 2026-08-03 (final re-audit after `78634c2`)
 **Baseline:** approved `17-UI-SPEC.md` design contract
-**Screenshots:** captured at 1440×900, 768×1024, and 375×812 in `.planning/ui-reviews/17-reaudit-20260803-022158/`. The running server was idle during direct capture; startup-state rendering was independently exercised through Playwright fixtures.
+**Screenshots:** captured at 1440×900, 768×1024, and 375×812 in `.planning/ui-reviews/17-reaudit-20260803-022158/`, with a final desktop/mobile capture in `.planning/ui-reviews/17-final-reaudit-20260803-022815/`. The running server was idle during direct capture; startup-state rendering was independently exercised through Playwright fixtures.
 
 ---
 
@@ -13,19 +13,17 @@
 | 1. Copywriting | 4/4 | Exact empty/retry/exhaustion language and safe error suppression are retained. |
 | 2. Visuals | 4/4 | Pane-scoped bed, three true texture masks, clear focal column, and shell usability all pass browser checks. |
 | 3. Color | 4/4 | The stage is flat dominant ground; accent is reserved for the stated action/progress/focus/field roles. |
-| 4. Typography | 3/4 | Desktop roles/weights exactly match; the ≤520px override introduces non-contract display sizing. |
-| 5. Spacing | 3/4 | Desktop uses the 4px scale; ≤520px and ≤520px-high overrides reintroduce fractional/rem spacing. |
+| 4. Typography | 4/4 | All startup breakpoints now use approved semantic roles and the two declared weights. |
+| 5. Spacing | 4/4 | Standard, compact, and short-pane startup spacing all use the declared 4px scale. |
 | 6. Experience Design | 4/4 | Truthful recovery, terminal settlement, reduced-motion parity, handoff, and shell interaction remain verified. |
 
-**Overall: 22/24**
+**Overall: 24/24**
 
 ---
 
 ## Top Priority Fixes
 
-1. **WARNING — Finish responsive token compliance** — at `max-width: 520px`, the startup heading becomes `clamp(1.55rem, 9vw, 2.2rem)` and the panel uses `.85rem`, `.7rem`, `.75rem`, and `.55rem` values; at `max-height: 520px`, the panel uses `.65rem`/`.4rem` (`HostWorkspace.svelte:2074-2089`). This breaks the contract's four semantic type sizes and multiples-of-4 spacing scale on compact screens. Keep mobile containment, but substitute explicit compliant values (for example 28px or 32px heading, 8/12/16px spacing) and add a compact-viewport computed-style assertion.
-
-No other Phase 17 finding remains. The prior gradient, accent, desktop typography, and desktop spacing findings are resolved.
+No priority fixes remain. The prior gradient, accent, typography, and spacing findings are resolved at desktop and compact breakpoints.
 
 ---
 
@@ -47,15 +45,15 @@ No other Phase 17 finding remains. The prior gradient, accent, desktop typograph
 - **PASS:** the stage ground is `#101614`, panel is the specified dark translucent secondary surface, progress fill is solid `#7cf59d`, retry uses amber only on the progress value, and delete remains `#ffaaa3` (`HostWorkspace.svelte:1965,1970,1977-1980,1988-1990`).
 - **PASS:** the kicker moved from accent to secondary `#66786d`; focus rings and the active retry control are the only startup UI uses of `#7cf59d`, while field highlights remain decorative (`HostWorkspace.svelte:1967,1987-1988,1994,1998`; `StartupSignalField.svelte:281-294`). Browser coverage confirms retry ring texture colors remain green.
 
-### Pillar 4: Typography (3/4)
+### Pillar 4: Typography (4/4)
 
 - **PASS:** at standard dimensions, the computed-contract assertion verifies 12px/600 label, 14px/400 body and progress value, 28px/600 current-status heading, 48px/600 display, and 14px/600 controls (`HostWorkspace.svelte:1967-1976,1985,1992`; `workspace-lifecycle.spec.ts:217-242`).
-- **WARNING:** mobile redefines the display to `clamp(1.55rem, 9vw, 2.2rem)` (`HostWorkspace.svelte:2077`), introducing a fifth responsive type size outside the contract. The compact/mobile allowance permits density simplification, but not an undeclared typography scale.
+- **PASS:** compact startup now uses the approved 28px heading with a 4px top separation (`HostWorkspace.svelte:2074-2080`). `expectStartupCompactVisualContract` verifies the computed 28px value at the compact breakpoint (`workspace-lifecycle.spec.ts:245-271`), and the short-mobile startup flow passed.
 
-### Pillar 5: Spacing (3/4)
+### Pillar 5: Spacing (4/4)
 
 - **PASS:** standard startup spacing is tokenized on the 4px scale: 16px stage/panel clearance, 24px group separation, 12px track/action separation, 8px compact gaps, and 4px detail separation (`HostWorkspace.svelte:1965-2004`). The browser contract check proves 24px panel margin, 16px panel padding, and 4px track height/12px margin.
-- **WARNING:** compact and short-pane overrides use fractional rem values, including `.65rem`, `.85rem`, `.7rem`, `.75rem`, `.55rem`, and `.4rem` (`HostWorkspace.svelte:2075-2089`), which are not multiples of 4px and bypass the declared scale.
+- **PASS:** compact and short-pane overrides are now 4px-scale values only: 8px stage/panel clearance and gaps, 12px inline panel padding, 16px fact separation, and 4px short-pane footer separation (`HostWorkspace.svelte:2074-2089`). The compact visual-contract assertion verifies these computed values (`workspace-lifecycle.spec.ts:245-271`).
 
 ### Pillar 6: Experience Design (4/4)
 
@@ -82,5 +80,5 @@ Skipped: no `components.json` exists and the approved UI specification declares 
 ## Verification Performed
 
 - `pnpm exec vitest run tests/unit/startup-signal-presentation.test.ts` — 12 passed.
-- `pnpm exec playwright test tests/e2e/workspace-lifecycle.spec.ts -g 'startup'` — 9 passed.
+- `pnpm exec playwright test tests/e2e/workspace-lifecycle.spec.ts -g 'startup'` — 9 passed, including the short mobile viewport and compact computed-style assertions.
 - Safe CLI screenshots captured at desktop, tablet, and mobile viewports; startup state was verified by the test fixtures because the existing dev server was idle.
