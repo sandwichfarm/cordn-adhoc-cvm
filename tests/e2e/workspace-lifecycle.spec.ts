@@ -199,6 +199,49 @@ async function expectStartupMasks(page: import("@playwright/test").Page): Promis
   ]);
 }
 
+async function expectStartupVisualContract(page: import("@playwright/test").Page): Promise<void> {
+  const contract = await page.locator(".startup-stage").evaluate((stage) => {
+    const panel = stage.querySelector<HTMLElement>(".startup-progress-panel")!;
+    const kicker = stage.querySelector<HTMLElement>(".startup-kicker")!;
+    const display = stage.querySelector<HTMLElement>("h1")!;
+    const label = panel.querySelector<HTMLElement>("header span")!;
+    const heading = panel.querySelector<HTMLElement>("header strong")!;
+    const body = panel.querySelector<HTMLElement>("footer")!;
+    const control = stage.querySelector<HTMLElement>(".startup-stage-actions button")!;
+    const track = panel.querySelector<HTMLElement>(".startup-progress-track")!;
+    const fill = track.querySelector<HTMLElement>("span")!;
+    const style = getComputedStyle(stage);
+    const panelStyle = getComputedStyle(panel);
+    const trackStyle = getComputedStyle(track);
+
+    return {
+      stageBackgroundImage: style.backgroundImage,
+      stageBeforeContent: getComputedStyle(stage, "::before").content,
+      kicker: { size: getComputedStyle(kicker).fontSize, weight: getComputedStyle(kicker).fontWeight, usesAccent: getComputedStyle(kicker).color === "rgb(124, 245, 157)" },
+      display: { size: getComputedStyle(display).fontSize, weight: getComputedStyle(display).fontWeight },
+      heading: { size: getComputedStyle(heading).fontSize, weight: getComputedStyle(heading).fontWeight },
+      body: { size: getComputedStyle(body).fontSize, weight: getComputedStyle(body).fontWeight },
+      label: { size: getComputedStyle(label).fontSize, weight: getComputedStyle(label).fontWeight },
+      control: { size: getComputedStyle(control).fontSize, weight: getComputedStyle(control).fontWeight },
+      panel: { marginTop: panelStyle.marginTop, paddingTop: panelStyle.paddingTop, paddingRight: panelStyle.paddingRight },
+      track: { height: trackStyle.height, marginTop: trackStyle.marginTop, fillBackgroundImage: getComputedStyle(fill).backgroundImage },
+    };
+  });
+
+  expect(contract).toEqual({
+    stageBackgroundImage: "none",
+    stageBeforeContent: "none",
+    kicker: { size: "12px", weight: "600", usesAccent: false },
+    display: { size: "48px", weight: "600" },
+    heading: { size: "28px", weight: "600" },
+    body: { size: "14px", weight: "400" },
+    label: { size: "12px", weight: "600" },
+    control: { size: "14px", weight: "600" },
+    panel: { marginTop: "24px", paddingTop: "16px", paddingRight: "16px" },
+    track: { height: "4px", marginTop: "12px", fillBackgroundImage: "none" },
+  });
+}
+
 async function expectStartupFieldStatic(field: import("@playwright/test").Locator): Promise<void> {
   await field.page().waitForTimeout(450);
   const beforeTransforms = await field.locator(".ascii-bed .ascii-texture, .ring-plane, .ascii-ring, .ascii-ring .ascii-texture").evaluateAll((elements) => (
@@ -2042,6 +2085,7 @@ test("startup uses exactly three masked ASCII reveals", async ({ page }) => {
   await expect(stage).toHaveCSS("position", "absolute");
   await expectShellControlsUsable(page);
   await expectStartupMasks(page);
+  await expectStartupVisualContract(page);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-preference", "normal");
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-mode", "active");
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", "retrying");
