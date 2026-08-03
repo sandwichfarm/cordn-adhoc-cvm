@@ -17,9 +17,9 @@
   import ChatRoute from "./ChatRoute.svelte";
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
   import LifecyclePanel from "./LifecyclePanel.svelte";
-  import InviteInbox from "./InviteInbox.svelte";
   import MessageAuthor from "./MessageAuthor.svelte";
   import NotificationCenter from "./NotificationCenter.svelte";
+  import NotificationFeed from "./NotificationFeed.svelte";
   import OnlineInvitePicker from "./OnlineInvitePicker.svelte";
   import PendingInvitees from "./PendingInvitees.svelte";
   import PresenceControl from "./PresenceControl.svelte";
@@ -1122,7 +1122,7 @@
           inert={compactViewport && !mobileToolsOpen}
         >
           {#if !locked}<PresenceControl {config} {coordinator} {coordinatorPubkey} {relayUrls} />{/if}
-          <InviteInbox {onNavigate} />
+          <NotificationFeed {onNavigate} />
           <NotificationCenter />
           <UserProfile
             anonymousName={config.userName}
@@ -1799,9 +1799,9 @@
   .host-commandbar { position: relative; display: flex; width: auto; min-width: 0; flex: 0 1 auto; align-items: stretch; justify-content: flex-end; border: 1px solid #293832; background: #080d0a; }
   .host-utilities { display: flex; min-width: 0; align-items: stretch; }
   .mobile-rail-toggle, .mobile-tools-toggle, .mobile-tools-scrim, .mobile-rail-scrim { display: none; }
-  .host-commandbar :global(.presence-control), .host-commandbar :global(.invite-inbox), .host-commandbar :global(.notification-center), .host-commandbar :global(.user-profile) { border-right: 1px solid #202d25; }
-  .host-commandbar :global(.presence-trigger), .host-commandbar :global(.inbox-trigger), .host-commandbar :global(.notification-trigger), .host-commandbar :global(.user-trigger) { border: 0; background: transparent; }
-  .host-commandbar :global(.presence-trigger:hover:not(:disabled)), .host-commandbar :global(.presence-trigger[aria-expanded="true"]), .host-commandbar :global(.inbox-trigger:hover), .host-commandbar :global(.inbox-trigger.pending), .host-commandbar :global(.notification-trigger:hover), .host-commandbar :global(.notification-trigger[aria-expanded="true"]), .host-commandbar :global(.user-trigger:hover), .host-commandbar :global(.user-trigger[aria-expanded="true"]) { background: #101713; }
+  .host-commandbar :global(.presence-control), .host-commandbar :global(.notification-feed), .host-commandbar :global(.notification-center), .host-commandbar :global(.user-profile) { border-right: 1px solid #202d25; }
+  .host-commandbar :global(.presence-trigger), .host-commandbar :global(.notification-feed-trigger), .host-commandbar :global(.notification-trigger), .host-commandbar :global(.user-trigger) { border: 0; background: transparent; }
+  .host-commandbar :global(.presence-trigger:hover:not(:disabled)), .host-commandbar :global(.presence-trigger[aria-expanded="true"]), .host-commandbar :global(.notification-feed-trigger:hover), .host-commandbar :global(.notification-feed-trigger[aria-expanded="true"]), .host-commandbar :global(.notification-trigger:hover), .host-commandbar :global(.notification-trigger[aria-expanded="true"]), .host-commandbar :global(.user-trigger:hover), .host-commandbar :global(.user-trigger[aria-expanded="true"]) { background: #101713; }
   .host-commandbar :global(.compact-controls) { height: 2.65rem; gap: .25rem; border: 0; border-right: 1px solid #202d25; background: transparent; padding: .3rem .4rem; }
   .host-layout { position: relative; width: 100%; max-width: 100%; overflow: hidden; grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .host-chat { position: relative; width: 100%; height: 100%; max-width: 100%; }
@@ -2035,7 +2035,7 @@
     .host-utilities :global(.notification-trigger > span:nth-child(2)), .host-utilities :global(.user-chevron) { display: none; }
     .host-utilities :global(.user-trigger) { grid-template-columns: 1fr; justify-items: center; padding-inline: .25rem; }
     .host-utilities :global(.presence-menu),
-    .host-utilities :global(.inbox-menu),
+    .host-utilities :global(.notification-feed-panel),
     .host-utilities :global(.notification-menu),
     .host-utilities :global(.user-menu) {
       position: fixed;
