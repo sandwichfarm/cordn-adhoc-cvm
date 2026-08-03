@@ -113,4 +113,57 @@ describe("NotificationCenterStore", () => {
     expect(captured[0].title).toBe("Alice is online");
     store.destroy();
   });
+
+  test("records safe feed activity even when desktop delivery is unavailable", () => {
+    const store = new NotificationCenterStore();
+
+    store.record({ category: "user_online", key: "alice", actor: "Alice" });
+
+    expect(captured).toHaveLength(0);
+    expect(store.unreadCount).toBe(1);
+    expect(store.feed).toEqual([
+      expect.objectContaining({
+        id: "user_online:alice",
+        category: "user_online",
+        key: "alice",
+        actor: "Alice",
+        occurrences: 1,
+        read: false,
+      }),
+    ]);
+    expect(JSON.stringify(localStorage)).not.toContain("inviteUrl");
+    store.destroy();
+  });
+
+  test("upserts feed rows independently from desktop queue deduplication", async () => {
+    const store = new NotificationCenterStore();
+    vi.setSystemTime(new Date("2026-08-03T12:00:00Z"));
+    store.record({ category: "user_online", key: "alice", actor: "Alice" });
+    vi.setSystemTime(new Date("2026-08-03T12:01:00Z"));
+    store.record({ category: "user_online", key: "alice", actor: "Alice" });
+
+    expect(store.feed).toHaveLength(1);
+    expect(store.feed[0]).toEqual(expect.objectContaining({ occurrences: 2, createdAt: Date.parse("2026-08-03T12:01:00Z") }));
+
+    await store.requestPermission();
+    store.record({ category: "user_online", key: "alice", actor: "Alice" });
+    store.record({ category: "user_online", key: "alice", actor: "Alice" });
+    await vi.advanceTimersByTimeAsync(DEFAULT_NOTIFICATION_CADENCE_MS);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].title).toBe("Alice is online");
+    store.destroy();
+  });
+
+  test("marks feed entries read without resolving invitation records", () => {
+    const store = new NotificationCenterStore();
+    store.record({ category: "room_invite", key: "invite-1", actor: "Alice", room: "lobby" });
+
+    store.markVisibleRead(["room_invite:invite-1"]);
+
+    expect(store.feed[0]).toEqual(expect.objectContaining({ read: true }));
+    expect(store.unreadCount).toBe(0);
+    expect(store.isInvitationResolved("invite-1")).toBe(false);
+    store.destroy();
+  });
 });
