@@ -832,7 +832,7 @@ test("offers a NIP-46 nostrconnect QR through the default Coracle relay", async 
   await expect(connection).toBeHidden();
 });
 
-test("requests notification permission explicitly and persists grouped notification preferences", async ({ page }) => {
+test("Notification settings keeps permission explicit and persists grouped notification preferences", async ({ page }) => {
   await page.addInitScript(() => {
     const state = window as typeof window & { __notificationPermissionRequests?: number };
     state.__notificationPermissionRequests = 0;
@@ -856,9 +856,11 @@ test("requests notification permission explicitly and persists grouped notificat
   await page.goto("/");
 
   expect(await page.evaluate(() => (window as typeof window & { __notificationPermissionRequests?: number }).__notificationPermissionRequests)).toBe(0);
-  await page.getByRole("button", { name: "Enable notifications", exact: true }).click();
-  const notifications = page.getByRole("dialog", { name: "Notifications" });
+  await page.getByRole("button", { name: "Notification settings", exact: true }).click();
+  const notifications = page.getByRole("dialog", { name: "Notification settings" });
   await expect(notifications).toBeVisible();
+  expect(await page.evaluate(() => (window as typeof window & { __notificationPermissionRequests?: number }).__notificationPermissionRequests)).toBe(0);
+  await notifications.getByRole("button", { name: "Enable desktop notifications", exact: true }).click();
   expect(await page.evaluate(() => (window as typeof window & { __notificationPermissionRequests?: number }).__notificationPermissionRequests)).toBe(1);
   await expect(notifications.getByRole("checkbox", { name: /People coming online/ })).toBeChecked();
   await expect(notifications.getByRole("checkbox", { name: /New messages/ })).not.toBeChecked();
@@ -867,10 +869,39 @@ test("requests notification permission explicitly and persists grouped notificat
   await notifications.getByRole("button", { name: "Close notification settings" }).click();
 
   await page.reload();
-  await page.getByRole("button", { name: /^Notifications/ }).click();
-  const reloaded = page.getByRole("dialog", { name: "Notifications" });
+  await page.getByRole("button", { name: "Notification settings", exact: true }).click();
+  const reloaded = page.getByRole("dialog", { name: "Notification settings" });
   await expect(reloaded.getByRole("checkbox", { name: /New messages/ })).toBeChecked();
   await expect(reloaded.getByRole("combobox")).toHaveValue("30000");
+});
+
+test("notification feed accepts trusted invite only from live state", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("cordn:v1:notification-feed", JSON.stringify({
+      version: 1,
+      entries: [{
+        id: "room_invite:trusted-invite",
+        category: "room_invite",
+        key: "trusted-invite",
+        actor: "Mara",
+        room: "Gathering",
+        createdAt: Date.now(),
+        occurrences: 1,
+        read: false,
+      }],
+    }));
+  });
+  await page.goto("/");
+
+  const bell = page.getByRole("button", { name: "Notifications, 1 unread" });
+  await expect(bell).toBeVisible();
+  await bell.click();
+  const feed = page.getByRole("dialog", { name: "Notifications" });
+  await expect(feed.getByText("Room invitation")).toBeVisible();
+  await expect(feed.getByText("Gathering")).toBeVisible();
+  await expect(feed.getByText("From Mara")).toBeVisible();
+  await expect(feed.getByText("Invitation unavailable")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeVisible();
 });
 
 test("operator shell does not overflow common viewports", async ({ page }) => {
