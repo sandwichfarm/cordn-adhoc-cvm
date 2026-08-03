@@ -2086,13 +2086,18 @@ test("startup reduced motion stays static and readable", async ({ page }) => {
   await expect(startup.getByRole("progressbar")).toBeVisible();
   await expect(startup.getByRole("status")).toBeVisible();
 
-  const beforeTransform = await field.evaluate((element) => (
-    getComputedStyle(element.querySelector(".ring-plane")!).transform
-  ));
+  const reducedVisualState = (element: HTMLElement) => {
+    const ring = element.querySelector<HTMLElement>(".ascii-ring")!;
+    return {
+      energy: getComputedStyle(element).getPropertyValue("--signal-energy"),
+      maskOffset: getComputedStyle(element).getPropertyValue("--signal-mask-offset"),
+      ringEnergy: getComputedStyle(ring).getPropertyValue("--ring-energy"),
+      transform: getComputedStyle(element.querySelector(".ring-plane")!).transform,
+    };
+  };
+  const beforeVisualState = await field.evaluate(reducedVisualState);
   await page.waitForTimeout(650);
-  await expect.poll(() => field.evaluate((element) => (
-    getComputedStyle(element.querySelector(".ring-plane")!).transform
-  ))).toBe(beforeTransform);
+  await expect.poll(() => field.evaluate(reducedVisualState)).toEqual(beforeVisualState);
 });
 
 test("startup motion cleans up across repeated recovery cycles", async ({ page }) => {
@@ -2102,6 +2107,10 @@ test("startup motion cleans up across repeated recovery cycles", async ({ page }
   await configureMockRelay(page);
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await createRoom(page, "Cycle room");
+  // Creating the first room mounts a settled normal-motion field. Keep this
+  // assertion adjacent to that transition so a context-initialization error
+  // cannot be hidden by later cleanup checks.
+  expect(errors).toEqual([]);
 
   for (let cycle = 0; cycle < 2; cycle += 1) {
     await page.getByRole("button", { name: "Stop", exact: true }).click();

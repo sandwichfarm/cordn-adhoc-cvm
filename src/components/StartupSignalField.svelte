@@ -62,7 +62,10 @@
     let preference: MotionPreference = "reduced";
     let ambient: gsap.core.Timeline | undefined;
     const media = gsap.matchMedia(field);
-    const context = gsap.context(() => {
+    // matchMedia can invoke its callback before gsap.context() returns, so this
+    // binding must be initialized before updateTargets can observe it.
+    let context: ReturnType<typeof gsap.context> | undefined;
+    context = gsap.context(() => {
       const ambientTargets = [
         ".ascii-bed .ascii-texture",
         ".ring-outer",
@@ -104,9 +107,16 @@
         gsap.killTweensOf(targets);
         if (preference === "reduced") {
           destroyAmbient();
-          gsap.set(field, values);
-          gsap.set(".ring-plane", { rotation: (forward - 85) * .08, scale: .94 + energy * .06 });
-          gsap.set(".ascii-ring", { "--ring-energy": energy });
+          // Reduced motion is a fixed decorative composition. The semantic
+          // status and progress remain owned by the panel outside this field.
+          gsap.set(field, {
+            "--signal-forward": 0,
+            "--signal-energy": .78,
+            "--signal-phase-color": "#7cf59d",
+            "--signal-mask-offset": "0%",
+          });
+          gsap.set(".ring-plane", { xPercent: -50, yPercent: -50, rotation: 0, scale: 1 });
+          gsap.set(".ascii-ring", { "--ring-energy": .78 });
           gsap.set(ambientTargets, { clearProps: "transform,opacity" });
           return;
         }
@@ -115,8 +125,8 @@
           // Context owns every field tween, including a previously-created
           // ambient timeline. Killing the scoped set prevents an old loop
           // from continuing after this terminal state has been rendered.
-          context.getTweens().forEach((tween) => tween.kill());
-          ambient = undefined;
+          destroyAmbient();
+          context?.getTweens().forEach((tween) => tween.kill());
           gsap.to(field, { ...values, duration: .32, ease: "sine.out", overwrite: true });
           gsap.to(".ring-plane", {
             rotation: (forward - 85) * .08,
@@ -170,14 +180,14 @@
         };
       });
 
-      applySignal = (nextSignal) => context.add(() => updateTargets(nextSignal));
+      applySignal = (nextSignal) => context?.add(() => updateTargets(nextSignal));
     }, field);
     applySignal(signal);
 
     return () => {
       applySignal = undefined;
       media.revert();
-      context.revert();
+      context?.revert();
     };
   });
 </script>
