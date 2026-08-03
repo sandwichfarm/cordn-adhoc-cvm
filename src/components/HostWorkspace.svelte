@@ -2039,7 +2039,7 @@
     .mobile-rail-toggle > span:first-child { color: #7cf59d; font-size: .78rem; }
     .mobile-rail-toggle > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mobile-rail-toggle strong { display: grid; min-width: 1.15rem; height: 1.15rem; place-items: center; background: #17241b; color: #9bf6b3; font-size: .52rem; font-weight: 600; }
-    .mobile-tools-toggle { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #82958a; font-size: .7rem; letter-spacing: .08em; }
+    .mobile-tools-toggle { position: relative; z-index: 61; display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #82958a; font-size: .7rem; letter-spacing: .08em; }
     .mobile-tools-toggle:hover, .mobile-tools-toggle.active { background: #142018; color: #effff2; }
     .mobile-tools-scrim { position: fixed; z-index: 59; inset: 0; display: block; border: 0; background: rgb(0 0 0 / .38); cursor: default; backdrop-filter: blur(1px); }
     .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); max-height: calc(100dvh - 1.1rem); grid-template-columns: minmax(0, 1fr); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
