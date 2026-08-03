@@ -114,6 +114,8 @@ Never show raw invite URLs, room secrets, decrypted envelope data, relay URLs, s
 
 `HostWorkspace` renders two explicit, adjacent semantic groups in the command bar:
 
+The selected room content pane is the normal workspace's primary visual anchor. Header controls stay visually quiet, and profile, notification-feed, settings, and host-tool surfaces remain temporary overlays or drawers that preserve the room context beneath them; none may read as a competing permanent column or dashboard.
+
 | Cluster | Accessible group name | Contents in order | Visual contract |
 |---------|-----------------------|-------------------|-----------------|
 | Personal | `Personal controls` | Avatar/profile with attached presence dot; bell/feed; plainly labelled `Notification settings` | On desktop, begin with a 10px `PERSONAL` label, then use a 1px muted divider after the group. The group uses the quiet secondary field and never contains lifecycle, coordinator, or host-badge controls. |
