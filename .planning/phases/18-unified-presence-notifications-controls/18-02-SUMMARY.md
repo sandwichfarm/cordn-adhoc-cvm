@@ -88,6 +88,8 @@ status: complete
    - `91a09b0` `feat(18-02): add grouped notification feed`
 2. **Task 2: Make desktop permission explicit and compact controls reliable**
    - `265dcb9` `feat(18-02): separate notification settings from feed`
+3. **Post-wave quality gate: Preserve reactive notification grouping**
+   - `fc2d392` `fix(18-02): use reactive notification grouping date`
 
 ## Files Created/Modified
 
@@ -123,9 +125,17 @@ status: complete
 - **Verification:** Compact Playwright coverage passes.
 - **Committed in:** `265dcb9`
 
+**3. [Rule 1 - Bug] Used Svelte's reactive date implementation for feed grouping.**
+- **Found during:** Post-wave lint gate.
+- **Issue:** A mutable native `Date` in the notification grouping path violates the Svelte reactivity lint rule.
+- **Fix:** Replaced the grouping boundary with `SvelteDate`, preserving the same local-midnight grouping semantics.
+- **Files modified:** `src/components/NotificationFeed.svelte`
+- **Verification:** Full lint, type, unit, build, and diff gates pass.
+- **Committed in:** `fc2d392`
+
 ---
 
-**Total deviations:** 2 auto-fixed Rule 1 interaction bugs. No scope expansion.
+**Total deviations:** 3 auto-fixed Rule 1 interaction bugs. No scope expansion.
 
 ## Verification
 
@@ -133,6 +143,7 @@ status: complete
 - `pnpm exec vitest run tests/unit/notification-center.test.ts tests/unit/nostr-invites.test.ts` — pass (14 tests)
 - `pnpm exec tsc --noEmit` — pass
 - `git diff --check` — pass
+- `pnpm lint && pnpm exec tsc --noEmit && pnpm test && pnpm build && git diff --check` — pass (22 files, 212 tests)
 
 ## Known Stubs
 
@@ -149,7 +160,7 @@ Plan 18-03 can place the unified controls in their final utility stack knowing n
 ## Self-Check: PASSED
 
 - `src/components/NotificationFeed.svelte` exists and `src/components/InviteInbox.svelte` is absent.
-- Task commits `fe907b9`, `91a09b0`, and `265dcb9` exist.
+- Task commits `fe907b9`, `91a09b0`, `265dcb9`, and `fc2d392` exist.
 - Focused browser, unit, TypeScript, and diff verification pass.
 
 ---
