@@ -166,13 +166,17 @@
   <button
     bind:this={trigger}
     class="notification-feed-trigger"
+    data-testid="notification-feed-trigger"
     type="button"
     aria-label={bellName}
     aria-haspopup="dialog"
     aria-expanded={open}
+    title="Notifications and room invitations"
     onclick={openFeed}
   >
-    <span aria-hidden="true">♢</span>
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+    </svg>
     {#if notificationCenter.unreadCount > 0}<span class="notification-feed-badge" aria-hidden="true">{unreadLabel}</span>{/if}
   </button>
 
@@ -235,6 +239,7 @@
 <style>
   .notification-feed { position: relative; flex: 0 0 auto; }
   .notification-feed-trigger { position: relative; display: grid; width: 2.65rem; height: 2.65rem; place-items: center; border: 1px solid #293832; color: #91a59a; font-size: .85rem; }
+  .notification-feed-trigger svg { width: 1rem; height: 1rem; fill: none; stroke: currentcolor; stroke-linecap: square; stroke-linejoin: miter; stroke-width: 1.5; }
   .notification-feed-trigger:hover, .notification-feed-trigger[aria-expanded="true"] { border-color: #496451; background: #101713; color: #dfffe7; }
   .notification-feed-trigger:focus-visible, .notification-feed-panel button:focus-visible { outline: 2px solid #7cf59d; outline-offset: 2px; }
   .notification-feed-badge { position: absolute; top: -.25rem; right: -.3rem; display: grid; min-width: 1rem; height: 1rem; place-items: center; background: #7cf59d; color: #071009; font-size: .45rem; font-weight: 700; }

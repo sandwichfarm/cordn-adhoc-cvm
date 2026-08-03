@@ -986,9 +986,17 @@ test("notification feed accepts trusted invite only from live state", async ({ p
   await page.goto("/");
 
   const bell = page.getByRole("button", { name: "Notifications, 1 unread" });
+  const feedTrigger = page.getByTestId("notification-feed-trigger");
   await expect(bell).toBeVisible();
   await bell.click();
   const feed = page.getByRole("dialog", { name: "Notifications" });
+  await expect.poll(async () => {
+    const trigger = await feedTrigger.boundingBox();
+    const panel = await feed.boundingBox();
+    return Boolean(trigger && panel
+      && Math.abs((trigger.x + trigger.width) - (panel.x + panel.width)) <= 1
+      && panel.y >= trigger.y + trigger.height);
+  }).toBe(true);
   await expect(feed.getByText("Room invitation")).toBeVisible();
   await expect(feed.getByText("Gathering")).toBeVisible();
   await expect(feed.getByText("From Mara")).toBeVisible();
