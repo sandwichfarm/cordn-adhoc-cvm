@@ -1,7 +1,7 @@
 ---
 phase: 18
 slug: unified-presence-notifications-controls
-status: draft
+status: planned
 nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-03
@@ -49,6 +49,18 @@ created: 2026-08-03
 - [ ] Extend `tests/unit/config-store.test.ts` only as needed to preserve validated `online`/`invisible`/`offline` persistence while removing lifecycle coupling.
 - [ ] Extend `tests/e2e/workspace-lifecycle.spec.ts` with profile-owned presence, accessible avatar status, personal/host control ownership, separate settings/feed, explicit permission, actionable invites, reload behavior, and compact drawer bounds/names.
 
+## Plan Task Mapping
+
+| Plan task | Requirements | Automated evidence created or extended |
+|-----------|--------------|----------------------------------------|
+| 18-01 Task 1 | NOTF-02, NOTF-03 | `tests/unit/notification-center.test.ts`: feed-first ingestion, safe persistence migration, unread/read, grouping, capacity, cadence, category defaults, and desktop dedupe |
+| 18-01 Task 2 | INVITE-01, NOTF-02, NOTF-03 | `tests/unit/nostr-invites.test.ts` plus notification-center coverage: producer migration, seven-day resolution pruning, replay suppression, and absence of persisted capability data |
+| 18-02 Task 1 | INVITE-01, NOTF-02 | `tests/e2e/workspace-lifecycle.spec.ts`: bell feed, rendered-read behavior, same-shell accept, confirmed dismiss, compact focus and sheet behavior |
+| 18-02 Task 2 | NOTF-01, NOTF-03 | `tests/e2e/workspace-lifecycle.spec.ts`: exact settings label, zero prompt on open, explicit permission CTA, category/cadence persistence, compact settings sheet |
+| 18-03 Task 1 | PRES-01, PRES-02 | `tests/unit/config-store.test.ts` and `tests/e2e/identity-ui-review.spec.ts`: durable profile presence, signer-optional behavior, avatar status, and zero lifecycle mutation |
+| 18-03 Task 2 | SHELL-01 | `tests/e2e/workspace-lifecycle.spec.ts`: host-admin badge ownership, save/preview behavior, personal-profile absence, remote mutation absence |
+| 18-03 Task 3 | SHELL-01, NOTF-01, NOTF-02 | `tests/e2e/workspace-lifecycle.spec.ts`: desktop/intermediate/compact ownership, duplicate-control counts, drawer/sheet accessibility, overflow/style/reduced-motion checks |
+
 ## Manual-Only Verifications
 
 All Phase 18 requirements must have automated evidence. Native operating-system notification chrome is not asserted; the browser API invocation, grouping payload, permission gate, and click-routing behavior are asserted through the existing mock.
@@ -60,7 +72,7 @@ All Phase 18 requirements must have automated evidence. Native operating-system 
 - [x] No watch-mode flags.
 - [x] Feedback latency is bounded at 240 seconds.
 - [x] `nyquist_compliant: true` is set in frontmatter.
-- [ ] Planner maps every implementation task to one or more rows above.
+- [x] Planner maps every implementation task to one or more rows above.
 - [ ] Wave 0 coverage is implemented and green.
 
 **Approval:** draft — implementation plan and test extensions pending.

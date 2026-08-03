@@ -96,7 +96,12 @@ and closes with repeatable delivery guidance and automated proof.
   4. A separate bell opens a grouped in-app notification feed with unread state and actionable incoming room invitations.
   5. Browser-notification permission is requested only after a user action, and enabled desktop notifications follow the configured cadence without duplicate bursts.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 18-01-PLAN.md — Establish the feed-first notification ledger, optional desktop projection, and safe invitation replay state.
+- [ ] 18-02-PLAN.md — Deliver the separate bell feed, same-shell invitation actions, and exact Notification settings surface.
+- [ ] 18-03-PLAN.md — Move presence into the profile and finalize personal/host control ownership across breakpoints.
 **UI hint**: yes
 
 ### Phase 19: Grouped Conversations & Reactions
