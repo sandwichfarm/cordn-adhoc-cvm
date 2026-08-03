@@ -103,7 +103,9 @@ export class NotificationCenterStore {
       this.categories = { ...persisted.categories };
     }
     this.feed = readFeed();
-    this.resolutions = pruneResolutions(readInvitationResolutions());
+    const persistedResolutions = readInvitationResolutions();
+    this.resolutions = pruneResolutions(persistedResolutions);
+    if (this.resolutions.length !== persistedResolutions.length) this.persistInvitationResolutions();
   }
 
   get active(): boolean {
@@ -245,14 +247,7 @@ export class NotificationCenterStore {
   }
 
   private trimFeed(entries: FeedNotificationEntry[]): FeedNotificationEntry[] {
-    const next = [...entries];
-    let ordinaryEntries = next.filter((entry) => entry.category !== "room_invite").length;
-    for (let index = next.length - 1; index >= 0 && ordinaryEntries > MAX_NOTIFICATION_HISTORY; index -= 1) {
-      if (next[index].category === "room_invite") continue;
-      next.splice(index, 1);
-      ordinaryEntries -= 1;
-    }
-    return next;
+    return trimFeedEntries(entries);
   }
 
   private cancelQueued(): void {
@@ -320,7 +315,7 @@ function readFeed(): FeedNotificationEntry[] {
       const safe = normalizePersistedFeedEntry(entry);
       return safe ? [safe] : [];
     });
-    return entries.sort((left, right) => right.createdAt - left.createdAt).slice(0, MAX_NOTIFICATION_HISTORY + entries.filter((entry) => entry.category === "room_invite").length);
+    return trimFeedEntries(entries.sort((left, right) => right.createdAt - left.createdAt));
   } catch {
     return [];
   }
@@ -349,6 +344,17 @@ function pruneResolutions(entries: InvitationResolution[], now = Date.now()): In
     ids.add(entry.id);
     return true;
   });
+}
+
+function trimFeedEntries(entries: FeedNotificationEntry[]): FeedNotificationEntry[] {
+  const next = [...entries];
+  let ordinaryEntries = next.filter((entry) => entry.category !== "room_invite").length;
+  for (let index = next.length - 1; index >= 0 && ordinaryEntries > MAX_NOTIFICATION_HISTORY; index -= 1) {
+    if (next[index].category === "room_invite") continue;
+    next.splice(index, 1);
+    ordinaryEntries -= 1;
+  }
+  return next;
 }
 
 function normalizePersistedFeedEntry(value: unknown): FeedNotificationEntry | null {

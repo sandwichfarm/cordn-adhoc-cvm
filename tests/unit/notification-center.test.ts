@@ -189,4 +189,18 @@ describe("NotificationCenterStore", () => {
     store.destroy();
     reloaded.destroy();
   });
+
+  test("prunes resolved invitation IDs after the fixed replay window", () => {
+    vi.setSystemTime(new Date("2026-08-03T12:00:00Z"));
+    const store = new NotificationCenterStore();
+    store.resolveInvitation("handled-invite");
+    expect(store.isInvitationResolved("handled-invite")).toBe(true);
+
+    vi.setSystemTime(new Date("2026-08-10T12:00:01Z"));
+    const reloaded = new NotificationCenterStore();
+    expect(reloaded.isInvitationResolved("handled-invite")).toBe(false);
+    expect(localStorage.getItem("cordn:v1:notification-resolutions")).not.toContain("handled-invite");
+    store.destroy();
+    reloaded.destroy();
+  });
 });

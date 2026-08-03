@@ -176,6 +176,11 @@ export class NostrSocialStore {
   }
 
   dismissInvite(id: string): void {
+    this.resolveInvite(id);
+  }
+
+  resolveInvite(id: string): void {
+    notificationCenter.resolveInvitation(id);
     this.incomingInvites = this.incomingInvites.filter((invite) => invite.id !== id);
   }
 
@@ -232,13 +237,13 @@ export class NostrSocialStore {
       expiresAt: value.expiresAt,
       descriptor: value.descriptor,
     }].sort((left, right) => left.name.localeCompare(right.name));
-    if (!wasOnline) notificationCenter.enqueue({ category: "user_online", key: sender, actor: name });
+    if (!wasOnline) notificationCenter.record({ category: "user_online", key: sender, actor: name });
   }
 
   private async receiveInvite(sender: string, value: unknown): Promise<void> {
     if (Date.now() - this.socialGraphRefreshedAt > 60_000) await this.refreshSocialGraph();
     if (!shouldAcceptInvite(sender, this.following) || !isInvitePayload(value)) return;
-    if (this.incomingInvites.some((invite) => invite.id === value.id)) return;
+    if (this.incomingInvites.some((invite) => invite.id === value.id) || notificationCenter.isInvitationResolved(value.id)) return;
     let profile = this.profiles.get(sender);
     if (!profile) {
       profile = (await fetchNostrProfiles([sender])).get(sender);
@@ -254,7 +259,7 @@ export class NostrSocialStore {
       roomTitle: value.roomTitle,
       createdAt: value.createdAt,
     }];
-    notificationCenter.enqueue({ category: "room_invite", key: value.id, actor: fromName, room: value.roomTitle });
+    notificationCenter.record({ category: "room_invite", key: value.id, actor: fromName, room: value.roomTitle });
   }
 
   private async publishPresence(): Promise<void> {

@@ -370,7 +370,7 @@ export class ChatRoomSession {
         const newRequests = requests.filter((request) => !this.knownJoinRequestIds.has(request.kp_ref));
         for (const request of requests) this.knownJoinRequestIds.add(request.kp_ref);
         for (const request of newRequests) {
-          notificationCenter.enqueue({
+          notificationCenter.record({
             category: "join_request",
             key: `${this.room.id}:${request.kp_ref}`,
             room: this.room.title,
@@ -415,7 +415,7 @@ export class ChatRoomSession {
         const newRequests = requests.filter((request) => !this.knownJoinRequestIds.has(request.kp_ref));
         for (const request of requests) this.knownJoinRequestIds.add(request.kp_ref);
         for (const request of newRequests) {
-          notificationCenter.enqueue({
+          notificationCenter.record({
             category: "join_request",
             key: `${this.room.id}:${request.kp_ref}`,
             room: this.room.title,
@@ -565,7 +565,7 @@ export class ChatRoomSession {
             this.incrementUnread(message.cursor);
           }
           if (shouldNotify && decoded.envelope.sender !== this.room.stablePubkey) {
-            notificationCenter.enqueue({
+            notificationCenter.record({
               category: "new_message",
               key: decoded.envelope.id,
               actor: decoded.envelope.name,
