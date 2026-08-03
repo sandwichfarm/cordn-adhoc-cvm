@@ -2072,12 +2072,12 @@
   }
 
   @media (max-width: 520px) {
-    .startup-stage { padding: clamp(.65rem, 3vw, 1rem); }
-    .startup-kicker { margin-top: .8rem; }
-    .startup-content h1 { margin-top: .35rem; font-size: clamp(1.55rem, 9vw, 2.2rem); }
-    .startup-progress-panel { margin-top: .85rem; padding: .7rem .75rem; }
-    .startup-progress-panel footer { gap: .55rem; }
-    .startup-facts { margin-top: 1rem; }
+    .startup-stage { padding: 8px; }
+    .startup-kicker { margin-top: 8px; }
+    .startup-content h1 { margin-top: 4px; font-size: 28px; }
+    .startup-progress-panel { margin-top: 8px; padding: 8px 12px; }
+    .startup-progress-panel footer { gap: 8px; }
+    .startup-facts { margin-top: 16px; }
   }
 
   @keyframes qr-refresh { from { opacity: .25; transform: scale(.975); } }
@@ -2085,8 +2085,8 @@
 
   @media (max-height: 520px) {
     .startup-kicker { display: none; }
-    .startup-progress-panel { margin-top: .65rem; }
-    .startup-progress-panel footer { margin-top: .4rem; }
+    .startup-progress-panel { margin-top: 8px; }
+    .startup-progress-panel footer { margin-top: 4px; }
   }
 
   @media (max-width: 900px) and (max-height: 420px) and (min-width: 480px) {

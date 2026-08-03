@@ -242,6 +242,35 @@ async function expectStartupVisualContract(page: import("@playwright/test").Page
   });
 }
 
+async function expectStartupCompactVisualContract(page: import("@playwright/test").Page): Promise<void> {
+  const contract = await page.locator(".startup-stage").evaluate((stage) => {
+    const panel = stage.querySelector<HTMLElement>(".startup-progress-panel")!;
+    const display = stage.querySelector<HTMLElement>("h1")!;
+    const footer = panel.querySelector<HTMLElement>("footer")!;
+    const stageStyle = getComputedStyle(stage);
+    const panelStyle = getComputedStyle(panel);
+    const footerStyle = getComputedStyle(footer);
+
+    return {
+      stagePadding: stageStyle.paddingTop,
+      display: { size: getComputedStyle(display).fontSize, marginTop: getComputedStyle(display).marginTop },
+      panel: {
+        marginTop: panelStyle.marginTop,
+        paddingTop: panelStyle.paddingTop,
+        paddingRight: panelStyle.paddingRight,
+      },
+      footer: { gap: footerStyle.gap, marginTop: footerStyle.marginTop },
+    };
+  });
+
+  expect(contract).toEqual({
+    stagePadding: "8px",
+    display: { size: "28px", marginTop: "4px" },
+    panel: { marginTop: "8px", paddingTop: "8px", paddingRight: "12px" },
+    footer: { gap: "8px", marginTop: "4px" },
+  });
+}
+
 async function expectStartupFieldStatic(field: import("@playwright/test").Locator): Promise<void> {
   await field.page().waitForTimeout(450);
   const beforeTransforms = await field.locator(".ascii-bed .ascii-texture, .ring-plane, .ascii-ring, .ascii-ring .ascii-texture").evaluateAll((elements) => (
@@ -1002,6 +1031,7 @@ test("keeps live startup status and progress inside a short mobile viewport", as
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("progressbar", { name: "Coordinator startup progress" })).toBeVisible();
   await expect(panel.getByRole("status")).not.toHaveText("");
+  await expectStartupCompactVisualContract(page);
   await expect(page.getByTestId("invite-panel")).toHaveAttribute("aria-hidden", "true");
   expect(await page.getByTestId("invite-panel").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
   await expect.poll(() => page.getByTestId("invite-panel").evaluate((element) => Math.round(element.getBoundingClientRect().right))).toBeLessThanOrEqual(1);
