@@ -96,9 +96,9 @@
   .message-reactions {
     position: absolute;
     left: .75rem;
-    bottom: -.8rem;
+    bottom: -.72rem;
     display: inline-flex;
-    min-height: 1.6rem;
+    min-height: 1.45rem;
     align-items: center;
     isolation: isolate;
   }
@@ -107,8 +107,8 @@
   .reaction-chip,
   .reaction-picker button {
     display: inline-flex;
-    min-width: 1.55rem;
-    min-height: 1.55rem;
+    min-width: 1.45rem;
+    min-height: 1.45rem;
     align-items: center;
     justify-content: center;
     border: 1px solid #34483a;
@@ -120,6 +120,9 @@
 
   .reaction-add {
     z-index: 2;
+    width: 1.35rem;
+    min-width: 1.35rem;
+    min-height: 1.35rem;
     border-radius: 999px;
     padding: 0;
     color: #9fb2a5;
@@ -145,20 +148,16 @@
   .reaction-strip {
     display: inline-flex;
     align-items: center;
-    gap: .08rem;
-    margin-left: .68rem;
-    border: 1px solid #34483a;
-    border-radius: 999px;
-    background: #0b110d;
-    padding: .1rem .18rem .1rem 1rem;
+    gap: .2rem;
+    margin-left: .62rem;
   }
 
   .reaction-chip {
     gap: .28rem;
-    border-color: transparent;
+    border-color: #34483a;
     border-radius: 999px;
-    background: transparent;
-    padding: .2rem .42rem;
+    background: #0b110d;
+    padding: .2rem .48rem .2rem .72rem;
   }
 
   .reaction-chip:hover:not(:disabled),
@@ -170,13 +169,13 @@
 
   .reaction-chip.pressed {
     border-color: #5b8d67;
-    background: #173323;
+    background: #142b1d;
     color: #effff2;
   }
 
   .reaction-count {
     color: #9eb0a3;
-    font-size: .62rem;
+    font-size: .58rem;
     font-variant-numeric: tabular-nums;
   }
 
