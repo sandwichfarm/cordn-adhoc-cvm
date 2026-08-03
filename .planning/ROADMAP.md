@@ -13,7 +13,7 @@ and closes with repeatable delivery guidance and automated proof.
 
 - [x] **Phase 15: Identity Continuity & Membership Integrity** - Preserve anonymous identity across reloads and make deliberate rotation a safe privacy boundary. (completed 2026-08-02)
 - [x] **Phase 16: Resilient Rooms & Recovery** - Make room navigation, unread state, and coordinator-led room restoration accurate and actionable. (completed 2026-08-02)
-- [ ] **Phase 17: Full-Viewport Startup Motion** - Turn truthful room-recovery progress into an accessible GSAP ASCII startup experience.
+- [x] **Phase 17: Content-Pane Startup Motion** - Turn truthful room-recovery progress into an accessible GSAP ASCII startup experience that fills the workspace content pane. (completed 2026-08-03)
 - [ ] **Phase 18: Unified Presence, Notifications & Controls** - Consolidate personal presence and notifications while separating them from host lifecycle actions.
 - [ ] **Phase 19: Grouped Conversations & Reactions** - Make active conversations easier to scan and react to without visual repetition.
 - [ ] **Phase 20: Delivery Contract & Regression Proof** - Document the GSD lifecycle and protect the complete v1.1 experience with automated coverage.
@@ -132,8 +132,8 @@ and closes with repeatable delivery guidance and automated proof.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 15. Identity Continuity & Membership Integrity | 3/3 | Complete    | 2026-08-02 |
-| 16. Resilient Rooms & Recovery | 3/3 | In Progress|  |
-| 17. Full-Viewport Startup Motion | 2/2 | In Progress|  |
+| 16. Resilient Rooms & Recovery | 6/6 | Complete | 2026-08-02 |
+| 17. Content-Pane Startup Motion | 2/2 | Complete | 2026-08-03 |
 | 18. Unified Presence, Notifications & Controls | 0/TBD | Not started | - |
 | 19. Grouped Conversations & Reactions | 0/TBD | Not started | - |
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |

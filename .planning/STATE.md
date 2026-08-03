@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Quality of Life & Polish
-current_phase: 17
-current_phase_name: Full-Viewport Startup Motion
-status: verifying
-stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-08-02T23:27:09.851Z"
-last_activity: 2026-08-02
-last_activity_desc: Phase 17 execution started
+current_phase: 18
+current_phase_name: Unified Presence, Notifications & Controls
+status: planning
+stopped_at: Phase 17 verified and visually approved
+last_updated: "2026-08-03T02:45:00+01:00"
+last_activity: 2026-08-03
+last_activity_desc: Phase 17 passed 9/9 goal verification and 24/24 UI review
 progress:
-  total_phases: 3
+  total_phases: 6
   completed_phases: 3
   total_plans: 11
   completed_plans: 11
@@ -23,22 +23,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-02)
 
 **Core value:** A single browser tab acts as a fully functional, self-sovereign Cordn coordinator reachable over Nostr relays — no backend, no account, no installation.
-**Current focus:** Phase 17 — Full-Viewport Startup Motion
+**Current focus:** Phase 18 — Unified Presence, Notifications & Controls
 
 ## Current Position
 
-Phase: 17 (Full-Viewport Startup Motion) — EXECUTING
-Plan: 2 of 2
-Status: Phase complete — ready for verification
-Last activity: 2026-08-02 — Phase 17 execution started
+Phase: 18 (Unified Presence, Notifications & Controls) — PLANNING
+Plan: 0 of TBD
+Status: Phase 17 complete; Phase 18 ready for discussion and planning
+Last activity: 2026-08-03 — Phase 17 passed 9/9 goal verification and 24/24 UI review
 
-Progress: [███████░░░░░░░░░░░░░] 2/6 phases ([██████████] 100%)
+Progress: [██████████░░░░░░░░░░] 3/6 phases (50%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 9
+- Total plans completed: 11
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -116,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-02T23:27:09.845Z
-Stopped at: Completed 17-02-PLAN.md
+Last session: 2026-08-03T02:45:00+01:00
+Stopped at: Phase 17 verified and visually approved
 Resume file: None
