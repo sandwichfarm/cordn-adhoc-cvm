@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { SvelteDate } from "svelte/reactivity";
   import { nostrSocialStore } from "../invites/nostr-social.svelte";
   import {
     notificationCenter,
@@ -121,7 +122,7 @@
   }
 
   function groupEntries(entries: FeedNotificationEntry[]): Array<{ name: "Now" | "Today" | "Earlier"; entries: FeedNotificationEntry[] }> {
-    const todayStart = new Date();
+    const todayStart = new SvelteDate();
     todayStart.setHours(0, 0, 0, 0);
     const nowCutoff = Date.now() - 60 * 60 * 1_000;
     const groups = new Map<"Now" | "Today" | "Earlier", FeedNotificationEntry[]>([
