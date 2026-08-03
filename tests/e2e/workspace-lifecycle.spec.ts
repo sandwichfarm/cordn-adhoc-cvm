@@ -875,6 +875,32 @@ test("Notification settings keeps permission explicit and persists grouped notif
   await expect(reloaded.getByRole("combobox")).toHaveValue("30000");
 });
 
+test("host administration edits message badge", async ({ page }) => {
+  await page.goto("/");
+  const settings = await openCoordinatorSettings(page, true);
+
+  await settings.getByLabel("Badge text").fill("guide");
+  await settings.getByRole("button", { name: "Choose badge emoji" }).click();
+  await settings.getByRole("button", { name: "Use 🦉 for badge" }).click();
+  await expect(settings.getByTestId("host-message-identity-preview")).toContainText("🦉");
+  await expect(settings.getByTestId("host-message-identity-preview")).toContainText("guide");
+  await closeCoordinatorSettings(settings);
+
+  const reopened = await openCoordinatorSettings(page, true);
+  await expect(reopened.getByLabel("Badge text")).toHaveValue("guide");
+  await closeCoordinatorSettings(reopened);
+});
+
+test("personal profile omits host badge editor", async ({ page }) => {
+  await page.goto("/");
+  const trigger = page.getByTestId("user-profile").locator(".user-trigger");
+  await trigger.click();
+  const profile = page.getByRole("dialog", { name: "User profile" });
+
+  await expect(profile.getByLabel("Badge text")).toHaveCount(0);
+  await expect(profile.getByRole("button", { name: "Choose badge emoji" })).toHaveCount(0);
+});
+
 test("notification feed accepts trusted invite only from live state", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("cordn:v1:notification-feed", JSON.stringify({

@@ -24,6 +24,9 @@
   let exportTrigger = $state<HTMLButtonElement>();
   let exportDialog = $state<HTMLDialogElement>();
   let exportPassphraseInput = $state<HTMLInputElement>();
+  let badgeEmojiPickerOpen = $state(false);
+
+  const badgeEmojis = ["🛡️", "👑", "⚡", "🌿", "🛰️", "🫡", "🔐", "🧭", "🦉", "🦊", "🐙", "✨", "💚", "🏠", "🎛️", "☕"];
 
   const transitioning = $derived(coordinator.status === "starting" || coordinator.status === "stopping");
   const editable = $derived(config.editMode && !transitioning);
@@ -169,6 +172,53 @@
             oninput={(event) => config.setCoordinatorName(event.currentTarget.value)}
           />
         </label>
+        <div class="host-message-identity">
+          <div class="field-heading">
+            <span class="field-label">Message identity</span>
+            <span class="host-marker">host administration</span>
+          </div>
+          <p>Set the badge shown on messages sent from this coordinator. Your personal profile remains separate.</p>
+          <div class="badge-editor">
+            <button
+              class="badge-emoji-trigger"
+              type="button"
+              aria-label="Choose badge emoji"
+              aria-expanded={badgeEmojiPickerOpen}
+              disabled={!editable}
+              onclick={() => badgeEmojiPickerOpen = !badgeEmojiPickerOpen}
+            >{config.hostBadgeEmoji || "＋"}</button>
+            <label class="field-label">
+              Badge text
+              <input
+                class="settings-input"
+                value={config.hostBadgeLabel}
+                maxlength="20"
+                disabled={!editable}
+                placeholder="host"
+                oninput={(event) => config.setHostBadgeLabel(event.currentTarget.value)}
+              />
+            </label>
+          </div>
+          {#if badgeEmojiPickerOpen}
+            <div class="badge-emoji-picker" role="group" aria-label="Badge emoji">
+              {#each badgeEmojis as emoji (emoji)}
+                <button
+                  class:selected={emoji === config.hostBadgeEmoji}
+                  type="button"
+                  aria-label={`Use ${emoji} for badge`}
+                  onclick={() => {
+                    config.setHostBadgeEmoji(emoji);
+                    badgeEmojiPickerOpen = false;
+                  }}
+                >{emoji}</button>
+              {/each}
+            </div>
+          {/if}
+          <div class="host-message-preview" data-testid="host-message-identity-preview" aria-label="Outgoing host message identity preview">
+            <span class="host-preview-avatar" aria-hidden="true">{config.hostBadgeEmoji || "🛡️"}</span>
+            <span><strong>{config.hostBadgeLabel.trim() || "host"}</strong><small>host · outgoing message</small></span>
+          </div>
+        </div>
         <NpubDisplay {identity} />
         <div class="persistence-row">
           <div>
@@ -341,6 +391,21 @@
   .field-label .settings-input { margin-top: .45rem; text-transform: none; }
   .settings-input:focus { border-color: #7cf59d; }
   .settings-input:disabled { color: #82958a; opacity: .72; }
+  .host-message-identity { display: grid; gap: .65rem; border: 1px solid #293832; background: #0b0e0d; padding: .75rem; }
+  .field-heading { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+  .host-marker { color: #7cf59d; font-size: .5rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .host-message-identity > p { color: #718277; font-size: .58rem; line-height: 1.45; }
+  .badge-editor { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); align-items: end; gap: .55rem; }
+  .badge-emoji-trigger { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; border: 1px solid #34433b; background: #070b08; font-size: 1rem; }
+  .badge-emoji-trigger:hover:not(:disabled), .badge-emoji-trigger[aria-expanded="true"] { border-color: #7cf59d; background: #111a14; }
+  .badge-emoji-picker { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: .25rem; border: 1px solid #293832; background: #070b08; padding: .4rem; }
+  .badge-emoji-picker button { display: grid; aspect-ratio: 1; place-items: center; border: 1px solid transparent; font-size: .9rem; }
+  .badge-emoji-picker button:hover, .badge-emoji-picker button.selected { border-color: #7cf59d; background: #17241b; }
+  .host-message-preview { display: flex; align-items: center; gap: .5rem; border-top: 1px solid #202d25; padding-top: .65rem; }
+  .host-preview-avatar { display: grid; width: 1.9rem; height: 1.9rem; place-items: center; background: #17241b; font-size: .85rem; }
+  .host-message-preview strong, .host-message-preview small { display: block; }
+  .host-message-preview strong { color: #dfffe7; font-size: .64rem; font-weight: 650; }
+  .host-message-preview small { margin-top: .16rem; color: #718277; font-size: .52rem; }
   .persistence-row, .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 1px solid #293832; background: #0b0e0d; padding: .75rem; }
   .persistence-row strong, .persistence-row small, .toggle-row strong, .toggle-row small { display: block; }
   .persistence-row strong, .toggle-row strong { color: #cfe2d4; font-size: .68rem; font-weight: 500; }
