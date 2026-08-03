@@ -166,4 +166,26 @@ describe("NotificationCenterStore", () => {
     expect(store.isInvitationResolved("invite-1")).toBe(false);
     store.destroy();
   });
+
+  test("persists only bounded, safe feed metadata without evicting pending invitations", () => {
+    const store = new NotificationCenterStore();
+    store.record({ category: "room_invite", key: "keep", actor: "Alice", room: "private room" });
+    for (let index = 0; index < 101; index += 1) {
+      store.record({ category: "new_message", key: `message-${index}`, actor: "Bob", room: "lobby" });
+    }
+
+    expect(store.feed).toHaveLength(101);
+    expect(store.feed.some((entry) => entry.id === "room_invite:keep")).toBe(true);
+    expect(store.feed.some((entry) => entry.id === "new_message:message-0")).toBe(false);
+
+    const persisted = JSON.stringify(localStorage);
+    expect(persisted).toContain("room_invite:keep");
+    expect(persisted).not.toContain("inviteUrl");
+    expect(persisted).not.toContain("message body");
+
+    const reloaded = new NotificationCenterStore();
+    expect(reloaded.feed.some((entry) => entry.id === "room_invite:keep")).toBe(true);
+    store.destroy();
+    reloaded.destroy();
+  });
 });
