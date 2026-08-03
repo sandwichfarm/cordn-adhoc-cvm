@@ -1551,8 +1551,16 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   await page.keyboard.press("Escape");
 
   await hostMessage.getByRole("button", { name: "Add reaction" }).click();
-  await hostMessage.getByRole("menu", { name: /Choose reaction/ }).getByRole("menuitem", { name: "React 👍" }).click();
+  const reactionMenu = hostMessage.getByRole("menu", { name: /Choose reaction/ });
+  await expect(reactionMenu).toBeVisible();
+  await expect(reactionMenu).toHaveCSS("position", "absolute");
+  await reactionMenu.getByRole("menuitem", { name: "React 👍" }).click();
   await expect(hostMessage.getByRole("button", { name: /Remove 👍 reaction, 1 participant/ })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => hostMessage.evaluate((message) => {
+    const add = message.querySelector<HTMLElement>(".reaction-add")?.getBoundingClientRect();
+    const strip = message.querySelector<HTMLElement>(".reaction-strip")?.getBoundingClientRect();
+    return Boolean(add && strip && add.left < strip.left && add.right > strip.left);
+  })).toBe(true);
 
   const guestMessage = guest.locator("article.message").filter({ hasText: "A reaction target" });
   await expect(guestMessage.getByRole("button", { name: /Add 👍 reaction, 1 participant/ })).toBeVisible({ timeout: 20_000 });

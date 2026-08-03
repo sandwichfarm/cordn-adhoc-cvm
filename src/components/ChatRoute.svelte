@@ -10,6 +10,7 @@
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import MessageAuthor from "./MessageAuthor.svelte";
+  import MessageReactions from "./MessageReactions.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
@@ -701,7 +702,30 @@
         </div>
       {/if}
       {#if currentRoom.joinRequestSent}<div class="m-4 border border-[#2e553b] bg-[#112219] p-4 text-sm text-[#b9eac5]">Your encrypted join request is with the host. This page keeps checking for your welcome.</div>{:else}
-        <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="guest-message-list" onscroll={updateFollowLatest}>{#if currentRoom.messages.length === 0}<p class="pt-16 text-center text-sm text-[#82958a]">Say hello — messages are encrypted before they leave your device.</p>{/if}{#each currentRoom.messages as message (message.id)}{@const reactions = reactionSummary(currentRoom, message.id, currentRoom.stablePubkey)}<article class:mine={message.sender === currentRoom.stablePubkey} class="message"><MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} /><p>{message.content}</p><div class="reaction-controls" role="group" aria-label={`Reactions for message from ${message.name}`}><button id={`guest-add-reaction-${message.id}`} type="button" class="reaction-add" aria-label="Add reaction" aria-haspopup="menu" aria-expanded={reactionPickerMessageId === message.id} disabled={!composerEnabled} onclick={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}>+</button>{#each reactions as reaction (reaction.emoji)}<button type="button" class:pressed={reaction.viewerActive} class="reaction-chip" aria-pressed={reaction.viewerActive} aria-label={`${reaction.viewerActive ? "Remove" : "Add"} ${reaction.emoji} reaction, ${reaction.count} participant${reaction.count === 1 ? "" : "s"}`} disabled={!composerEnabled} onclick={() => void toggleReaction(message.id, reaction.emoji)}>{reaction.emoji} {reaction.count}</button>{/each}{#if reactionPickerMessageId === message.id}<div class="reaction-picker" role="menu" aria-label={`Choose reaction for message from ${message.name}`}>{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" role="menuitem" aria-label={`React ${emoji}`} disabled={!composerEnabled} onclick={() => void setReaction(message.id, emoji, true)}>{emoji}</button>{/each}</div>{/if}</div></article>{/each}</div>
+        <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="guest-message-list" onscroll={updateFollowLatest}>
+          {#if currentRoom.messages.length === 0}<p class="pt-16 text-center text-sm text-[#82958a]">Say hello — messages are encrypted before they leave your device.</p>{/if}
+          {#each currentRoom.messages as message (message.id)}
+            {@const reactions = reactionSummary(currentRoom, message.id, currentRoom.stablePubkey)}
+            <article class:mine={message.sender === currentRoom.stablePubkey} class="message">
+              <MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} />
+              <p>{message.content}</p>
+              <MessageReactions
+                messageId={message.id}
+                authorName={message.name}
+                {reactions}
+                pickerOpen={reactionPickerMessageId === message.id}
+                disabled={!composerEnabled}
+                idPrefix="guest"
+                onTogglePicker={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}
+                onClosePicker={() => {
+                  if (reactionPickerMessageId === message.id) reactionPickerMessageId = null;
+                }}
+                onToggleReaction={(emoji) => toggleReaction(message.id, emoji)}
+                onSetReaction={(emoji) => setReaction(message.id, emoji, true)}
+              />
+            </article>
+          {/each}
+        </div>
         <form class="chat-composer shrink-0 border-t border-[#293832] bg-[#101614] p-3 sm:p-4" data-testid="chat-composer" onsubmit={(event) => { event.preventDefault(); void send(); }}>
           <div id="chat-emoji-shortcuts" class="emoji-shortcuts" aria-label="Emoji shortcuts">{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div>
           <div class="composer-row">
@@ -779,12 +803,6 @@
   .message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
   .message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
   .room-pane { position: relative; }
-  .reaction-add, .reaction-chip, .reaction-picker button { border: 1px solid #34433b; background: #0b0e0d; color: #c6eccc; }
-  .reaction-controls { position: relative; display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .55rem; }
-  .reaction-add, .reaction-chip, .reaction-picker button { min-height: 1.8rem; padding: .2rem .45rem; font-size: .72rem; }
-  .reaction-chip.pressed { border-color: #7cf59d; background: #173323; }
-  .reaction-picker { display: flex; gap: .25rem; width: 100%; padding-top: .2rem; }
-
   @media (max-width: 900px) {
     .chat-page { position: fixed; inset: 0; width: 100%; height: 100dvh; max-height: 100dvh; overscroll-behavior: none; }
     .chat-page.embedded { position: static; inset: auto; height: 100%; max-height: 100%; }

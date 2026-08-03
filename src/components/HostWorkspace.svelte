@@ -18,6 +18,7 @@
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
   import LifecyclePanel from "./LifecyclePanel.svelte";
   import MessageAuthor from "./MessageAuthor.svelte";
+  import MessageReactions from "./MessageReactions.svelte";
   import NotificationCenter from "./NotificationCenter.svelte";
   import NotificationFeed from "./NotificationFeed.svelte";
   import OnlineInvitePicker from "./OnlineInvitePicker.svelte";
@@ -1506,7 +1507,30 @@
               onToggleSounds={toggleSounds}
               onRemove={() => roomRemovalTarget = room}
             />
-            <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">{#if room.messages.length === 0}<div class="flex h-full items-center justify-center"><p class="max-w-sm text-center text-sm leading-6 text-[#82958a]">Your room is ready. Share the invite from the left and this chat will stay connected to the coordinator.</p></div>{/if}{#each room.messages as message (message.id)}{@const reactions = reactionSummary(room, message.id, room.stablePubkey)}<article class:mine={message.sender === room.stablePubkey} class="host-message"><MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} /><p>{message.content}</p><div class="reaction-controls" role="group" aria-label={`Reactions for message from ${message.name}`}><button id={`host-add-reaction-${message.id}`} type="button" class="reaction-add" aria-label="Add reaction" aria-haspopup="menu" aria-expanded={reactionPickerMessageId === message.id} disabled={!composerEnabled} onclick={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}>+</button>{#each reactions as reaction (reaction.emoji)}<button type="button" class:pressed={reaction.viewerActive} class="reaction-chip" aria-pressed={reaction.viewerActive} aria-label={`${reaction.viewerActive ? "Remove" : "Add"} ${reaction.emoji} reaction, ${reaction.count} participant${reaction.count === 1 ? "" : "s"}`} disabled={!composerEnabled} onclick={() => void toggleReaction(message.id, reaction.emoji)}>{reaction.emoji} {reaction.count}</button>{/each}{#if reactionPickerMessageId === message.id}<div class="reaction-picker" role="menu" aria-label={`Choose reaction for message from ${message.name}`}>{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" role="menuitem" aria-label={`React ${emoji}`} disabled={!composerEnabled} onclick={() => void setReaction(message.id, emoji, true)}>{emoji}</button>{/each}</div>{/if}</div></article>{/each}</div>
+            <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">
+              {#if room.messages.length === 0}<div class="flex h-full items-center justify-center"><p class="max-w-sm text-center text-sm leading-6 text-[#82958a]">Your room is ready. Share the invite from the left and this chat will stay connected to the coordinator.</p></div>{/if}
+              {#each room.messages as message (message.id)}
+                {@const reactions = reactionSummary(room, message.id, room.stablePubkey)}
+                <article class:mine={message.sender === room.stablePubkey} class="host-message">
+                  <MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} />
+                  <p>{message.content}</p>
+                  <MessageReactions
+                    messageId={message.id}
+                    authorName={message.name}
+                    {reactions}
+                    pickerOpen={reactionPickerMessageId === message.id}
+                    disabled={!composerEnabled}
+                    idPrefix="host"
+                    onTogglePicker={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}
+                    onClosePicker={() => {
+                      if (reactionPickerMessageId === message.id) reactionPickerMessageId = null;
+                    }}
+                    onToggleReaction={(emoji) => toggleReaction(message.id, emoji)}
+                    onSetReaction={(emoji) => setReaction(message.id, emoji, true)}
+                  />
+                </article>
+              {/each}
+            </div>
             <form class="shrink-0 border-t border-[#293832] p-3 sm:p-4" onsubmit={(event) => { event.preventDefault(); void send(); }}><div class="mb-2 flex gap-1 overflow-x-auto pb-1">{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div><div class="flex gap-2"><input bind:this={composerInput} bind:value={composer} class="host-input min-w-0 flex-1" disabled={!composerEnabled} placeholder={roomConnection === "offline" ? "Room offline" : roomConnection === "connecting" ? "Connecting…" : "Message as host"} /><button class="host-primary px-4 sm:px-5" disabled={!composerEnabled || !composer.trim()}>Send</button></div><p class:unavailable={!composerEnabled} class="host-composer-status">{roomConnection === "offline" ? "Cached messages are read-only while this room is offline." : roomConnection === "connecting" ? "Connecting this room…" : "Connected. Messages are end-to-end encrypted."}</p>{#if reactionError}<p class="reaction-error" role="status">{reactionError}</p>{/if}</form>
           </div>
         {:else if coordinator.status !== "running" || (room && session)}
@@ -1968,11 +1992,6 @@
   .host-message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
   .host-message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
   .room-pane { position: relative; }
-  .reaction-add, .reaction-chip, .reaction-picker button { border: 1px solid #34483a; background: #0b110d; color: #c6eccc; }
-  .reaction-controls { position: relative; display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .55rem; }
-  .reaction-add, .reaction-chip, .reaction-picker button { min-height: 1.8rem; padding: .2rem .45rem; font-size: .72rem; }
-  .reaction-chip.pressed { border-color: #7cf59d; background: #173323; }
-  .reaction-picker { display: flex; gap: .25rem; width: 100%; padding-top: .2rem; }
   .reaction-error { margin-top: .45rem; color: #ffaaa3; font-size: .65rem; }
   .startup-stage { position: absolute; z-index: 1; inset: 0; display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; padding: 16px; background: #101614; }
   .startup-content { position: relative; z-index: 1; width: min(512px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto; overscroll-behavior: contain; text-align: center; }
