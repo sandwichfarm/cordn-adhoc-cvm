@@ -1,4 +1,4 @@
-import { SvelteMap } from "svelte/reactivity";
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
 export const NOTIFICATION_STORAGE_KEY = "cordn:v1:notifications";
 export const NOTIFICATION_FEED_STORAGE_KEY = "cordn:v1:notification-feed";
@@ -187,7 +187,7 @@ export class NotificationCenterStore {
   }
 
   markVisibleRead(ids: readonly string[]): void {
-    const visible = new Set(ids);
+    const visible = new SvelteSet(ids);
     let changed = false;
     this.feed = this.feed.map((entry) => {
       if (!visible.has(entry.id) || entry.read) return entry;
@@ -315,7 +315,7 @@ function readFeed(): FeedNotificationEntry[] {
       const safe = normalizePersistedFeedEntry(entry);
       return safe ? [safe] : [];
     }).sort((left, right) => right.createdAt - left.createdAt);
-    const ids = new Set<string>();
+    const ids = new SvelteSet<string>();
     return trimFeedEntries(entries.filter((entry) => {
       if (ids.has(entry.id)) return false;
       ids.add(entry.id);
@@ -343,7 +343,7 @@ function readInvitationResolutions(): InvitationResolution[] {
 
 function pruneResolutions(entries: InvitationResolution[], now = Date.now()): InvitationResolution[] {
   const cutoff = now - INVITATION_RESOLUTION_RETENTION_MS;
-  const ids = new Set<string>();
+  const ids = new SvelteSet<string>();
   return entries.filter((entry) => {
     if (entry.resolvedAt < cutoff || ids.has(entry.id)) return false;
     ids.add(entry.id);
