@@ -34,14 +34,14 @@
 
 - [ ] **PRES-01**: Online, invisible, and offline presence options are selected inside the user/profile dropdown rather than a separate header control.
 - [ ] **PRES-02**: The active presence state is represented by a status dot attached to the user/avatar control and is available to keyboard and screen-reader users.
-- [ ] **INVITE-01**: Incoming room invitations appear in a discoverable, actionable personal-notification surface instead of an isolated empty room-invites popover.
+- [x] **INVITE-01**: Incoming room invitations appear in a discoverable, actionable personal-notification surface instead of an isolated empty room-invites popover.
 - [ ] **SHELL-01**: Header controls clearly separate personal/user actions from host/coordinator lifecycle actions and avoid duplicate status or settings controls.
 
 ### Notifications
 
-- [ ] **NOTF-01**: The existing notification preference control is labeled `Notification settings` and opens a working settings surface with persisted choices.
-- [ ] **NOTF-02**: A separate bell control opens an in-app notification feed with unread state, concise grouped entries, and actions for applicable events such as room invitations.
-- [ ] **NOTF-03**: Browser notification permission is requested only from an explicit user action, and enabled desktop notifications are delivered on the configured cadence without duplicate bursts.
+- [x] **NOTF-01**: The existing notification preference control is labeled `Notification settings` and opens a working settings surface with persisted choices.
+- [x] **NOTF-02**: A separate bell control opens an in-app notification feed with unread state, concise grouped entries, and actions for applicable events such as room invitations.
+- [x] **NOTF-03**: Browser notification permission is requested only from an explicit user action, and enabled desktop notifications are delivered on the configured cadence without duplicate bursts.
 
 ### Conversation Presentation & Reactions
 
@@ -94,11 +94,11 @@
 | MOTION-03 | Phase 17 | Complete |
 | PRES-01 | Phase 18 | Pending |
 | PRES-02 | Phase 18 | Pending |
-| INVITE-01 | Phase 18 | Pending |
+| INVITE-01 | Phase 18 | Complete |
 | SHELL-01 | Phase 18 | Pending |
-| NOTF-01 | Phase 18 | Pending |
-| NOTF-02 | Phase 18 | Pending |
-| NOTF-03 | Phase 18 | Pending |
+| NOTF-01 | Phase 18 | Complete |
+| NOTF-02 | Phase 18 | Complete |
+| NOTF-03 | Phase 18 | Complete |
 | REACT-01 | Phase 19 | Pending |
 | REACT-02 | Phase 19 | Pending |
 | CHAT-01 | Phase 19 | Pending |

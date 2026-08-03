@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
 status: executing
-stopped_at: Completed 18-01-PLAN.md
-last_updated: "2026-08-03T06:02:18.931Z"
+stopped_at: Completed 18-02-PLAN.md
+last_updated: "2026-08-03T06:19:49.128Z"
 last_activity: 2026-08-03
 last_activity_desc: Phase 18 execution started
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 ## Current Position
 
 Phase: 18 (Unified Presence, Notifications & Controls) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-03 — Phase 18 execution started
 
-Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 86%)
+Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 93%)
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 | Phase 17-full-viewport-startup-motion P01 | 54m 21s | 2 tasks | 5 files |
 | Phase 17-full-viewport-startup-motion P02 | 12min | 2 tasks | 4 files |
 | Phase 18 P01 | 7min | 2 tasks | 5 files |
+| Phase 18 P02 | 10min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Wide-pane content coverage requires a 512x256 deterministic ASCII texture plus rendered extent assertions.
 - [Phase ?]: [Phase 18] Feed-first notification recording is canonical; browser delivery remains an optional cadence-gated projection.
 - [Phase ?]: [Phase 18] Invitation resolution persists only ID/timestamp for seven days and remains independent from read state.
+- [Phase ?]: Separate the in-app notification feed from desktop permission controls; opening settings stays passive.
+- [Phase ?]: Require a live trusted invitation capability at accept time; persisted feed history remains non-redeemable.
 
 ### Pending Todos
 
@@ -119,6 +122,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-03T06:02:18.925Z
-Stopped at: Completed 18-01-PLAN.md
+Last session: 2026-08-03T06:19:49.123Z
+Stopped at: Completed 18-02-PLAN.md
 Resume file: None
