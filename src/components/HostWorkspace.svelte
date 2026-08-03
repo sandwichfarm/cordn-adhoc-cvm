@@ -2026,14 +2026,11 @@
     .mobile-tools-toggle { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #82958a; font-size: .7rem; letter-spacing: .08em; }
     .mobile-tools-toggle:hover, .mobile-tools-toggle.active { background: #142018; color: #effff2; }
     .mobile-tools-scrim { position: fixed; z-index: 59; inset: 0; display: block; border: 0; background: rgb(0 0 0 / .38); cursor: default; backdrop-filter: blur(1px); }
-    .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); grid-template-columns: minmax(0, 1fr) repeat(4, 2.65rem); border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
+    .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); grid-template-columns: minmax(0, 1fr); border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
     .host-utilities.open { display: grid; }
-    .host-utilities :global(.presence-control), .host-utilities :global(.presence-trigger), .host-utilities .settings-button { width: 100%; min-width: 0; }
-    .host-utilities :global(.presence-trigger) { justify-content: center; }
-    .host-utilities :global(.notification-trigger), .host-utilities :global(.user-trigger) { width: 2.65rem; }
-    .host-utilities :global(.notification-trigger) { justify-content: center; padding-inline: 0; }
-    .host-utilities :global(.notification-trigger > span:nth-child(2)), .host-utilities :global(.user-chevron) { display: none; }
-    .host-utilities :global(.user-trigger) { grid-template-columns: 1fr; justify-items: center; padding-inline: .25rem; }
+    .host-utilities :global(.presence-control), .host-utilities :global(.notification-feed), .host-utilities :global(.notification-center), .host-utilities :global(.user-profile), .host-utilities :global(.presence-trigger), .host-utilities :global(.notification-feed-trigger), .host-utilities :global(.notification-trigger), .host-utilities :global(.user-trigger), .host-utilities .settings-button { width: 100%; min-width: 0; }
+    .host-utilities :global(.presence-trigger), .host-utilities :global(.notification-feed-trigger), .host-utilities :global(.notification-trigger) { justify-content: flex-start; padding-inline: .7rem; }
+    .host-utilities :global(.user-trigger) { grid-template-columns: auto minmax(0, 1fr) auto; padding-inline: .65rem; }
     .host-utilities :global(.presence-menu),
     .host-utilities :global(.notification-feed-panel),
     .host-utilities :global(.notification-menu),

@@ -40,7 +40,11 @@
   }
 
   function close(): void {
-    if (busyId || pendingDismissId) return;
+    if (busyId) return;
+    if (pendingDismissId) {
+      keepInvitation();
+      return;
+    }
     open = false;
     actionError = "";
     void tick().then(() => trigger?.focus());
@@ -94,8 +98,9 @@
 
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
+      event.stopPropagation();
       if (pendingDismissId) {
-        pendingDismissId = null;
+        keepInvitation();
         return;
       }
       close();

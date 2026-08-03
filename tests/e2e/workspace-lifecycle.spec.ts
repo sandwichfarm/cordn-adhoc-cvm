@@ -904,6 +904,41 @@ test("notification feed accepts trusted invite only from live state", async ({ p
   await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeVisible();
 });
 
+test("compact notification feed and Notification settings stay viewport-bound", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 520 });
+  await page.addInitScript(() => {
+    localStorage.setItem("cordn:v1:notification-feed", JSON.stringify({
+      version: 1,
+      entries: [{
+        id: "user_online:Mara",
+        category: "user_online",
+        key: "Mara",
+        actor: "Mara",
+        createdAt: Date.now(),
+        occurrences: 1,
+        read: false,
+      }],
+    }));
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open host tools" }).click();
+
+  const bell = page.getByRole("button", { name: "Notifications, 1 unread" });
+  await bell.click();
+  const feed = page.getByRole("dialog", { name: "Notifications" });
+  await expectInsideViewport(feed);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeFocused();
+
+  const settings = page.getByRole("button", { name: "Notification settings", exact: true });
+  await settings.click();
+  const settingsSheet = page.getByRole("dialog", { name: "Notification settings" });
+  await expectInsideViewport(settingsSheet);
+  await page.keyboard.press("Escape");
+  await expect(settings).toBeFocused();
+  await expectNoDocumentOverflow(page, { width: 390, height: 520 });
+});
+
 test("operator shell does not overflow common viewports", async ({ page }) => {
   for (const viewport of [
     { width: 1440, height: 900 },
