@@ -901,6 +901,46 @@ test("personal profile omits host badge editor", async ({ page }) => {
   await expect(profile.getByRole("button", { name: "Choose badge emoji" })).toHaveCount(0);
 });
 
+test("personal and host controls have one owner", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  const personal = page.getByRole("group", { name: "Personal controls" });
+  const host = page.getByRole("group", { name: "Host controls" });
+  await expect(personal).toBeVisible();
+  await expect(host).toBeVisible();
+  await expect(personal.getByRole("button", { name: /Open profile for/ })).toHaveCount(1);
+  await expect(personal.getByRole("button", { name: "Notifications, no unread" })).toHaveCount(1);
+  await expect(personal.getByRole("button", { name: "Notification settings", exact: true })).toHaveCount(1);
+  await expect(host.getByRole("button", { name: "Settings", exact: true })).toHaveCount(1);
+  await expect(host.getByRole("button", { name: "Open management interface" })).toHaveCount(1);
+  await expect(page.locator(".presence-control")).toHaveCount(0);
+});
+
+test("compact host tools are the single control entry", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 520 });
+  await page.goto("/");
+
+  const commandbar = page.locator(".host-commandbar");
+  await expect(commandbar.getByRole("button", { name: "Open host tools" })).toHaveCount(1);
+  await expect(commandbar.getByRole("button", { name: "Notification settings", exact: true })).toHaveCount(0);
+  await expect(commandbar.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
+  await commandbar.getByRole("button", { name: "Open host tools" }).click();
+  await expect(page.getByRole("group", { name: "Personal controls" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Host controls" })).toBeVisible();
+});
+
+test("compact drawer renders personal before host", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open host tools" }).click();
+
+  expect(await page.locator("#host-tools").evaluate((drawer) => {
+    const controls = [...drawer.querySelectorAll<HTMLElement>("[role='group']")];
+    return controls.map((control) => control.getAttribute("aria-label"));
+  })).toEqual(["Personal controls", "Host controls"]);
+});
+
 test("notification feed accepts trusted invite only from live state", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("cordn:v1:notification-feed", JSON.stringify({

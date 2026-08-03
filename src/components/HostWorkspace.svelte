@@ -96,6 +96,7 @@
   let compactViewport = $state(false);
   let mobileRailOpen = $state(false);
   let mobileToolsOpen = $state(false);
+  let mobileToolsTrigger = $state<HTMLButtonElement>();
   let refreshState = $state<"idle" | "refreshing" | "refreshed">("idle");
   let roomRemovalTarget = $state<StoredRoom | null>(null);
   let roomRemovalMode = $state<"delete" | "leave">("delete");
@@ -818,6 +819,12 @@
     mobileToolsOpen = !mobileToolsOpen;
   }
 
+  function closeMobileTools(restoreFocus = true): void {
+    if (!mobileToolsOpen) return;
+    mobileToolsOpen = false;
+    if (restoreFocus) void tick().then(() => mobileToolsTrigger?.focus());
+  }
+
   function toggleManagement(): void {
     mobileRailOpen = false;
     mobileToolsOpen = false;
@@ -1004,7 +1011,7 @@
       reactionPickerMessageId = null;
       if (targetMessageId) void tick().then(() => document.getElementById(`host-add-reaction-${targetMessageId}`)?.focus());
       mobileRailOpen = false;
-      mobileToolsOpen = false;
+      closeMobileTools();
       if (shareDialogOpen) closeShareDialog();
       if (createDialogOpen) closeCreateDialog();
       settingsDialogOpen = false;
@@ -1110,7 +1117,7 @@
           <strong>{selectedServerRoomCount}</strong>
         </button>
         {#if mobileToolsOpen && compactViewport}
-          <button class="mobile-tools-scrim" type="button" aria-label="Close host tools" onclick={() => mobileToolsOpen = false}></button>
+          <button class="mobile-tools-scrim" type="button" aria-label="Close host tools" onclick={() => closeMobileTools()}></button>
         {/if}
         <div
           id="host-tools"
@@ -1120,40 +1127,46 @@
           aria-hidden={compactViewport && !mobileToolsOpen}
           inert={compactViewport && !mobileToolsOpen}
         >
-          <NotificationFeed {onNavigate} />
-          <NotificationCenter />
-          <UserProfile
-            {config}
-            {coordinatorPubkey}
-            {relayUrls}
-            anonymousName={config.userName}
-            onAnonymousNameChange={(name) => config.setUserName(name)}
-          />
-          {#if !locked}
-            <button class:pending={coordinator.restartRequired} class="settings-button" type="button" aria-label="Settings" onclick={openSettings}>
-              <span aria-hidden="true">⚙</span>
-              <span class="hidden md:inline">Settings</span>
-              {#if coordinator.restartRequired}<span class="settings-pip" aria-label="Restart required"></span>{/if}
-            </button>
-          {/if}
+          <section class="command-cluster personal-controls" role="group" aria-label="Personal controls">
+            <span class="command-cluster-label">Personal</span>
+            <UserProfile
+              {config}
+              {coordinatorPubkey}
+              {relayUrls}
+              anonymousName={config.userName}
+              onAnonymousNameChange={(name) => config.setUserName(name)}
+            />
+            <NotificationFeed {onNavigate} />
+            <NotificationCenter />
+          </section>
+          <span class="command-cluster-divider" aria-hidden="true"></span>
+          <section class="command-cluster host-controls" role="group" aria-label="Host controls">
+            <span class="command-cluster-label">Host</span>
+            {#if locked}
+              <button class="manage-toggle" type="button" aria-label="Unlock coordinator" onclick={() => onNavigate("/")}>Unlock</button>
+            {:else}
+              <button class:pending={coordinator.restartRequired} class="settings-button" type="button" aria-label="Settings" onclick={openSettings}>
+                <span aria-hidden="true">⚙</span>
+                <span>Settings</span>
+                {#if coordinator.restartRequired}<span class="settings-pip" aria-label="Restart required"></span>{/if}
+              </button>
+              <LifecyclePanel {coordinator} compact onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+              <button
+                class:active={managementOpen}
+                class="manage-toggle"
+                type="button"
+                aria-pressed={managementOpen}
+                aria-label={managementOpen ? "Close management interface" : "Open management interface"}
+                onclick={toggleManagement}
+              >{managementOpen ? "Host" : "Manage"}</button>
+            {/if}
+          </section>
         </div>
-        {#if locked}
-          <button class="manage-toggle" type="button" aria-label="Unlock coordinator" onclick={() => onNavigate("/")}>Unlock</button>
-        {:else}
-          <LifecyclePanel {coordinator} compact onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
-          <button
-            class:active={managementOpen}
-            class="manage-toggle"
-            type="button"
-            aria-pressed={managementOpen}
-            aria-label={managementOpen ? "Close management interface" : "Open management interface"}
-            onclick={toggleManagement}
-          >{managementOpen ? "Host" : "Manage"}</button>
-        {/if}
         <button
           class:active={mobileToolsOpen}
           class="mobile-tools-toggle"
           type="button"
+          bind:this={mobileToolsTrigger}
           aria-label={mobileToolsOpen ? "Close host tools" : "Open host tools"}
           aria-controls="host-tools"
           aria-expanded={mobileToolsOpen}
@@ -1794,10 +1807,13 @@
   .host-topbar { position: relative; z-index: 40; border-bottom: 1px solid #21352a; background: rgb(10 16 12 / .94); padding-block: .55rem; }
   .host-commandbar { position: relative; display: flex; width: auto; min-width: 0; flex: 0 1 auto; align-items: stretch; justify-content: flex-end; border: 1px solid #293832; background: #080d0a; }
   .host-utilities { display: flex; min-width: 0; align-items: stretch; }
+  .command-cluster { display: flex; min-width: 0; align-items: stretch; }
+  .command-cluster-label { display: none; align-items: center; border-right: 1px solid #202d25; padding: 0 .58rem; color: #718277; font-size: .48rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  .command-cluster-divider { width: 1px; background: #34483a; }
   .mobile-rail-toggle, .mobile-tools-toggle, .mobile-tools-scrim, .mobile-rail-scrim { display: none; }
-  .host-commandbar :global(.presence-control), .host-commandbar :global(.notification-feed), .host-commandbar :global(.notification-center), .host-commandbar :global(.user-profile) { border-right: 1px solid #202d25; }
-  .host-commandbar :global(.presence-trigger), .host-commandbar :global(.notification-feed-trigger), .host-commandbar :global(.notification-trigger), .host-commandbar :global(.user-trigger) { border: 0; background: transparent; }
-  .host-commandbar :global(.presence-trigger:hover:not(:disabled)), .host-commandbar :global(.presence-trigger[aria-expanded="true"]), .host-commandbar :global(.notification-feed-trigger:hover), .host-commandbar :global(.notification-feed-trigger[aria-expanded="true"]), .host-commandbar :global(.notification-trigger:hover), .host-commandbar :global(.notification-trigger[aria-expanded="true"]), .host-commandbar :global(.user-trigger:hover), .host-commandbar :global(.user-trigger[aria-expanded="true"]) { background: #101713; }
+  .host-commandbar :global(.notification-feed), .host-commandbar :global(.notification-center), .host-commandbar :global(.user-profile) { border-right: 1px solid #202d25; }
+  .host-commandbar :global(.notification-feed-trigger), .host-commandbar :global(.notification-trigger), .host-commandbar :global(.user-trigger) { border: 0; background: transparent; }
+  .host-commandbar :global(.notification-feed-trigger:hover), .host-commandbar :global(.notification-feed-trigger[aria-expanded="true"]), .host-commandbar :global(.notification-trigger:hover), .host-commandbar :global(.notification-trigger[aria-expanded="true"]), .host-commandbar :global(.user-trigger:hover), .host-commandbar :global(.user-trigger[aria-expanded="true"]) { background: #101713; }
   .host-commandbar :global(.compact-controls) { height: 2.65rem; gap: .25rem; border: 0; border-right: 1px solid #202d25; background: transparent; padding: .3rem .4rem; }
   .host-layout { position: relative; width: 100%; max-width: 100%; overflow: hidden; grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .host-chat { position: relative; width: 100%; height: 100%; max-width: 100%; }
@@ -2009,11 +2025,15 @@
     .share-dialog-content { grid-template-columns: minmax(15rem, 21rem) minmax(0, 1fr); align-items: center; padding: 1.35rem; }
   }
 
+  @media (min-width: 1024px) {
+    .command-cluster-label { display: inline-flex; }
+  }
+
   @media (max-width: 900px) {
     .host-topbar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0; padding: 0 .45rem; }
     .host-topbar :global(.workspace-nav) { width: 100%; min-width: 0; }
     .host-topbar :global(.workspace-nav > a), .host-topbar :global(.workspace-nav > button) { min-height: 2.75rem; }
-    .host-commandbar { display: grid; width: 100%; grid-template-columns: minmax(3.25rem, 1fr) auto auto auto; align-items: stretch; justify-content: stretch; }
+    .host-commandbar { display: grid; width: 100%; grid-template-columns: minmax(3.25rem, 1fr) auto; align-items: stretch; justify-content: stretch; }
     .mobile-rail-toggle { display: grid; min-width: 0; height: 2.75rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .4rem; padding: 0 .55rem; color: #b9cbbf; text-align: left; font-size: .6rem; }
     .mobile-rail-toggle:hover, .mobile-rail-toggle.active { background: #142018; color: #effff2; }
     .mobile-rail-toggle > span:first-child { color: #7cf59d; font-size: .78rem; }
@@ -2022,10 +2042,13 @@
     .mobile-tools-toggle { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #82958a; font-size: .7rem; letter-spacing: .08em; }
     .mobile-tools-toggle:hover, .mobile-tools-toggle.active { background: #142018; color: #effff2; }
     .mobile-tools-scrim { position: fixed; z-index: 59; inset: 0; display: block; border: 0; background: rgb(0 0 0 / .38); cursor: default; backdrop-filter: blur(1px); }
-    .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); grid-template-columns: minmax(0, 1fr); border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
+    .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); max-height: calc(100dvh - 1.1rem); grid-template-columns: minmax(0, 1fr); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
     .host-utilities.open { display: grid; }
-    .host-utilities :global(.presence-control), .host-utilities :global(.notification-feed), .host-utilities :global(.notification-center), .host-utilities :global(.user-profile), .host-utilities :global(.presence-trigger), .host-utilities :global(.notification-feed-trigger), .host-utilities :global(.notification-trigger), .host-utilities :global(.user-trigger), .host-utilities .settings-button { width: 100%; min-width: 0; }
-    .host-utilities :global(.presence-trigger), .host-utilities :global(.notification-feed-trigger), .host-utilities :global(.notification-trigger) { justify-content: flex-start; padding-inline: .7rem; }
+    .command-cluster { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); }
+    .command-cluster-label { display: flex; min-height: 2rem; border-right: 0; border-bottom: 1px solid #202d25; padding-inline: .7rem; }
+    .command-cluster-divider { display: block; width: 100%; height: 1px; background: #496451; }
+    .host-utilities :global(.notification-feed), .host-utilities :global(.notification-center), .host-utilities :global(.user-profile), .host-utilities :global(.notification-feed-trigger), .host-utilities :global(.notification-trigger), .host-utilities :global(.user-trigger), .host-utilities .settings-button, .host-utilities .manage-toggle { width: 100%; min-width: 0; }
+    .host-utilities :global(.notification-feed-trigger), .host-utilities :global(.notification-trigger) { justify-content: flex-start; padding-inline: .7rem; }
     .host-utilities :global(.user-trigger) { grid-template-columns: auto minmax(0, 1fr) auto; padding-inline: .65rem; }
     .host-utilities :global(.presence-menu),
     .host-utilities :global(.notification-feed-panel),
@@ -2041,7 +2064,7 @@
       overflow-y: auto;
       overscroll-behavior: contain;
     }
-    .host-commandbar :global(.compact-controls) { height: 2.75rem; gap: 0; border-inline: 1px solid #202d25; padding: 0; }
+    .host-utilities :global(.compact-controls) { width: 100%; height: 2.75rem; gap: 0; border-inline: 0; border-bottom: 1px solid #202d25; padding: 0; }
     .host-commandbar :global(.lifecycle-status) { height: 2.75rem; gap: 0; padding: 0 .4rem; }
     .host-commandbar :global(.lifecycle-status > span:first-child) { display: none; }
     .host-commandbar :global(.lifecycle-action) { height: 2.75rem; gap: .3rem; padding: 0 .52rem; }
