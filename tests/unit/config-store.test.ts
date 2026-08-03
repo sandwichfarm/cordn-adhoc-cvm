@@ -41,6 +41,19 @@ describe("ConfigStore runtime limits", () => {
     expect(store.presenceState).toBe("invisible");
   });
 
+  test("persists presence without changing runtime configuration", () => {
+    const store = new ConfigStore();
+    const initialRuntimeRevision = store.runtimeRevision;
+    const initialOptions = store.coordinatorOptions;
+
+    store.setPresenceState("online");
+
+    expect(store.presenceState).toBe("online");
+    expect(store.runtimeRevision).toBe(initialRuntimeRevision);
+    expect(store.coordinatorOptions).toEqual(initialOptions);
+    expect(new ConfigStore().presenceState).toBe("online");
+  });
+
   test("persists coordinator and anonymous user names without requiring a runtime restart", () => {
     const store = new ConfigStore();
     store.setCoordinatorName("Madeira node");

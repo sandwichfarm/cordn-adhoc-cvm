@@ -3,40 +3,35 @@
   import { generate } from "lean-qr";
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import type { NostrConnectSigner } from "applesauce-signers/signers";
+  import type { ConfigStore, PresenceState } from "../config/config.svelte";
   import {
     createPubkeyAvatar,
     NIP46_CONNECT_RELAYS,
     userProfileStore,
   } from "../identity/user-profile.svelte";
+  import { nostrSocialStore } from "../invites/nostr-social.svelte";
   import IdentityRotationDialog from "./IdentityRotationDialog.svelte";
   import { anonymousMembershipImpact } from "../chat/room-store";
 
   interface Props {
+    config: ConfigStore;
+    coordinatorPubkey: string;
+    relayUrls: string[];
     anonymousName?: string;
     onAnonymousNameChange?: (name: string) => void;
-    showHostIdentity?: boolean;
-    badgeLabel?: string;
-    badgeEmoji?: string;
-    onBadgeLabelChange?: (label: string) => void;
-    onBadgeEmojiChange?: (emoji: string) => void;
   }
 
-  const badgeEmojis = ["🛡️", "👑", "⚡", "🌿", "🛰️", "🫡", "🔐", "🧭", "🦉", "🦊", "🐙", "✨", "💚", "🏠", "🎛️", "☕"];
-
   let {
+    config,
+    coordinatorPubkey,
+    relayUrls,
     anonymousName = "",
     onAnonymousNameChange,
-    showHostIdentity = false,
-    badgeLabel = "host",
-    badgeEmoji = "🛡️",
-    onBadgeLabelChange,
-    onBadgeEmojiChange,
   }: Props = $props();
   let open = $state(false);
   let bunkerUri = $state("");
   let remoteUri = $state("");
   let remoteQr = $state("");
-  let emojiPickerOpen = $state(false);
   let remoteSigner: NostrConnectSigner | null = null;
   let remoteAbort: AbortController | null = null;
   let rotationDialog = $state<"confirm" | "recovery" | null>(null);
@@ -47,14 +42,49 @@
     ? `${userProfileStore.pubkey.slice(0, 8)}…${userProfileStore.pubkey.slice(-6)}`
     : "local identity"
   );
+  const presenceLabel = $derived(formatPresence(config.presenceState));
 
   $effect(() => {
     userProfileStore.setAnonymousName(anonymousName);
   });
 
+  $effect(() => {
+    const signer = userProfileStore.activeSigner;
+    if (userProfileStore.method === "anonymous" || !signer) {
+      nostrSocialStore.disconnect();
+      return;
+    }
+    void nostrSocialStore.connect(signer, config.presenceState, {
+      coordinatorPubkey,
+      coordinatorOrigin: window.location.origin,
+      relayUrls: [...relayUrls],
+      coordinatorName: config.coordinatorName || "My coordinator",
+    });
+  });
+
   function updateAnonymousName(value: string): void {
     userProfileStore.setAnonymousName(value);
     onAnonymousNameChange?.(value);
+  }
+
+  function formatPresence(state: PresenceState): string {
+    if (state === "online") return "Online";
+    if (state === "offline") return "Offline";
+    return "Invisible";
+  }
+
+  function selectPresence(state: PresenceState): void {
+    if (config.presenceState === state) return;
+    config.setPresenceState(state);
+    completionAnnouncement = `Presence set to ${formatPresence(state)}.`;
+    if (userProfileStore.method !== "anonymous" && userProfileStore.activeSigner) {
+      void nostrSocialStore.setPresence(state, {
+        coordinatorPubkey,
+        coordinatorOrigin: window.location.origin,
+        relayUrls: [...relayUrls],
+        coordinatorName: config.coordinatorName || "My coordinator",
+      });
+    }
   }
 
   async function connectNip07(): Promise<void> {
@@ -162,12 +192,23 @@
   <button
     class="user-trigger"
     type="button"
-    aria-label={`${open ? "Close" : "Open"} profile for ${userProfileStore.displayName}`}
+    aria-label={`${open ? "Close" : "Open"} profile for ${userProfileStore.displayName}. Presence ${presenceLabel}`}
     aria-haspopup="dialog"
     aria-expanded={open}
     onclick={() => open ? closeMenu() : open = true}
   >
-    <img src={userProfileStore.avatarUrl} alt="" onerror={avatarFallback} />
+    <span class="user-avatar">
+      <img src={userProfileStore.avatarUrl} alt="" onerror={avatarFallback} />
+      <span
+        class:online={config.presenceState === "online"}
+        class:offline={config.presenceState === "offline"}
+        class="profile-presence-dot"
+        data-testid="profile-presence-status"
+        data-presence={config.presenceState}
+        role="img"
+        aria-label={`Presence: ${presenceLabel}`}
+      ></span>
+    </span>
     <span class="user-copy">
       <strong>{userProfileStore.displayName}</strong>
       <small>{userProfileStore.authLabel}</small>
@@ -186,6 +227,26 @@
         </div>
         <span class:authenticated={userProfileStore.method !== "anonymous"} class="auth-chip">{userProfileStore.authLabel}</span>
       </header>
+
+      <fieldset class="user-menu-section presence-section">
+        <legend class="section-label">Presence</legend>
+        <p>Choose how your identity appears. This never changes coordinator availability.</p>
+        <div class="presence-options" role="radiogroup" aria-label="Presence">
+          {#each ["online", "invisible", "offline"] as state (state)}
+            <label class:chosen={config.presenceState === state}>
+              <input
+                type="radio"
+                name="presence"
+                value={state}
+                checked={config.presenceState === state}
+                onchange={() => selectPresence(state as PresenceState)}
+              />
+              <span class:online={state === "online"} class:offline={state === "offline"} class="presence-option-dot" aria-hidden="true"></span>
+              <span><strong>{formatPresence(state as PresenceState)}</strong><small>{state === "online" ? "Visible privately to followers" : state === "invisible" ? "Keep your availability private" : "Do not announce your availability"}</small></span>
+            </label>
+          {/each}
+        </div>
+      </fieldset>
 
       {#if userProfileStore.method === "anonymous"}
         <div class="user-menu-section">
@@ -244,49 +305,6 @@
         </div>
       {/if}
 
-      {#if showHostIdentity}
-        <div class="user-menu-section host-identity-section">
-          <div class="section-heading">
-            <span class="section-label">Message identity</span>
-            <span class="badge-preview"><span aria-hidden="true">{badgeEmoji}</span><span>{badgeLabel.trim() || "host"}</span></span>
-          </div>
-          <div class="badge-editor">
-            <button
-              class="emoji-trigger"
-              type="button"
-              aria-label="Choose badge emoji"
-              aria-expanded={emojiPickerOpen}
-              onclick={() => emojiPickerOpen = !emojiPickerOpen}
-            >{badgeEmoji || "＋"}</button>
-            <label>
-              Badge text
-              <input
-                value={badgeLabel}
-                placeholder="host"
-                maxlength="20"
-                oninput={(event) => onBadgeLabelChange?.(event.currentTarget.value)}
-              />
-            </label>
-          </div>
-          {#if emojiPickerOpen}
-            <div class="emoji-picker" role="group" aria-label="Badge emoji">
-              {#each badgeEmojis as emoji (emoji)}
-                <button
-                  class:selected={emoji === badgeEmoji}
-                  type="button"
-                  aria-label={`Use ${emoji} for badge`}
-                  onclick={() => {
-                    onBadgeEmojiChange?.(emoji);
-                    emojiPickerOpen = false;
-                  }}
-                >{emoji}</button>
-              {/each}
-            </div>
-          {/if}
-          <p>Your name, avatar, and badge appear beside messages you host. Badge text remains selectable in the conversation.</p>
-        </div>
-      {/if}
-
       {#if userProfileStore.status === "loading"}<p class="user-status">Looking up kind 0 on purplepag.es and relay.damus.io…</p>{/if}
       {#if userProfileStore.error}<p class="user-error">{userProfileStore.error}</p>{/if}
     </div>
@@ -313,7 +331,11 @@
   .user-trigger { display: grid; height: 2.65rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid transparent; padding: 4px 8px; color: #dfffe7; }
   .user-trigger:hover { border-color: #34483a; background: #101713; }
   .user-profile > .user-trigger[aria-expanded="true"] { border: 1px solid #87ff9f; background: #101713; }
+  .user-avatar { position: relative; display: block; width: 1.85rem; height: 1.85rem; }
   .user-trigger img { width: 1.85rem; height: 1.85rem; object-fit: cover; image-rendering: pixelated; }
+  .profile-presence-dot { position: absolute; right: -.12rem; bottom: -.12rem; width: .62rem; height: .62rem; border: 2px solid #080d0a; border-radius: 999px; background: #82958a; }
+  .profile-presence-dot.online { background: #7cf59d; box-shadow: 0 0 8px rgb(124 245 157 / .4); }
+  .profile-presence-dot.offline { background: #9b6b56; }
   .user-copy { display: none; min-width: 0; text-align: left; line-height: 1; }
   .user-copy strong { display: block; max-width: 8rem; overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
   .user-copy small { display: block; margin-top: 4px; color: #708177; font-size: 10px; font-weight: 400; line-height: 1.3; letter-spacing: .1em; text-transform: uppercase; }
@@ -329,6 +351,18 @@
   .auth-chip.authenticated { border-color: #477e57; color: #7cf59d; }
   .user-menu-section { display: grid; gap: 12px; border-bottom: 1px solid #202d25; padding: 16px; }
   .user-menu-section:last-of-type { border-bottom: 0; }
+  .presence-section { min-width: 0; }
+  .presence-section > p { margin-top: -.15rem; }
+  .presence-options { display: grid; gap: .3rem; }
+  .presence-options > label { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: .55rem; border: 1px solid transparent; padding: .55rem; color: #91a59a; cursor: pointer; text-transform: none; }
+  .presence-options > label:hover, .presence-options > label.chosen { border-color: #34483a; background: #111a14; color: #effff2; }
+  .presence-options input { position: absolute; width: 1px; height: 1px; margin: -1px; opacity: 0; }
+  .presence-option-dot { width: .52rem; height: .52rem; border: 1px solid #82958a; border-radius: 999px; background: transparent; }
+  .presence-option-dot.online { border-color: #7cf59d; background: #7cf59d; box-shadow: 0 0 7px rgb(124 245 157 / .35); }
+  .presence-option-dot.offline { border-color: #9b6b56; background: #9b6b56; }
+  .presence-options strong, .presence-options small { display: block; }
+  .presence-options strong { font-size: .68rem; font-weight: 600; }
+  .presence-options small { margin-top: .13rem; color: #718277; font-size: .54rem; }
   .user-menu-section label, .section-label { color: #83958a; font-size: 10px; font-weight: 400; line-height: 1.3; letter-spacing: .1em; text-transform: uppercase; }
   .user-menu-section input { width: 100%; margin-top: 8px; border: 1px solid #34433b; background: #070b08; padding: 12px; color: #effff2; font-size: 12px; font-weight: 400; line-height: 1.5; outline: none; text-transform: none; }
   .user-menu-section input:focus { border-color: #7cf59d; }
@@ -358,16 +392,6 @@
   .profile-nip05 { color: #9bf6b3 !important; }
   .profile-actions { display: flex; gap: .5rem; }
   .profile-actions .disconnect { border-color: #583737; color: #d69d99; }
-  .host-identity-section { gap: .75rem; }
-  .section-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
-  .badge-preview { display: inline-flex; user-select: text; align-items: center; gap: .28rem; border: 1px solid #3f5a47; background: #111a14; padding: .22rem .42rem; color: #a9e9b8; font-size: .55rem; letter-spacing: .08em; text-transform: uppercase; }
-  .badge-editor { display: grid; grid-template-columns: 2.55rem minmax(0, 1fr); align-items: end; gap: .5rem; }
-  .badge-editor label { min-width: 0; }
-  .emoji-trigger { display: grid; width: 2.55rem; height: 2.55rem; place-items: center; border: 1px solid #34433b; background: #070b08; font-size: 1rem; }
-  .emoji-trigger:hover, .emoji-trigger[aria-expanded="true"] { border-color: #7cf59d; background: #111a14; }
-  .emoji-picker { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: .25rem; border: 1px solid #293832; background: #070b08; padding: .4rem; }
-  .emoji-picker button { display: grid; aspect-ratio: 1; place-items: center; border: 1px solid transparent; font-size: .9rem; }
-  .emoji-picker button:hover, .emoji-picker button.selected { border-color: #7cf59d; background: #17241b; }
   .user-status, .user-error { border-top: 1px solid #293832; padding: .65rem .85rem; font-size: .6rem; }
   .user-status { color: #91a59a; }
   .user-error { color: #ffaaa3; }

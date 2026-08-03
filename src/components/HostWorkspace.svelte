@@ -22,7 +22,6 @@
   import NotificationFeed from "./NotificationFeed.svelte";
   import OnlineInvitePicker from "./OnlineInvitePicker.svelte";
   import PendingInvitees from "./PendingInvitees.svelte";
-  import PresenceControl from "./PresenceControl.svelte";
   import ResourceMonitor from "./ResourceMonitor.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
@@ -1121,17 +1120,14 @@
           aria-hidden={compactViewport && !mobileToolsOpen}
           inert={compactViewport && !mobileToolsOpen}
         >
-          {#if !locked}<PresenceControl {config} {coordinator} {coordinatorPubkey} {relayUrls} />{/if}
           <NotificationFeed {onNavigate} />
           <NotificationCenter />
           <UserProfile
+            {config}
+            {coordinatorPubkey}
+            {relayUrls}
             anonymousName={config.userName}
             onAnonymousNameChange={(name) => config.setUserName(name)}
-            showHostIdentity
-            badgeLabel={config.hostBadgeLabel}
-            badgeEmoji={config.hostBadgeEmoji}
-            onBadgeLabelChange={(label) => config.setHostBadgeLabel(label)}
-            onBadgeEmojiChange={(emoji) => config.setHostBadgeEmoji(emoji)}
           />
           {#if !locked}
             <button class:pending={coordinator.restartRequired} class="settings-button" type="button" aria-label="Settings" onclick={openSettings}>

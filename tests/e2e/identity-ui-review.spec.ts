@@ -163,3 +163,28 @@ test("normalizes a retryable recovery failure without making recovery dismissabl
   await page.keyboard.press("Escape");
   await expect(recovery).toBeVisible();
 });
+
+test("profile presence persists without changing coordinator lifecycle", async ({ page }) => {
+  await page.goto("/");
+  const { menu } = await openIdentityMenu(page);
+  const presence = menu.getByRole("radiogroup", { name: "Presence" });
+
+  await presence.getByRole("radio", { name: "Online" }).check();
+  await expect(presence.getByRole("radio", { name: "Online" })).toBeChecked();
+  await expect(page.getByTestId("status-badge")).toHaveText("idle");
+  await expect(menu).toBeVisible();
+
+  await page.reload();
+  const reloaded = await openIdentityMenu(page);
+  await expect(reloaded.menu.getByRole("radio", { name: "Online" })).toBeChecked();
+  await expect(page.getByTestId("status-badge")).toHaveText("idle");
+});
+
+test("avatar exposes presence status", async ({ page }) => {
+  await page.goto("/");
+  const profile = page.getByTestId("user-profile");
+  const trigger = profile.locator(".user-trigger");
+
+  await expect(trigger).toHaveAccessibleName(/Invisible/);
+  await expect(profile.getByTestId("profile-presence-status")).toHaveAttribute("data-presence", "invisible");
+});
