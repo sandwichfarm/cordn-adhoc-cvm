@@ -1979,31 +1979,30 @@
   .startup-kicker { margin-top: 24px; color: #66786d; font-size: 12px; font-weight: 600; line-height: 1.2; letter-spacing: .2em; text-transform: uppercase; }
   .startup-content h1 { margin-top: 8px; color: #f3fff6; font-size: 48px; font-weight: 600; line-height: 1.1; letter-spacing: -.035em; }
   .startup-copy { max-width: 512px; margin: 16px auto 0; color: #91a59a; font-size: 14px; font-weight: 400; line-height: 1.5; }
-  .startup-progress-panel { width: min(448px, 100%); margin: 24px auto 0; background: rgb(8 14 10 / .82); padding: 16px; text-align: left; backdrop-filter: blur(8px); }
-  .startup-progress-panel header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .startup-progress-panel { width: min(448px, 100%); margin: 1.25rem auto 0; background: rgb(8 14 10 / .82); padding: .8rem .9rem; text-align: left; backdrop-filter: blur(8px); }
+  .startup-progress-panel header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 1rem; }
   .startup-progress-panel header > div { min-width: 0; }
   .startup-progress-panel header span, .startup-progress-panel header strong { display: block; overflow-wrap: anywhere; }
-  .startup-progress-panel header span { color: #66786d; font-size: 12px; font-weight: 600; line-height: 1.2; letter-spacing: .12em; text-transform: uppercase; }
-  .startup-progress-panel header strong { margin-top: 4px; color: #e8f5eb; font-size: 28px; font-weight: 600; line-height: 1.2; }
-  .startup-progress-value { flex: 0 0 auto; color: #e8f5eb; font-size: 14px; font-weight: 400; line-height: 1.5; font-variant-numeric: tabular-nums; }
+  .startup-progress-panel header span { color: #66786d; font-size: .48rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .startup-progress-panel header strong { margin-top: .28rem; color: #e8f5eb; font-size: .72rem; font-weight: 650; }
+  .startup-progress-value { flex: 0 0 auto; color: #e8f5eb; font-size: .72rem; font-variant-numeric: tabular-nums; }
   .startup-progress-value.retrying { color: #e4e78d; }
   .startup-progress-value.error { color: #ffaaa3; }
-  .startup-progress-track { position: relative; height: 4px; margin-top: 12px; overflow: hidden; background: #1a2820; }
-  .startup-progress-track > span { display: block; width: var(--startup-progress); height: 100%; background: #7cf59d; box-shadow: 0 0 12px rgb(124 245 157 / .24); transition: width .28s ease; }
-  .startup-progress-panel footer { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 16px; margin-top: 8px; color: #82958a; font-size: 14px; font-weight: 400; line-height: 1.5; }
+  .startup-progress-track { position: relative; height: .28rem; margin-top: .7rem; overflow: hidden; background: #1a2820; }
+  .startup-progress-track::after { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(20% - 1px), rgb(6 12 8 / .72) calc(20% - 1px) 20%); content: ""; }
+  .startup-progress-track > span { display: block; width: var(--startup-progress); height: 100%; background: linear-gradient(90deg, #4cae67, #7cf59d); box-shadow: 0 0 12px rgb(124 245 157 / .24); transition: width .28s ease; }
+  .startup-progress-panel footer { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 1rem; margin-top: .55rem; color: #82958a; font-size: .54rem; line-height: 1.45; }
   .startup-progress-panel footer > span:first-child { min-width: 0; }
   .startup-progress-panel footer > span:last-child { flex: 0 0 auto; color: #687a6f; font-variant-numeric: tabular-nums; }
-  .startup-recovery-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-  .startup-recovery-actions button { border: 1px solid #496451; padding: 8px 12px; color: #c6d7cb; font-size: 14px; font-weight: 600; line-height: 1.2; }
-  .startup-recovery-actions button:hover { border-color: #5d7564; color: #effff2; }
-  .startup-recovery-actions button:focus-visible { border-color: #7cf59d; color: #effff2; outline: 2px solid #7cf59d; outline-offset: 4px; }
-  .startup-recovery-actions .startup-primary { border-color: #7cf59d; background: #7cf59d; color: #071009; font-weight: 600; }
+  .startup-recovery-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; margin-top: .75rem; }
+  .startup-recovery-actions button { border: 1px solid #496451; padding: .55rem .7rem; color: #c6d7cb; font-size: .6rem; }
+  .startup-recovery-actions button:hover, .startup-recovery-actions button:focus-visible { border-color: #7cf59d; color: #effff2; outline: none; }
+  .startup-recovery-actions .startup-primary { border-color: #7cf59d; background: #7cf59d; color: #071009; font-weight: 650; }
   .startup-recovery-actions .startup-danger { border-color: #6d413d; color: #ffaaa3; }
   .startup-recovery-actions .startup-danger:hover, .startup-recovery-actions .startup-danger:focus-visible { border-color: #ff8f86; background: #21110f; color: #ffd5d1; }
-  .startup-stage-actions { display: flex; justify-content: center; margin-top: 12px; }
-  .startup-stage-actions button { border: 1px solid #496451; background: rgb(8 14 10 / .78); padding: 8px 12px; color: #c6d7cb; font-size: 14px; font-weight: 600; line-height: 1.2; }
-  .startup-stage-actions button:hover { border-color: #5d7564; color: #effff2; }
-  .startup-stage-actions button:focus-visible { border-color: #7cf59d; color: #effff2; outline: 2px solid #7cf59d; outline-offset: 4px; }
+  .startup-stage-actions { display: flex; justify-content: center; margin-top: .75rem; }
+  .startup-stage-actions button { border: 1px solid #496451; background: rgb(8 14 10 / .78); padding: .55rem .7rem; color: #c6d7cb; font-size: .6rem; }
+  .startup-stage-actions button:hover, .startup-stage-actions button:focus-visible { border-color: #7cf59d; color: #effff2; outline: none; }
   .startup-actions { display: flex; justify-content: center; gap: 8px; margin-top: 24px; }
   .startup-actions button { border: 1px solid #496451; background: rgb(8 14 10 / .78); padding: 12px 16px; color: #c6d7cb; font-size: 14px; font-weight: 600; line-height: 1.2; backdrop-filter: blur(8px); }
   .startup-actions button:hover:not(:disabled) { border-color: #5d7564; color: #effff2; }
@@ -2091,8 +2090,8 @@
     .startup-stage { padding: 8px; }
     .startup-kicker { margin-top: 8px; }
     .startup-content h1 { margin-top: 4px; font-size: 28px; }
-    .startup-progress-panel { margin-top: 8px; padding: 8px 12px; }
-    .startup-progress-panel footer { gap: 8px; }
+    .startup-progress-panel { margin-top: .85rem; padding: .7rem .75rem; }
+    .startup-progress-panel footer { gap: .55rem; }
     .startup-facts { margin-top: 16px; }
   }
 
@@ -2101,8 +2100,8 @@
 
   @media (max-height: 520px) {
     .startup-kicker { display: none; }
-    .startup-progress-panel { margin-top: 8px; }
-    .startup-progress-panel footer { margin-top: 4px; }
+    .startup-progress-panel { margin-top: .65rem; }
+    .startup-progress-panel footer { margin-top: .4rem; }
   }
 
   @media (max-width: 900px) and (max-height: 420px) and (min-width: 480px) {
