@@ -96,12 +96,14 @@ and closes with repeatable delivery guidance and automated proof.
   4. A separate bell opens a grouped in-app notification feed with unread state and actionable incoming room invitations.
   5. Browser-notification permission is requested only after a user action, and enabled desktop notifications follow the configured cadence without duplicate bursts.
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
-- [ ] 18-01-PLAN.md — Establish the feed-first notification ledger, optional desktop projection, and safe invitation replay state.
+
+- [x] 18-01-PLAN.md — Establish the feed-first notification ledger, optional desktop projection, and safe invitation replay state.
 - [ ] 18-02-PLAN.md — Deliver the separate bell feed, same-shell invitation actions, and exact Notification settings surface.
 - [ ] 18-03-PLAN.md — Move presence into the profile and finalize personal/host control ownership across breakpoints.
+
 **UI hint**: yes
 
 ### Phase 19: Grouped Conversations & Reactions
@@ -139,6 +141,6 @@ Plans:
 | 15. Identity Continuity & Membership Integrity | 3/3 | Complete    | 2026-08-02 |
 | 16. Resilient Rooms & Recovery | 6/6 | Complete | 2026-08-02 |
 | 17. Content-Pane Startup Motion | 2/2 | Complete | 2026-08-03 |
-| 18. Unified Presence, Notifications & Controls | 0/TBD | Not started | - |
+| 18. Unified Presence, Notifications & Controls | 1/3 | In Progress|  |
 | 19. Grouped Conversations & Reactions | 0/TBD | Not started | - |
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
