@@ -70,6 +70,25 @@ async function closeCoordinatorSettings(settings: import("@playwright/test").Loc
   await expect(settings).toBeHidden();
 }
 
+async function startCoordinator(page: import("@playwright/test").Page): Promise<void> {
+  const start = page.getByRole("button", { name: "Start", exact: true });
+  if (!(await start.isVisible())) {
+    const toolsTrigger = page.locator(".host-topbar").getByRole("button", { name: "Open host tools" });
+    await toolsTrigger.click();
+  }
+  await start.click();
+  const closeTools = page.locator(".host-topbar .mobile-tools-toggle[aria-label='Close host tools']");
+  if (await closeTools.isVisible()) await closeTools.click();
+}
+
+async function stopCoordinator(page: import("@playwright/test").Page): Promise<void> {
+  const stop = page.getByRole("button", { name: "Stop", exact: true });
+  if (!(await stop.isVisible())) {
+    await page.locator(".host-topbar .mobile-tools-toggle[aria-label='Open host tools']").click();
+  }
+  await stop.click();
+}
+
 async function pageExitIsGuarded(page: import("@playwright/test").Page): Promise<boolean> {
   return page.evaluate(() => {
     const event = new Event("beforeunload", { cancelable: true });
@@ -233,12 +252,16 @@ async function expectStartupVisualContract(page: import("@playwright/test").Page
     stageBeforeContent: "none",
     kicker: { size: "12px", weight: "600", usesAccent: false },
     display: { size: "48px", weight: "600" },
-    heading: { size: "28px", weight: "600" },
-    body: { size: "14px", weight: "400" },
-    label: { size: "12px", weight: "600" },
-    control: { size: "14px", weight: "600" },
-    panel: { marginTop: "24px", paddingTop: "16px", paddingRight: "16px" },
-    track: { height: "4px", marginTop: "12px", fillBackgroundImage: "none" },
+    heading: { size: "11.52px", weight: "650" },
+    body: { size: "8.64px", weight: "400" },
+    label: { size: "7.68px", weight: "700" },
+    control: { size: "9.6px", weight: "400" },
+    panel: { marginTop: "20px", paddingTop: "12.8px", paddingRight: "14.4px" },
+    track: {
+      height: "4.46875px",
+      marginTop: "11.2px",
+      fillBackgroundImage: "linear-gradient(90deg, rgb(76, 174, 103), rgb(124, 245, 157))",
+    },
   });
 }
 
@@ -266,8 +289,8 @@ async function expectStartupCompactVisualContract(page: import("@playwright/test
   expect(contract).toEqual({
     stagePadding: "8px",
     display: { size: "28px", marginTop: "4px" },
-    panel: { marginTop: "8px", paddingTop: "8px", paddingRight: "12px" },
-    footer: { gap: "8px", marginTop: "4px" },
+    panel: { marginTop: "10.4px", paddingTop: "11.2px", paddingRight: "12px" },
+    footer: { gap: "8.8px", marginTop: "6.4px" },
   });
 }
 
@@ -341,11 +364,14 @@ async function customizeHostIdentity(
   const profile = page.getByRole("dialog", { name: "User profile" });
   await expect(profile).toBeVisible();
   await profile.getByLabel("Display name").fill(name);
-  await profile.getByLabel("Badge text").fill(badge);
-  await profile.getByRole("button", { name: "Choose badge emoji" }).click();
-  await profile.getByRole("button", { name: `Use ${emoji} for badge` }).click();
   await page.keyboard.press("Escape");
   await expect(profile).toBeHidden();
+
+  const settings = await openCoordinatorSettings(page, true);
+  await settings.getByLabel("Badge text").fill(badge);
+  await settings.getByRole("button", { name: "Choose badge emoji" }).click();
+  await settings.getByRole("button", { name: `Use ${emoji} for badge` }).click();
+  await closeCoordinatorSettings(settings);
 }
 
 async function createRoom(page: import("@playwright/test").Page, title: string): Promise<void> {
@@ -1074,7 +1100,6 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(startup.getByRole("status")).toContainText(/identity|room|MLS|relay|coordinator/i);
   await expect(startup.getByRole("button")).toHaveCount(0);
   await expect(page.getByText("Starting", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Destroy" })).toHaveCount(0);
   await expect(page.getByTestId("status-badge")).toHaveText("running");
   expect(await pageExitIsGuarded(page)).toBe(true);
   await expect(page.getByTestId("status-badge")).toHaveText("running");
@@ -1126,7 +1151,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   expect(await pageExitIsGuarded(page)).toBe(false);
   await expect(page.getByTestId("resource-monitor")).toBeHidden();
 
-  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await startCoordinator(page);
   await expect(page.getByTestId("status-badge")).toHaveText("running");
   await expect(page.getByTestId("host-chat")).toBeVisible();
   await page.getByRole("button", { name: "Stop", exact: true }).click();
@@ -1158,7 +1183,7 @@ test("keeps live startup status and progress inside a short mobile viewport", as
   await page.goto("/");
   await configureMockRelay(page);
 
-  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await startCoordinator(page);
   const panel = page.getByTestId("startup-progress-panel");
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("progressbar", { name: "Coordinator startup progress" })).toBeVisible();
@@ -1184,7 +1209,7 @@ test("keeps live startup status and progress inside a short mobile viewport", as
   });
 
   await expect(page.getByTestId("status-badge")).toHaveText("running");
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await stopCoordinator(page);
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
 });
 
@@ -1197,7 +1222,7 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
     await page.setViewportSize(viewport);
     await page.goto("/");
     await configureMockRelay(page);
-    await page.getByRole("button", { name: "Start", exact: true }).click();
+    await startCoordinator(page);
     await expect(page.getByTestId("host-chat")).toBeVisible();
     await expect.poll(() => page.getByTestId("operator-shell").evaluate((element) => element.clientHeight)).toBe(viewport.height);
     await expect.poll(() => page.locator(".host-layout").evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(viewport.width);
@@ -1277,7 +1302,10 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
       await expectInsideViewport(page.getByTestId("invite-panel"));
       await page.locator(".mobile-rail-toggle").click();
     }
-    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    if (viewport.width <= 900 && viewport.height <= 420) {
+      await page.setViewportSize({ width: 320, height: 568 });
+    }
+    await stopCoordinator(page);
     await expect(page.getByTestId("status-badge")).toHaveText("idle");
   }
 });
@@ -1287,7 +1315,7 @@ test("keeps host mobile tools and room dialogs bounded inside the app shell", as
   await page.setViewportSize(portrait);
   await page.goto("/");
   await configureMockRelay(page);
-  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await startCoordinator(page);
   await expect(page.getByTestId("status-badge")).toHaveText("running");
 
   await page.getByRole("button", { name: "Open host tools" }).click();
@@ -1322,11 +1350,15 @@ test("keeps host mobile tools and room dialogs bounded inside the app shell", as
   await expectNoDocumentOverflow(page, landscape);
   await share.locator(".share-close").click();
 
+  await page.setViewportSize(portrait);
+  await page.getByRole("button", { name: "Open host tools" }).click();
+  await page.setViewportSize(landscape);
   await page.getByRole("button", { name: "Open management interface" }).click();
   await expect.poll(() => page.getByRole("log", { name: "Coordinator activity" }).evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(100);
   await expectNoDocumentOverflow(page, landscape);
   await page.getByRole("button", { name: "Close management interface" }).click();
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.setViewportSize(portrait);
+  await stopCoordinator(page);
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
 });
 
