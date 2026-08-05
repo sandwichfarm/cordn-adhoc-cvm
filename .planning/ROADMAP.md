@@ -109,7 +109,7 @@ Plans:
 ### Phase 19: Grouped Conversations & Reactions
 
 **Goal**: Users can scan active conversations quickly and use compact, accurate reactions on message groups.
-**Depends on**: Phase 18
+**Depends on**: Phase 17
 **Requirements**: REACT-01, REACT-02, CHAT-01, CHAT-02
 **Success Criteria** (what must be TRUE):
 
@@ -125,14 +125,40 @@ Plans:
 
 **Goal**: Contributors can follow one documented GSD delivery lifecycle and reliably detect regressions across the completed v1.1 experience.
 **Depends on**: Phase 19
-**Requirements**: DOC-01, TEST-01
+**Requirements**: DOC-01, TEST-01, INTEROP-01
 **Success Criteria** (what must be TRUE):
 
   1. A contributor can read the root `AGENTS.md` and follow the repository's required GSD flow for requirements, planning, plan checks, execution, verification, gap closure, review, and shipping.
   2. Contributors can run unit and Playwright coverage that exercises identity continuity and rotation, exact room leaving, unread state, and startup recovery.
   3. The same automated coverage detects regressions in notifications, consolidated controls, grouped conversations, and aggregated reactions before release.
+  4. Each room presents one current-origin Cordn-compatible invite link (not separate native/interoperable variants), and a canonical cordn.net requester can use it, be admitted with its requested KeyPackage, and consume the resulting Welcome over the Nostr transport.
 
 **Plans**: TBD
+
+### Phase 21: First-Run Coordinator Identity & Profile
+
+**Goal**: A first-time operator deliberately chooses an authenticated or anonymous operator identity, names the coordinator before startup, and has that name resolve in canonical Cordn clients.
+**Depends on**: Phase 17
+**Requirements**: SETUP-01, SETUP-02, SETUP-03, SETUP-04, PROFILE-01, PROFILE-02
+**Success Criteria** (what must be TRUE):
+
+  1. A new installation cannot start its coordinator until the operator has explicitly chosen sign-in or durable anonymous operation and supplied a valid coordinator name.
+  2. Authenticated setup prefills an available Nostr profile name, anonymous setup remains fully supported, and completed or meaningfully configured installations do not repeat onboarding after restart.
+  3. Editing the persisted coordinator name later republishes a valid kind-0 event signed by the unchanged coordinator key through the configured shareable relays.
+  4. Canonical cordn.net resolves the selected name rather than an `npub` fallback, while publication failures expose retry state without corrupting or unnecessarily stopping the coordinator.
+
+**Integration note:** Phase 21 is independently executable against the current shell. It must preserve and integrate the in-progress Phase 18 personal/host control ownership edits, but does not depend on Phase 18 completion.
+
+**Plans**: 5 plans
+
+Plans:
+
+- [ ] 21-01-PLAN.md — Enforce durable setup completion and configure MCP/transport identity metadata.
+- [ ] 21-02-PLAN.md — Publish preserved coordinator-key kind-0 metadata with safe retry orchestration.
+- [ ] 21-03-PLAN.md — Deliver identity-first onboarding, authenticated prefill, anonymous continuity, and autostart gating.
+- [ ] 21-04-PLAN.md — Persist and immediately republish settings renames with truthful restart status.
+- [ ] 21-05-PLAN.md — Verify live canonical cordn.net name resolution before and after rename/restart.
+**UI hint**: yes
 
 ## Progress
 
@@ -144,3 +170,4 @@ Plans:
 | 18. Unified Presence, Notifications & Controls | 2/3 | In Progress|  |
 | 19. Grouped Conversations & Reactions | 0/TBD | Not started | - |
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
+| 21. First-Run Coordinator Identity & Profile | 0/TBD | Not started | - |

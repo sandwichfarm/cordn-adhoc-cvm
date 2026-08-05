@@ -1,4 +1,6 @@
 import type {
+  ConsumedJoinRequestRef,
+  ConsumedWelcomeRef,
   FetchManyGroupMessagesInput,
   FetchManyPendingJoinRequestsInput,
   FetchGroupMessagesInput,
@@ -72,6 +74,7 @@ export interface CoordinatorStorage {
   fetchPendingWelcomes(
     targetStablePubkey: string,
     now: number,
+    consumed?: ConsumedWelcomeRef[],
   ): WelcomeQueueRecord[];
   /**
    * Delete expired welcomes.
@@ -95,7 +98,11 @@ export interface CoordinatorStorage {
    * This method never deletes records; cleanup is handled separately via
    * {@link deleteExpiredJoinRequests}.
    */
-  fetchPendingJoinRequests(groupId: string, now: number): JoinRequestRecord[];
+  fetchPendingJoinRequests(
+    groupId: string,
+    now: number,
+    consumed?: ConsumedJoinRequestRef[],
+  ): JoinRequestRecord[];
   /**
    * Fetch all pending join requests for multiple groups and mark unread
    * requests as read at the given timestamp.

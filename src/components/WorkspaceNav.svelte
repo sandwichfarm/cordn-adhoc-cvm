@@ -4,7 +4,7 @@
   import { parseInviteUrl, type ChatInvite, type CoordinatorKeyMode, type RoomHostIdentity } from "../chat/invite";
   import { createSameShellChatHref } from "../chat/room-navigation";
   import { coordinatorUnreadTotal, hostIdentityForRoom, listRooms, loadRoom, removeStoredRoom, roomIdentityKey, roomTargetFor, ROOM_UNREAD_CHANGED_EVENT, roomUnreadCount, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type RoomTarget, type StoredRoom } from "../chat/room-store";
-  import InviteRedeemer from "./InviteRedeemer.svelte";
+  import { resourceMonitor } from "../coordinator/resource-monitor.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
@@ -49,10 +49,6 @@
     homeCoordinatorName = "My coordinator",
     coordinatorStatus = "idle",
     soundsEnabled = true,
-    activeRoomTitle,
-    activeRoomCoordinatorPubkey,
-    activeRoomHost,
-    roomConnectionStatus,
     showRoomBrowser = true,
     coordinator,
     onNavigate,
@@ -144,24 +140,15 @@
         href: currentUrl,
       }
     : null);
-  const contextRoomTitle = $derived(activeRoomTitle || activeRoom?.title);
-  const contextCoordinatorPubkey = $derived(activeRoomCoordinatorPubkey || activeRoom?.coordinatorPubkey);
-  const contextHost = $derived(activeRoomHost || activeRoom?.host);
-  const contextIsHome = $derived(!contextCoordinatorPubkey || Boolean(
-    effectiveHomeCoordinatorPubkey && contextCoordinatorPubkey === effectiveHomeCoordinatorPubkey
-  ));
-  const contextCoordinatorReachability = $derived.by<"online" | "connecting" | "offline" | "unknown">(() => {
-    if (contextIsHome) {
-      if (coordinatorStatus === "running") return "online";
-      if (coordinatorStatus === "starting" || coordinatorStatus === "stopping") return "connecting";
-      return "offline";
-    }
-    if (roomConnectionStatus === "connected") return "online";
-    if (roomConnectionStatus === "connecting") return "connecting";
-    if (roomConnectionStatus === "offline" || roomConnectionStatus === "deleted" || roomConnectionStatus === "cached") return "offline";
-    return "unknown";
-  });
+  const homeCoordinatorReachability = $derived<"online" | "connecting" | "offline">(
+    coordinatorStatus === "running"
+      ? "online"
+      : coordinatorStatus === "starting" || coordinatorStatus === "stopping"
+        ? "connecting"
+        : "offline",
+  );
   const roomCount = $derived(roomLinks.length);
+  const headerRateColor = $derived(messageRateColor(resourceMonitor.messageRate, resourceMonitor.messageRateIntensity));
 
   $effect(() => {
     const nextStatus = coordinatorStatus;
@@ -193,6 +180,14 @@
     return count >= 100 ? "99+" : String(count);
   }
 
+  function messageRateColor(rate: number, intensity: number): string {
+    if (rate <= 0) return "#617268";
+    const normalized = Math.min(1, Math.max(0, intensity));
+    const saturation = Math.round(18 + normalized * 69);
+    const lightness = Math.round(43 + normalized * 23);
+    return `hsl(136 ${saturation}% ${lightness}%)`;
+  }
+
   function coordinatorUnreadCount(coordinatorPubkey: string): number {
     return coordinatorUnreadTotal(storedRooms, coordinatorPubkey);
   }
@@ -201,11 +196,6 @@
     const host = nextInvite.host ?? { name: "Unknown host", pubkey: "" };
     // Invite-provided image URLs are not loaded until the user joins the room.
     return { ...host, avatar: undefined };
-  }
-
-  function hostContextLabel(host: RoomHostIdentity): string {
-    const name = host.name.trim() || "Unknown host";
-    return /\bhost\b/i.test(name) ? name : `${name} · host`;
   }
 
   function shortKey(pubkey: string): string {
@@ -360,6 +350,13 @@
     }}
   >
     <span class="brand-camel" aria-hidden="true">🐫</span>
+    <span
+      class:online={homeCoordinatorReachability === "online"}
+      class:connecting={homeCoordinatorReachability === "connecting"}
+      class:offline={homeCoordinatorReachability === "offline"}
+      class="brand-status-dot"
+      aria-hidden="true"
+    ></span>
     <strong class="brand-wordmark">CAHMLS</strong>
     <span class="brand-tooltip" id="cahmls-expansion" role="tooltip">
       <span class="brand-tooltip-key" aria-hidden="true">CAHMLS ::</span>
@@ -367,50 +364,21 @@
     </span>
   </a>
 
-  <div class="active-context" data-testid="active-server-context">
-    {#if contextRoomTitle && contextHost}
-      <RoomHostBadge host={contextHost} avatarOnly />
-    {:else}
-      <span
-        class:online={contextCoordinatorReachability === "online"}
-        class:connecting={contextCoordinatorReachability === "connecting"}
-        class:offline={contextCoordinatorReachability === "offline"}
-        class:unknown={contextCoordinatorReachability === "unknown"}
-        class="server-dot"
-        data-state={contextCoordinatorReachability}
-        role="img"
-        aria-label={`Coordinator ${contextCoordinatorReachability}`}
-      ></span>
-    {/if}
-    <span class="context-copy">
-      {#if contextRoomTitle}
-        <span>{contextHost ? hostContextLabel(contextHost) : contextIsHome ? homeCoordinatorName || "My coordinator" : `Coordinator ${shortKey(contextCoordinatorPubkey || "")}`}</span>
-        <strong># {contextRoomTitle}</strong>
-      {:else}
-        <strong>Workspace</strong>
-      {/if}
-    </span>
-    {#if !contextIsHome}
-      <span class="remote-badge">remote</span>
-    {/if}
-  </div>
-
-  {#if contextRoomTitle && roomConnectionStatus}
-    <div class="room-utilities" aria-label={`Controls for ${contextRoomTitle}`}>
-      <span
-        class:offline={roomConnectionStatus === "offline"}
-        class:deleted={roomConnectionStatus === "deleted"}
-        class:cached={roomConnectionStatus === "cached"}
-        class:connecting={roomConnectionStatus === "connecting"}
-        class="room-connection"
-        data-testid="chat-connection-status"
-        title={`Room connection: ${roomConnectionStatus}`}
-      >
-        <span class="connection-dot" aria-hidden="true"></span>
-        <span class="connection-label">{roomConnectionStatus === "connected" ? "Room synced" : roomConnectionStatus === "deleted" ? "Room deleted" : roomConnectionStatus === "offline" ? "Room offline" : roomConnectionStatus === "cached" ? "Room cached" : "Room connecting"}</span>
-      </span>
-    </div>
-  {/if}
+  <span
+    class="header-rate"
+    data-testid="header-message-rate"
+    aria-label={`Message rate ${resourceMonitor.messageRate} per minute, estimated`}
+    title={`Local range ${resourceMonitor.messageRateMinimum}–${resourceMonitor.messageRateMaximum} per minute`}
+  >
+    <span>rate</span>
+    <strong
+      class:idle={resourceMonitor.messageRate === 0}
+      data-testid="header-message-rate-value"
+      data-rate-intensity={resourceMonitor.messageRateIntensity.toFixed(3)}
+      style:color={headerRateColor}
+    >{resourceMonitor.messageRate}</strong>
+    <small>/min</small>
+  </span>
 
   {#if showRoomBrowser}
     <button
@@ -431,7 +399,6 @@
   {:else if serverNotice}
     <span class="server-notice embedded-notice" aria-hidden="true" data-testid="server-online-notice"></span>
   {/if}
-  <InviteRedeemer onNavigate={navigate} />
   <span class="sr-only" aria-live="polite">{serverNotice ? "A coordinator is online" : ""}</span>
 
   {#if showRoomBrowser && open}
@@ -470,7 +437,7 @@
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
-              <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode={room.isHost ? "delete" : "leave"} onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              <RoomActionsMenu sidebar roomTitle={room.title} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} {soundsEnabled} removalMode={room.isHost ? "delete" : "leave"} onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
           </div>
@@ -497,7 +464,7 @@
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
-              <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              <RoomActionsMenu sidebar roomTitle={room.title} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
           </div>
@@ -526,7 +493,7 @@
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
-              <RoomActionsMenu sidebar roomTitle={room.title} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              <RoomActionsMenu sidebar roomTitle={room.title} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
           </div>
@@ -542,9 +509,12 @@
 <style>
   .workspace-nav { position: relative; display: flex; min-width: 0; align-items: center; gap: .75rem; color: #dfffe7; }
   .brand { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: .5rem; color: inherit; text-decoration: none; }
-  .brand-camel { display: inline-grid; width: 2.35rem; height: 1rem; flex: 0 0 2.35rem; place-items: center; overflow: visible; font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif; font-size: 1.45rem; line-height: 1; transform: translateY(-.38rem); }
-  .brand-wordmark { color: #effff2; font-size: 1.08rem; font-weight: 760; letter-spacing: .12em; line-height: 1; text-shadow: 0 0 18px transparent; transition: color .18s ease, text-shadow .18s ease; }
-  .brand-wordmark::after { display: block; width: 34%; height: 1px; margin-top: .38rem; background: #4c7659; content: ""; transform-origin: left; transition: width .24s ease, background .18s ease, box-shadow .18s ease; }
+  .brand-camel { display: inline-grid; width: 1.45rem; height: 1.45rem; flex: 0 0 1.45rem; place-items: center; overflow: visible; font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif; font-size: 1.45rem; line-height: 1; }
+  .brand-status-dot { width: .4rem; height: .4rem; flex: 0 0 .4rem; border-radius: 999px; background: #59675f; box-shadow: none; }
+  .brand-status-dot.online { background: #7cf59d; box-shadow: 0 0 0 3px rgb(124 245 157 / .09); }
+  .brand-status-dot.connecting { background: #d4bc69; box-shadow: 0 0 0 3px rgb(212 188 105 / .07); animation: connection-pulse 1.4s ease-in-out infinite; }
+  .brand-wordmark { position: relative; display: inline-flex; align-items: center; color: #effff2; font-size: 1.08rem; font-weight: 760; letter-spacing: .12em; line-height: 1; text-shadow: 0 0 18px transparent; transition: color .18s ease, text-shadow .18s ease; }
+  .brand-wordmark::after { position: absolute; top: calc(100% + .38rem); left: 0; width: 34%; height: 1px; background: #4c7659; content: ""; transform-origin: left; transition: width .24s ease, background .18s ease, box-shadow .18s ease; }
   .brand:hover .brand-wordmark, .brand:focus-visible .brand-wordmark { color: #fff; text-shadow: 0 0 18px rgb(124 245 157 / .18); }
   .brand:hover .brand-wordmark::after, .brand:focus-visible .brand-wordmark::after { width: 100%; background: #7cf59d; box-shadow: 0 0 10px rgb(124 245 157 / .35); }
   .brand:focus-visible { outline: none; }
@@ -553,27 +523,9 @@
   .brand-tooltip::after { position: absolute; top: -.5px; right: .55rem; width: 2.4rem; height: 1px; background: #7cf59d; box-shadow: 0 0 9px rgb(124 245 157 / .36); content: ""; }
   .brand-tooltip-key { color: #7cf59d; font-size: .52rem; font-weight: 720; letter-spacing: .12em; text-transform: uppercase; }
   .brand:hover .brand-tooltip, .brand:focus-visible .brand-tooltip { opacity: 1; transform: translateY(0) scale(1); }
-  .active-context { display: flex; min-width: 0; align-items: center; gap: .55rem; border-left: 1px solid #293832; padding-left: .75rem; }
-  .server-dot { width: .5rem; height: .5rem; flex: 0 0 auto; border-radius: 999px; background: #344139; box-shadow: none; }
-  .server-dot.online { background: #7cf59d; box-shadow: 0 0 0 3px rgb(124 245 157 / .09); }
-  .server-dot.connecting { background: #d4bc69; box-shadow: 0 0 0 3px rgb(212 188 105 / .07); animation: connection-pulse 1.4s ease-in-out infinite; }
-  .server-dot.offline { background: #59675f; }
-  .context-copy { display: block; min-width: 0; line-height: 1.05; }
-  .context-copy > span { display: block; overflow: hidden; color: #82958a; font-size: .55rem; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
-  .context-copy strong { display: block; max-width: 9rem; overflow: hidden; margin-top: .25rem; color: #effff2; font-size: .72rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-  .context-copy > strong:first-child { margin-top: 0; }
-  .remote-badge { display: none; border: 1px solid #5f4c2b; background: #21190d; padding: .2rem .35rem; color: #f4c46d; font-size: .52rem; letter-spacing: .1em; text-transform: uppercase; }
-  .room-utilities { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: .1rem; }
-  .room-connection { display: inline-flex; align-items: center; gap: .35rem; padding: 0 .35rem; color: #8ea397; font-size: .52rem; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
-  .connection-dot { width: .38rem; height: .38rem; flex: 0 0 auto; border-radius: 999px; background: #7cf59d; box-shadow: 0 0 7px rgb(124 245 157 / .28); }
-  .room-connection.offline { color: #d2a16c; }
-  .room-connection.offline .connection-dot { background: #f4a85f; box-shadow: 0 0 7px rgb(244 168 95 / .22); }
-  .room-connection.deleted { color: #d99583; }
-  .room-connection.deleted .connection-dot { border-radius: 1px; background: #dc6f66; box-shadow: none; }
-  .room-connection.cached { color: #7c8d82; }
-  .room-connection.cached .connection-dot { background: #718277; box-shadow: none; }
-  .room-connection.connecting { color: #c2bc72; }
-  .room-connection.connecting .connection-dot { background: #e4e78d; animation: connection-pulse 1.4s ease-in-out infinite; }
+  .header-rate { display: inline-flex; min-width: 0; align-items: baseline; gap: .32rem; border-left: 1px solid #293832; padding-left: .75rem; color: #718277; font-size: .5rem; font-variant-numeric: tabular-nums; letter-spacing: .08em; text-transform: uppercase; }
+  .header-rate strong { font-size: .72rem; font-weight: 600; letter-spacing: 0; transition: color .24s ease; }
+  .header-rate small { color: #617268; font-size: .48rem; letter-spacing: 0; text-transform: none; }
   .browse-button { display: flex; flex: 0 0 auto; align-items: center; gap: .4rem; border: 1px solid #34483a; background: #0b120d; padding: .45rem .55rem; color: #c9dfce; font-size: .65rem; }
   .browse-button:hover, .browse-button[aria-expanded="true"] { border-color: #7cf59d; color: #effff2; }
   .browse-button.has-notice { border-color: #477e57; }
@@ -621,26 +573,22 @@
   .previous-local-guidance { margin: .55rem .35rem .15rem; color: #9d9e7d; font-size: .57rem; line-height: 1.45; }
 
   @media (min-width: 520px) {
-    .browse-label, .remote-badge { display: block; }
-    .context-copy strong { max-width: 14rem; }
+    .browse-label { display: block; }
     .room-switcher { left: 1rem; }
   }
 
   @media (max-width: 700px) {
-    .connection-label { display: none; }
-    .room-connection { padding-inline: .2rem; }
+    .header-rate > span, .header-rate small { display: none; }
   }
 
   @media (max-width: 420px) {
     .workspace-nav { gap: .35rem; }
-    .active-context { gap: .4rem; padding-left: .45rem; }
-    .context-copy strong { max-width: 6.5rem; }
-    .room-utilities { gap: 0; }
+    .header-rate { padding-left: .45rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .server-notice::after { animation: none; }
-    .brand-wordmark, .brand-wordmark::after, .brand-tooltip { transition: none; }
+    .brand-wordmark, .brand-wordmark::after, .brand-tooltip, .header-rate strong { transition: none; }
   }
 
   @keyframes server-notice-pulse {

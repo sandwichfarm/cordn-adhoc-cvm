@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./established-installation-fixture";
 import { getPublicKey } from "nostr-tools";
 import { hexToBytes } from "nostr-tools/utils";
 

@@ -1,4 +1,5 @@
 import type {
+  ConsumedWelcomeRef,
   FetchManyGroupMessagesInput,
   FetchManyPendingJoinRequestsInput,
   FetchGroupMessagesInput,
@@ -19,14 +20,6 @@ import { ROOM_DELETED_BY_HOST_ERROR } from "./storage/storage";
 import { InMemoryCoordinatorStorage } from "./storage/inMemoryStorage";
 import { isLastResortKeyPackage } from "../lastResortKeyPackage";
 
-import {
-  contentTypes,
-  mlsMessageDecoder,
-  wireformats,
-  type MlsMessage,
-} from "ts-mls";
-
-const groupIdDecoder = new TextDecoder();
 
 export interface CoordinatorOptions {
   storage?: CoordinatorStorage;
@@ -42,57 +35,6 @@ export interface CoordinatorOptions {
 export interface ActiveSubscriptionMetrics {
   activeStreams: number;
   groupLegs: number;
-}
-
-function decodeOpaqueMessage(opaqueMessage: Uint8Array): MlsMessage {
-  const decoded = mlsMessageDecoder(opaqueMessage, 0);
-  if (!decoded) {
-    throw new Error("Unable to decode MLS message");
-  }
-
-  return decoded[0];
-}
-
-function getMessageMetadata(message: MlsMessage): {
-  groupId: string;
-  epoch: bigint;
-  handshakeMessage: boolean;
-} {
-  switch (message.wireformat) {
-    case wireformats.mls_private_message:
-      return {
-        groupId: groupIdDecoder.decode(message.privateMessage.groupId),
-        epoch: message.privateMessage.epoch,
-        handshakeMessage:
-          message.privateMessage.contentType !== contentTypes.application,
-      };
-    case wireformats.mls_public_message:
-      return {
-        groupId: groupIdDecoder.decode(message.publicMessage.content.groupId),
-        epoch: message.publicMessage.content.epoch,
-        handshakeMessage:
-          message.publicMessage.content.contentType !==
-          contentTypes.application,
-      };
-    default:
-      throw new Error(
-        "Group delivery only accepts MLS private or public messages",
-      );
-  }
-}
-
-function resolveLatestHandshakeEpoch(
-  currentRouting: GroupRoutingRecord | null,
-  epoch: bigint,
-  handshakeMessage: boolean,
-): bigint {
-  if (!handshakeMessage) {
-    return currentRouting?.latestHandshakeEpoch ?? epoch;
-  }
-
-  return currentRouting && currentRouting.latestHandshakeEpoch > epoch
-    ? currentRouting.latestHandshakeEpoch
-    : epoch;
 }
 
 class AsyncMessageQueue implements AsyncIterable<GroupMessageRecord> {
@@ -211,6 +153,14 @@ export class Coordinator {
     string,
     Set<GroupMessageSubscriber>
   >();
+  private readonly joinRequestSubscribers = new Map<
+    string,
+    Set<(record: JoinRequestRecord) => void | Promise<void>>
+  >();
+  private readonly joinRequestNotifications = new WeakMap<
+    JoinRequestRecord,
+    Promise<void>
+  >();
   private readonly cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: CoordinatorOptions = {}) {
@@ -281,13 +231,21 @@ export class Coordinator {
       welcome: input.welcome,
       createdAt: this.now(),
       readAt: null,
+      joinAfterCursor: input.joinAfterCursor,
     };
 
     return this.storage.storeWelcome(record);
   }
 
-  fetchPendingWelcomes(targetStablePubkey: string): WelcomeQueueRecord[] {
-    return this.storage.fetchPendingWelcomes(targetStablePubkey, this.now());
+  fetchPendingWelcomes(
+    targetStablePubkey: string,
+    consumed?: ConsumedWelcomeRef[],
+  ): WelcomeQueueRecord[] {
+    return this.storage.fetchPendingWelcomes(
+      targetStablePubkey,
+      this.now(),
+      consumed,
+    );
   }
 
   deleteExpiredWelcomes(
@@ -307,7 +265,45 @@ export class Coordinator {
       readAt: null,
     };
 
-    return this.storage.storeJoinRequest(record);
+    const stored = this.storage.storeJoinRequest(record);
+    const completions: Promise<void>[] = [];
+    for (const subscriber of this.joinRequestSubscribers.get(stored.groupId) ?? []) {
+      try {
+        completions.push(Promise.resolve(subscriber(stored)));
+      } catch (error) {
+        completions.push(Promise.reject(error));
+      }
+    }
+    this.joinRequestNotifications.set(stored, Promise.all(completions).then(() => undefined));
+    return stored;
+  }
+
+  /**
+   * Wait for same-process join-request listeners that were started by this
+   * exact request. The persisted request remains asynchronous for remote
+   * hosts; only the wire adapter uses this to provide an immediate Welcome
+   * when an auto-approving host is already active in this tab.
+   */
+  waitForJoinRequestNotifications(record: JoinRequestRecord): Promise<void> {
+    return this.joinRequestNotifications.get(record) ?? Promise.resolve();
+  }
+
+  subscribeJoinRequests(
+    groupId: string,
+    subscriber: (record: JoinRequestRecord) => void | Promise<void>,
+  ): () => void {
+    let subscribers = this.joinRequestSubscribers.get(groupId);
+    if (!subscribers) {
+      subscribers = new Set();
+      this.joinRequestSubscribers.set(groupId, subscribers);
+    }
+    subscribers.add(subscriber);
+    return () => {
+      subscribers?.delete(subscriber);
+      if (subscribers?.size === 0) {
+        this.joinRequestSubscribers.delete(groupId);
+      }
+    };
   }
 
   fetchPendingJoinRequests(groupId: string): JoinRequestRecord[] {
@@ -333,41 +329,28 @@ export class Coordinator {
   deleteGroup(groupId: string): void {
     this.storage.deleteGroup(groupId);
     this.closeSubscribersForGroup(groupId);
+    this.joinRequestSubscribers.delete(groupId);
   }
 
   close(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
     }
+    this.joinRequestSubscribers.clear();
     this.storage.close?.();
   }
 
   postGroupMessage(input: PostGroupMessageInput): GroupMessageRecord {
-    const decodedMessage = decodeOpaqueMessage(input.opaqueMessage);
-    const { groupId, epoch, handshakeMessage } =
-      getMessageMetadata(decodedMessage);
-    const currentRouting = this.storage.getGroupRouting(groupId);
-
-    if (
-      handshakeMessage &&
-      currentRouting &&
-      epoch < currentRouting.latestHandshakeEpoch
-    ) {
-      throw new Error(
-        `Rejected stale handshake message for group ${groupId}: ${epoch} < ${currentRouting.latestHandshakeEpoch}`,
-      );
-    }
-
-    const latestHandshakeEpoch = resolveLatestHandshakeEpoch(
-      currentRouting,
-      epoch,
-      handshakeMessage,
-    );
+    // Cordn spec/03 makes msg_64 an encrypted, opaque delivery payload. The
+    // coordinator routes exclusively by the outer gid and must never attempt
+    // to parse MLS framing, epochs, or membership data from these bytes.
+    const currentRouting = this.storage.getGroupRouting(input.groupId);
+    const opaqueEpoch = currentRouting?.latestHandshakeEpoch ?? 0n;
 
     const record = this.storage.appendGroupMessage({
-      groupId,
-      latestHandshakeEpoch,
-      epoch,
+      groupId: input.groupId,
+      latestHandshakeEpoch: opaqueEpoch,
+      epoch: opaqueEpoch,
       ephemeralSenderPubkey: input.ephemeralSenderPubkey,
       opaqueMessage: input.opaqueMessage,
       createdAt: this.now(),

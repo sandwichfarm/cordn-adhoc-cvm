@@ -1,9 +1,15 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { configStore } from "../../src/config/config.svelte";
 import { isConfigLocked, transitionCoordinator } from "../../src/coordinator/state-machine";
 import { CoordinatorStore, ROOM_RECOVERY_POLICY, type CoordinatorStoreRuntime } from "../../src/coordinator/coordinator.svelte";
+import {
+  CHAT_COORDINATOR_CONNECT_TIMEOUT_MS,
+  CHAT_COORDINATOR_REQUEST_TIMEOUT_MS,
+} from "../../src/chat/coordinator-client";
 import type { RunningTransport } from "../../src/lib/transport";
 import type { InstanceLease } from "../../src/coordinator/single-instance-guard";
+import type { CoordinatorProfilePublisherInput } from "../../src/coordinator/coordinator-profile";
 import type { HostedRoomRecoveryTarget } from "../../src/coordinator/types";
 import {
   createHostedRoomRecoveryProgress,
@@ -48,6 +54,12 @@ describe("isConfigLocked", () => {
   ] satisfies Array<[CoordinatorStatus, boolean]>)("returns %s for %s", (state, expected) => {
     expect(isConfigLocked(state)).toBe(expected);
   });
+});
+
+test("hosted room recovery outlives the client connect and first request budgets", () => {
+  expect(ROOM_RECOVERY_POLICY.attemptTimeoutMs.at(-1)).toBeGreaterThan(
+    CHAT_COORDINATOR_CONNECT_TIMEOUT_MS + CHAT_COORDINATOR_REQUEST_TIMEOUT_MS,
+  );
 });
 
 describe("hosted room recovery progress", () => {
@@ -113,7 +125,9 @@ describe("coordinator recovery policy", () => {
     return { promise, resolve, reject };
   }
 
-  function lifecycleRuntime() {
+  function lifecycleRuntime(completeSetup = true) {
+    configStore.resetToDefaults();
+    if (completeSetup) configStore.completeSetup("Test coordinator");
     const leases: Array<InstanceLease & { release: ReturnType<typeof vi.fn> }> = [];
     const transports: Array<RunningTransport & { close: ReturnType<typeof vi.fn> }> = [];
     const acquireInstanceLease = vi.fn<CoordinatorStoreRuntime["acquireInstanceLease"]>(async () => {
@@ -133,6 +147,7 @@ describe("coordinator recovery policy", () => {
     const runAttempt = vi.fn<(operation: (signal: AbortSignal) => Promise<void>, timeout: number, signal: AbortSignal) => Promise<void>>(
       async (operation, _timeout, signal) => operation(signal),
     );
+    const profilePublisher = vi.fn<(input: CoordinatorProfilePublisherInput) => Promise<unknown>>(async () => undefined);
     const runtime: CoordinatorStoreRuntime = {
       acquireInstanceLease,
       createTransport,
@@ -141,6 +156,7 @@ describe("coordinator recovery policy", () => {
       stopResourceMonitor,
       wait,
       runAttempt,
+      profilePublisher,
     };
     return {
       runtime,
@@ -153,8 +169,116 @@ describe("coordinator recovery policy", () => {
       stopResourceMonitor,
       wait,
       runAttempt,
+      profilePublisher,
     };
   }
+
+  test("persists setup before publishing the coordinator profile without touching runtime state", async () => {
+    const harness = lifecycleRuntime(false);
+    const store = new CoordinatorStore(harness.runtime);
+    const coordinatorPubkey = store.identity.publicKeyHex;
+
+    const result = await store.completeSetupAndPublish("  Madeira host  ");
+
+    expect(result).toEqual({ localSaved: true, published: true });
+    expect(configStore.isSetupComplete).toBe(true);
+    expect(configStore.coordinatorName).toBe("Madeira host");
+    expect(store.profilePublicationState).toBe("published");
+    expect(harness.profilePublisher).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Madeira host",
+      coordinatorPubkey,
+      relayUrls: configStore.inviteRelayUrls,
+    }));
+    expect(store.identity.publicKeyHex).toBe(coordinatorPubkey);
+    expect(store.status).toBe("idle");
+    expect(harness.acquireInstanceLease).not.toHaveBeenCalled();
+    expect(harness.createTransport).not.toHaveBeenCalled();
+    expect(harness.startResourceMonitor).not.toHaveBeenCalled();
+  });
+
+  test("reports invalid local saves without attempting publication", async () => {
+    const harness = lifecycleRuntime(false);
+    const store = new CoordinatorStore(harness.runtime);
+
+    await expect(store.completeSetupAndPublish("  ")).resolves.toEqual({ localSaved: false, published: false });
+
+    expect(store.profilePublicationState).toBe("idle");
+    expect(harness.profilePublisher).not.toHaveBeenCalled();
+  });
+
+  test("retains persisted names and identity after publication failure, then retries with current relays", async () => {
+    const harness = lifecycleRuntime();
+    const store = new CoordinatorStore(harness.runtime);
+    const coordinatorPubkey = store.identity.publicKeyHex;
+    const unsafeFailure = "synthetic-secret bunker://relay.example raw-event-signature";
+    await store.start();
+    harness.profilePublisher.mockRejectedValueOnce(new Error(unsafeFailure));
+
+    const failed = await store.saveCoordinatorNameAndPublish("Retry host");
+
+    expect(failed).toEqual({ localSaved: true, published: false });
+    expect(configStore.coordinatorName).toBe("Retry host");
+    expect(store.profilePublicationState).toBe("failed");
+    expect(store.status).toBe("running");
+    expect(store.identity.publicKeyHex).toBe(coordinatorPubkey);
+    expect(harness.acquireInstanceLease).toHaveBeenCalledOnce();
+    expect(harness.createTransport).toHaveBeenCalledOnce();
+    expect(harness.startResourceMonitor).toHaveBeenCalledOnce();
+    expect(JSON.stringify(store.debugLog)).not.toContain(unsafeFailure);
+
+    expect(configStore.addRelay("wss://retry.example")).toBe(true);
+    const retried = await store.retryCoordinatorProfilePublication();
+
+    expect(retried).toEqual({ localSaved: true, published: true });
+    expect(store.profilePublicationState).toBe("published");
+    expect(harness.profilePublisher).toHaveBeenLastCalledWith(expect.objectContaining({
+      name: "Retry host",
+      coordinatorPubkey,
+      relayUrls: configStore.inviteRelayUrls,
+    }));
+    expect(store.identity.publicKeyHex).toBe(coordinatorPubkey);
+    expect(store.status).toBe("running");
+    await store.stop();
+  });
+
+  test("serializes duplicate profile publication activation", async () => {
+    const harness = lifecycleRuntime(false);
+    const store = new CoordinatorStore(harness.runtime);
+    let release!: () => void;
+    harness.profilePublisher.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      release = resolve;
+    }));
+
+    const initial = store.completeSetupAndPublish("Serialized host");
+    const duplicate = store.retryCoordinatorProfilePublication();
+    await vi.waitFor(() => expect(store.profilePublicationState).toBe("publishing"));
+    release();
+    await expect(Promise.all([initial, duplicate])).resolves.toEqual([
+      { localSaved: true, published: true },
+      { localSaved: true, published: true },
+    ]);
+    expect(harness.profilePublisher).toHaveBeenCalledOnce();
+  });
+
+  test("refuses incomplete setup before every startup side effect", async () => {
+    const harness = lifecycleRuntime(false);
+    const store = new CoordinatorStore(harness.runtime);
+
+    await expect(store.start()).rejects.toThrow("Complete coordinator setup before starting.");
+
+    expect(store.status).toBe("idle");
+    expect(store.error).toBeNull();
+    expect(store.debugLog).toEqual([]);
+    expect(store.relayStatuses).toEqual({});
+    expect(harness.acquireInstanceLease).not.toHaveBeenCalled();
+    expect(harness.createTransport).not.toHaveBeenCalled();
+    expect(harness.startResourceMonitor).not.toHaveBeenCalled();
+
+    expect(configStore.completeSetup("Ready coordinator")).toBe(true);
+    await store.start();
+    expect(harness.acquireInstanceLease).toHaveBeenCalledOnce();
+    await store.stop();
+  });
 
   test("public start shares one transaction and restores deduplicated rooms in stable order", async () => {
     const harness = lifecycleRuntime();
@@ -255,10 +379,10 @@ describe("coordinator recovery policy", () => {
       diagnostic: "Check your connection, then retry recovery.",
     });
     expect(harness.runAttempt.mock.calls.map((call) => call[1])).toEqual([
-      ROOM_RECOVERY_POLICY.attemptTimeoutMs,
-      ROOM_RECOVERY_POLICY.attemptTimeoutMs,
-      ROOM_RECOVERY_POLICY.attemptTimeoutMs,
-      ROOM_RECOVERY_POLICY.attemptTimeoutMs,
+      ROOM_RECOVERY_POLICY.attemptTimeoutMs[0],
+      ROOM_RECOVERY_POLICY.attemptTimeoutMs[0],
+      ROOM_RECOVERY_POLICY.attemptTimeoutMs[1],
+      ROOM_RECOVERY_POLICY.attemptTimeoutMs[2],
     ]);
     expect(harness.wait.mock.calls.map((call) => call[0])).toEqual([250, 750]);
 

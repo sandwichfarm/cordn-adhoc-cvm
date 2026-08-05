@@ -4,11 +4,12 @@
   interface Props {
     coordinator: CoordinatorStore;
     compact?: boolean;
+    minimal?: boolean;
     onStart?: () => void | Promise<void>;
     startLabel?: string;
   }
 
-  let { coordinator, compact = false, onStart, startLabel = "Start" }: Props = $props();
+  let { coordinator, compact = false, minimal = false, onStart, startLabel = "Start" }: Props = $props();
   let confirmDialog: HTMLDialogElement | undefined = $state();
 
   const statusClass = $derived(
@@ -38,7 +39,7 @@
 </script>
 
 {#if compact}
-  <section class="compact-controls" aria-label="Coordinator controls">
+  <section class:minimal class="compact-controls" aria-label="Coordinator controls">
     <span
       class:running={coordinator.status === "running"}
       class:busy={coordinator.status === "starting" || coordinator.status === "stopping"}
@@ -49,12 +50,12 @@
       <span>Coordinator</span><span data-testid="status-badge">{coordinator.status}</span>
     </span>
     {#if canStart}
-      <button class="lifecycle-action start" type="button" onclick={start}>
-        <span aria-hidden="true">▶</span><span>{startLabel}</span>
+      <button class="lifecycle-action start" type="button" aria-label={startLabel} title={startLabel} onclick={start}>
+        <span aria-hidden="true">▶</span><span class="lifecycle-label">{startLabel}</span>
       </button>
     {:else if canStop}
-      <button class="lifecycle-action stop" type="button" onclick={() => void coordinator.stop()}>
-        <span class="running-dot" aria-hidden="true"></span><span>Stop</span>
+      <button class="lifecycle-action stop" type="button" aria-label="Stop" title="Stop coordinator" onclick={() => void coordinator.stop()}>
+        {#if minimal}<span aria-hidden="true">■</span>{:else}<span class="running-dot" aria-hidden="true"></span>{/if}<span class="lifecycle-label">Stop</span>
       </button>
     {:else}
       <button
@@ -158,11 +159,16 @@
 
 <style>
   .compact-controls { display: flex; align-items: center; gap: .12rem; }
-  .lifecycle-status { display: flex; height: 2.65rem; align-items: center; gap: .35rem; border-right: 1px solid #202d25; padding: 0 .65rem; color: #91a59a; font-size: .56rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+  .compact-controls.minimal { gap: 0; }
+  .compact-controls.minimal .lifecycle-status { position: absolute; width: 1px; height: 1px; overflow: hidden; margin: -1px; padding: 0; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .compact-controls.minimal .lifecycle-action { width: 2.65rem; justify-content: center; padding: 0; }
+  .compact-controls.minimal .lifecycle-action > span:first-child { font-size: .62rem; }
+  .compact-controls.minimal .lifecycle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  .lifecycle-status { display: flex; height: 2.65rem; align-items: center; gap: .35rem; padding: 0 .65rem; color: #91a59a; font-size: .56rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
   .lifecycle-status > span:last-child { color: #718277; }
   .lifecycle-status.running > span:last-child { color: #7cf59d; }
   .lifecycle-status.busy > span:last-child { color: #e4e78d; }
-  .lifecycle-action { display: flex; height: 2.65rem; align-items: center; gap: .45rem; border: 0; background: #0d1510; padding: 0 .8rem; color: #bfd2c4; font-size: .65rem; font-weight: 650; }
+  .lifecycle-action { display: flex; height: 2.65rem; align-items: center; gap: .45rem; border: 0; background: transparent; padding: 0 .8rem; color: #bfd2c4; font-size: .65rem; font-weight: 650; }
   .lifecycle-action:hover:not(:disabled) { background: #17241b; color: #effff2; }
   .lifecycle-action.start { color: #9bf6b3; }
   .lifecycle-action.stop { color: #e3e69a; }
@@ -172,7 +178,7 @@
   .lifecycle-action:disabled { cursor: wait; opacity: .8; }
   .running-dot { width: .45rem; height: .45rem; border-radius: 999px; background: #7cf59d; box-shadow: 0 0 0 3px rgb(124 245 157 / .1), 0 0 10px rgb(124 245 157 / .28); }
   .working-mark { width: .45rem; height: .45rem; border: 1px solid currentColor; border-top-color: transparent; border-radius: 999px; animation: spin .7s linear infinite; }
-  .destroy-action { display: grid; width: 2.65rem; height: 2.65rem; place-items: center; border: 0; background: #0d1510; color: #7e6868; }
+  .destroy-action { display: grid; width: 2.65rem; height: 2.65rem; place-items: center; border: 0; background: transparent; color: #7e6868; }
   .destroy-action svg { width: .85rem; height: .85rem; fill: none; stroke: currentColor; stroke-linecap: square; stroke-linejoin: miter; stroke-width: 1.2; }
   .destroy-action:hover { background: #1b0e0e; color: #ffaaa3; }
 

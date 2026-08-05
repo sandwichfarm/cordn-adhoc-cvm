@@ -474,6 +474,16 @@ function stoppedTokenStorageKey(publicKeyHex: string): string {
   return `${STOPPED_TOKEN_KEY_PREFIX}${publicKeyHex}`;
 }
 
+/** Forget browser-only instance bookkeeping after its coordinator identity is destroyed. */
+export function clearCoordinatorInstanceRecords(publicKeyHex: string): void {
+  try {
+    localStorage.removeItem(leaseStorageKey(publicKeyHex));
+    localStorage.removeItem(stoppedTokenStorageKey(publicKeyHex));
+  } catch {
+    // Destruction still succeeds when browser storage is unavailable.
+  }
+}
+
 function readLease(storage: Storage, key: string): StoredLease | null {
   const raw = storage.getItem(key);
   if (!raw) {

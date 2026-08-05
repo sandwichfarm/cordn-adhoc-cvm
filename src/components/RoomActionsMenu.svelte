@@ -3,6 +3,8 @@
 
   interface Props {
     roomTitle: string;
+    coordinatorPubkey: string;
+    inviteUrl: string;
     soundsEnabled: boolean;
     removalMode: "delete" | "leave";
     onToggleSounds: () => void | Promise<void>;
@@ -10,9 +12,11 @@
     sidebar?: boolean;
   }
 
-  let { roomTitle, soundsEnabled, removalMode, onToggleSounds, onRemove, sidebar = false }: Props = $props();
+  let { roomTitle, coordinatorPubkey, inviteUrl, soundsEnabled, removalMode, onToggleSounds, onRemove, sidebar = false }: Props = $props();
   let open = $state(false);
   let trigger: HTMLButtonElement | undefined = $state();
+  let copied = $state<"coordinator" | "invite" | null>(null);
+  let copyTimer: number | null = null;
 
   function close(returnFocus = false): void {
     open = false;
@@ -28,6 +32,16 @@
   function toggle(event: MouseEvent): void {
     if (sidebar) event.stopPropagation();
     open = !open;
+  }
+
+  async function copyValue(value: string, target: "coordinator" | "invite"): Promise<void> {
+    await navigator.clipboard.writeText(value);
+    copied = target;
+    if (copyTimer !== null) window.clearTimeout(copyTimer);
+    copyTimer = window.setTimeout(() => {
+      copied = null;
+      copyTimer = null;
+    }, 1_800);
   }
 
 </script>
@@ -52,6 +66,28 @@
     <button class="room-actions-scrim" type="button" aria-label="Close room actions" onclick={() => close(true)}></button>
     <div class="room-actions-menu" role="menu" aria-label={`Room actions for ${roomTitle}`}>
       <header><span>Room actions</span><strong># {roomTitle}</strong></header>
+      <div class="room-connection-details">
+        <button
+          class="room-copy-action"
+          type="button"
+          role="menuitem"
+          aria-label={`Copy coordinator pubkey for ${roomTitle}`}
+          onclick={() => void copyValue(coordinatorPubkey, "coordinator")}
+        >
+          <span><small>Coordinator pubkey</small><code>{coordinatorPubkey}</code></span>
+          <strong>{copied === "coordinator" ? "Copied" : "Copy"}</strong>
+        </button>
+        <button
+          class="room-copy-action"
+          type="button"
+          role="menuitem"
+          aria-label={`Copy invite link for ${roomTitle}`}
+          onclick={() => void copyValue(inviteUrl, "invite")}
+        >
+          <span><small>Invite link</small><code>{inviteUrl}</code></span>
+          <strong>{copied === "invite" ? "Copied" : "Copy"}</strong>
+        </button>
+      </div>
       {#if !sidebar}<button
         class="room-menu-action"
         type="button"
@@ -84,10 +120,17 @@
   .sidebar .more-room-actions { width: 2.75rem; height: 2.75rem; }
   .more-room-actions:hover, .more-room-actions:focus-visible, .more-room-actions[aria-expanded="true"] { background: #111a14; color: #effff2; outline: 2px solid #7cf59d; outline-offset: -2px; }
   .room-actions-scrim { position: fixed; z-index: 94; inset: 0; border: 0; background: rgb(0 0 0 / .32); cursor: default; backdrop-filter: blur(1px); }
-  .room-actions-menu { position: absolute; z-index: 95; top: calc(100% + .45rem); right: 0; display: grid; width: min(19rem, calc(100vw - 1rem)); border: 1px solid #496451; background: rgb(7 12 9 / .99); box-shadow: 0 20px 54px rgb(0 0 0 / .62); padding: .35rem; }
+  .room-actions-menu { position: absolute; z-index: 95; top: calc(100% + .45rem); right: 0; display: grid; width: min(23rem, calc(100vw - 1rem)); border: 1px solid #496451; background: rgb(7 12 9 / .99); box-shadow: 0 20px 54px rgb(0 0 0 / .62); padding: .35rem; }
   .room-actions-menu header { display: grid; gap: .22rem; border-bottom: 1px solid #293832; padding: .55rem .6rem .65rem; }
   .room-actions-menu header span { color: #718277; font-size: .5rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
   .room-actions-menu header strong { overflow: hidden; color: #dfffe7; font-size: .68rem; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+  .room-connection-details { display: grid; gap: 1px; border-bottom: 1px solid #293832; background: #1b2820; padding-bottom: 1px; }
+  .room-copy-action { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .75rem; background: #080e0a; padding: .6rem; text-align: left; }
+  .room-copy-action:hover, .room-copy-action:focus-visible { background: #112018; outline: none; }
+  .room-copy-action > span { display: grid; min-width: 0; gap: .2rem; }
+  .room-copy-action small { color: #718277; font-size: .48rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .room-copy-action code { display: -webkit-box; overflow: hidden; color: #a8c5af; font-size: .52rem; line-height: 1.35; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .room-copy-action > strong { color: #7cf59d; font-size: .5rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .room-menu-action { display: flex; min-height: 2.55rem; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem; color: #b9cbbf; text-align: left; font-size: .65rem; }
   .room-menu-action:hover, .room-menu-action:focus-visible { background: #142018; color: #effff2; outline: none; }
   .room-menu-action > span:last-child { color: #718277; font-size: .52rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }

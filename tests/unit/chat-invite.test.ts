@@ -1,7 +1,102 @@
 import { describe, expect, test } from "vitest";
-import { createInviteUrl, parseInviteUrl } from "../../src/chat/invite";
+import { nip19 } from "nostr-tools";
+import {
+  CORDN_DEFAULT_COORDINATOR_PUBKEY,
+  createInviteUrl,
+  parseInviteUrl,
+} from "../../src/chat/invite";
 
 describe("Feature: self-contained chat invitations", () => {
+  test("Scenario: the one current-origin invite link uses the canonical Cordn shape", () => {
+    const url = new URL(createInviteUrl("https://cahmls.example", {
+      groupId: "group-α",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: ["wss://one.example", "wss://two.example"],
+      title: "Friday plans",
+      inviteToken: "cahmls-only-admission-token",
+    }));
+
+    expect(url.origin).toBe("https://cahmls.example");
+    expect(url.pathname).toBe("/chat/group-%CE%B1");
+    expect(url.searchParams.get("c")).toMatch(/^nprofile1/);
+    expect(JSON.parse(Buffer.from(url.searchParams.get("m")!, "base64url").toString())).toMatchObject({
+      name: "Friday plans",
+    });
+    expect(url.searchParams.get("i")).toBe("cahmls-only-admission-token");
+    expect(parseInviteUrl(url.toString())).toMatchObject({
+      groupId: "group-α",
+      coordinatorPubkey: "a".repeat(64),
+      title: "Friday plans",
+    });
+  });
+
+  test("Scenario: a public Cordn invite never advertises the browser-only local relay", () => {
+    const url = new URL(createInviteUrl("http://localhost:5173", {
+      groupId: "portable-room",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: [
+        "ws://localhost:4870",
+        "ws://relay.insecure.example",
+        "wss://relay.contextvm.org",
+      ],
+      title: "Portable room",
+    }));
+    const coordinator = nip19.decode(url.searchParams.get("c")!);
+
+    expect(coordinator.type).toBe("nprofile");
+    if (coordinator.type !== "nprofile") throw new Error("Expected nprofile coordinator");
+    expect(coordinator.data.relays).toEqual(["wss://relay.contextvm.org"]);
+    expect(parseInviteUrl(url.toString())?.relayUrls).toEqual(["wss://relay.contextvm.org"]);
+  });
+
+  test("Scenario: a canonical Cordn link from another web host retains its room name and target", () => {
+    const coordinatorPubkey = "b".repeat(64);
+    const metadata = Buffer.from(JSON.stringify({ name: "Across the web", icon: "https://example.com/icon.png" }))
+      .toString("base64url");
+    const coordinator = nip19.nprofileEncode({
+      pubkey: coordinatorPubkey,
+      relays: ["wss://relay.contextvm.org"],
+    });
+
+    expect(parseInviteUrl(
+      `https://some-cordn-host.example/chat/foreign-room/?c=${coordinator}&m=${metadata}`,
+    )).toEqual({
+      groupId: "foreign-room",
+      coordinatorPubkey,
+      relayUrls: ["wss://relay.contextvm.org"],
+      title: "Across the web",
+      coordinatorOrigin: "https://some-cordn-host.example",
+    });
+  });
+
+  test.each([
+    ["raw hex", "c".repeat(64)],
+    ["npub", nip19.npubEncode("c".repeat(64))],
+  ])("Scenario: a canonical Cordn link accepts a %s coordinator", (_label, coordinator) => {
+    expect(parseInviteUrl(`https://cordn.example/chat/portable?c=${coordinator}`)).toMatchObject({
+      groupId: "portable",
+      coordinatorPubkey: "c".repeat(64),
+      relayUrls: [],
+    });
+  });
+
+  test("Scenario: a short canonical Cordn link targets the public default coordinator", () => {
+    expect(parseInviteUrl("https://cordn.net/chat/public-room")).toMatchObject({
+      groupId: "public-room",
+      coordinatorPubkey: CORDN_DEFAULT_COORDINATOR_PUBKEY,
+      relayUrls: [],
+    });
+  });
+
+  test("Scenario: damaged cosmetic metadata does not invalidate a Cordn invite", () => {
+    const coordinator = nip19.nprofileEncode({ pubkey: "d".repeat(64), relays: [] });
+    expect(parseInviteUrl(`https://cordn.example/chat/still-valid?c=${coordinator}&m=%%%`)).toMatchObject({
+      groupId: "still-valid",
+      coordinatorPubkey: "d".repeat(64),
+      title: undefined,
+    });
+  });
+
   test("Scenario: a guest follows a copied link and learns the exact coordinator and relay", () => {
     const url = createInviteUrl("http://localhost:4173/", {
       groupId: "group-α",

@@ -25,6 +25,8 @@ const coordinatorMocks = vi.hoisted(() => ({
   fetchMessages: vi.fn(),
   fetchWelcomes: vi.fn(),
   postGroupMessage: vi.fn(),
+  publishKeyPackage: vi.fn(),
+  storeJoinRequest: vi.fn(),
   storeWelcome: vi.fn(),
 }));
 
@@ -38,6 +40,8 @@ vi.mock("../../src/chat/coordinator-client", () => ({
     fetchMessages = coordinatorMocks.fetchMessages;
     fetchWelcomes = coordinatorMocks.fetchWelcomes;
     postGroupMessage = coordinatorMocks.postGroupMessage;
+    publishKeyPackage = coordinatorMocks.publishKeyPackage;
+    storeJoinRequest = coordinatorMocks.storeJoinRequest;
     storeWelcome = coordinatorMocks.storeWelcome;
   },
 }));
@@ -111,7 +115,28 @@ describe("ChatRoomSession concurrency", () => {
     coordinatorMocks.fetchJoinRequests.mockResolvedValue([]);
     coordinatorMocks.fetchWelcomes.mockResolvedValue([]);
     coordinatorMocks.postGroupMessage.mockResolvedValue({ cursor: 1, gid: "room-id", at: 1 });
+    coordinatorMocks.publishKeyPackage.mockResolvedValue(undefined);
+    coordinatorMocks.storeJoinRequest.mockResolvedValue(undefined);
     coordinatorMocks.close.mockResolvedValue(undefined);
+  });
+
+  it("rejects reactions targeting the current participant's own message", async () => {
+    const room = storedRoom();
+    room.messages = [{
+      type: "message",
+      id: "own-message",
+      sender: room.stablePubkey,
+      name: room.name,
+      content: "Mine",
+      createdAt: 1,
+    }];
+    const session = connectedSession(room);
+
+    await expect(session.setReaction("own-message", "👍", true))
+      .rejects.toThrow("You cannot react to your own message");
+    expect(protocolMocks.signChatEnvelope).not.toHaveBeenCalled();
+    expect(protocolMocks.encryptMessage).not.toHaveBeenCalled();
+    expect(coordinatorMocks.postGroupMessage).not.toHaveBeenCalled();
   });
 
   it("serializes concurrent sends so each encryption advances from the previous MLS state", async () => {
@@ -240,6 +265,26 @@ describe("ChatRoomSession concurrency", () => {
     window.removeEventListener("cordn:server-offline", offline);
   });
 
+  it("keeps polling after a recovered hosted room enters steady state", async () => {
+    vi.useFakeTimers();
+    try {
+      const room = storedRoom();
+      room.isHost = true;
+      const session = connectedSession(room);
+
+      await session.recover(new AbortController().signal);
+      expect(coordinatorMocks.fetchJoinRequests).toHaveBeenCalledTimes(1);
+
+      session.activateSteadyState();
+      await vi.advanceTimersByTimeAsync(4_000);
+
+      expect(coordinatorMocks.fetchJoinRequests).toHaveBeenCalledTimes(2);
+      session.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not persist or publish a late aborted recovery", async () => {
     const activePull = deferred<Array<{ cursor: number; msg_64: string }>>();
     coordinatorMocks.fetchMessages.mockImplementationOnce(() => activePull.promise);
@@ -309,6 +354,7 @@ describe("ChatRoomSession concurrency", () => {
   ])("reconciles $scenario with the MLS creator after admission", async ({ inviteHost, expected }) => {
     const room = storedRoom();
     room.joinRequestSent = true;
+    room.keyPackage.lastResort = true;
     room.host = inviteHost;
     coordinatorMocks.fetchWelcomes.mockResolvedValue([{
       kp_ref: room.keyPackage.reference,

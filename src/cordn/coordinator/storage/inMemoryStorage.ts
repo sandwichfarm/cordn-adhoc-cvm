@@ -1,4 +1,6 @@
 import type {
+  ConsumedJoinRequestRef,
+  ConsumedWelcomeRef,
   FetchManyGroupMessagesInput,
   FetchManyPendingJoinRequestsInput,
   FetchGroupMessagesInput,
@@ -47,6 +49,8 @@ export interface CoordinatorStorageSnapshot {
     welcome64: string;
     createdAt: number;
     readAt: number | null;
+    joinAfterCursor?: number;
+    /** Legacy field written by the browser coordinator before canonical alignment. */
     afterCursor?: number;
   }>;
   joinRequests: JoinRequestRecord[];
@@ -119,7 +123,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
           welcome64: encodeBase64(encodeWelcome(record.welcome)),
           createdAt: record.createdAt,
           readAt: record.readAt,
-          afterCursor: record.afterCursor,
+          joinAfterCursor: record.joinAfterCursor,
         })),
       ),
       joinRequests: [...this.joinRequestsByGroup.values()].flatMap((records) =>
@@ -201,16 +205,9 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
 
   consumeKeyPackage(identifier: string): PublishedKeyPackageRecord | null {
     const directRecord = this.consumeKeyPackageByReference(identifier);
-    if (directRecord) {
-      this.removeJoinRequestsForKeyPackage(directRecord.keyPackageRef);
-      return directRecord;
-    }
+    if (directRecord) return directRecord;
 
-    const identityRecord = this.consumeKeyPackageByIdentity(identifier);
-    if (identityRecord) {
-      this.removeJoinRequestsForKeyPackage(identityRecord.keyPackageRef);
-    }
-    return identityRecord;
+    return this.consumeKeyPackageByIdentity(identifier);
   }
 
   storeWelcome(record: WelcomeQueueRecord): WelcomeQueueRecord {
@@ -227,9 +224,19 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   fetchPendingWelcomes(
     targetStablePubkey: string,
     now: number,
+    consumed?: ConsumedWelcomeRef[],
   ): WelcomeQueueRecord[] {
-    const records = this.welcomesByIdentity.get(targetStablePubkey) ?? [];
-    let changed = false;
+    const existing = this.welcomesByIdentity.get(targetStablePubkey) ?? [];
+    const records = consumed?.length
+      ? existing.filter((record) => !consumed.some((entry) =>
+          entry.keyPackageReference === record.keyPackageReference &&
+          entry.createdAt === record.createdAt))
+      : existing;
+    let changed = records.length !== existing.length;
+    if (changed) {
+      if (records.length === 0) this.welcomesByIdentity.delete(targetStablePubkey);
+      else this.welcomesByIdentity.set(targetStablePubkey, records);
+    }
     for (const record of records) {
       if (record.readAt === null) {
         record.readAt = now;
@@ -272,20 +279,26 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
   storeJoinRequest(record: JoinRequestRecord): JoinRequestRecord {
     this.assertGroupAvailable(record.groupId);
     const existing = this.joinRequestsByGroup.get(record.groupId) ?? [];
-    // Cap unread pending join requests per group to prevent unbounded accumulation.
-    const unreadCount = existing.filter((req) => req.readAt === null).length;
-    if (unreadCount >= MAX_PENDING_JOIN_REQUESTS_PER_GROUP) {
-      throw new Error("Too many pending join requests for this group");
-    }
-
     const duplicate = existing.find(
-      (req) =>
-        req.requesterStablePubkey === record.requesterStablePubkey &&
-        req.inviteToken === record.inviteToken &&
-        req.readAt === null,
+      (req) => req.requesterStablePubkey === record.requesterStablePubkey,
     );
     if (duplicate) {
-      return duplicate;
+      // Match Cordn's consume-ack model: a retry from the same identity is
+      // the same logical request, but it must carry the requester's newest
+      // KeyPackage and timestamp. Refreshing in place prevents a host's old
+      // consumed reference from discarding the retried request.
+      duplicate.keyPackageRef = record.keyPackageRef;
+      duplicate.inviteToken = record.inviteToken;
+      duplicate.createdAt = record.createdAt;
+      duplicate.readAt = null;
+      this.persist();
+      return { ...duplicate };
+    }
+
+    // Enforce the cap only for a genuinely new requester. Re-requests must
+    // remain possible even when the queue is full.
+    if (existing.length >= MAX_PENDING_JOIN_REQUESTS_PER_GROUP) {
+      throw new Error("Too many pending join requests for this group");
     }
 
     const stored: JoinRequestRecord = { ...record };
@@ -296,9 +309,22 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     return stored;
   }
 
-  fetchPendingJoinRequests(groupId: string, now: number): JoinRequestRecord[] {
-    const records = this.joinRequestsByGroup.get(groupId) ?? [];
-    let changed = false;
+  fetchPendingJoinRequests(
+    groupId: string,
+    now: number,
+    consumed?: ConsumedJoinRequestRef[],
+  ): JoinRequestRecord[] {
+    const existing = this.joinRequestsByGroup.get(groupId) ?? [];
+    const records = consumed?.length
+      ? existing.filter((record) => !consumed.some((entry) =>
+          entry.requesterStablePubkey === record.requesterStablePubkey &&
+          entry.createdAt === record.createdAt))
+      : existing;
+    let changed = records.length !== existing.length;
+    if (changed) {
+      if (records.length === 0) this.joinRequestsByGroup.delete(groupId);
+      else this.joinRequestsByGroup.set(groupId, records);
+    }
     for (const record of records) {
       if (record.readAt === null) {
         record.readAt = now;
@@ -316,7 +342,11 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
     now: number,
   ): JoinRequestRecord[] {
     return input.groups.flatMap((group) =>
-      this.fetchPendingJoinRequests(group.groupId, now),
+      this.fetchPendingJoinRequests(
+        group.groupId,
+        now,
+        input.consumed?.filter((entry) => entry.groupId === group.groupId),
+      ),
     );
   }
 
@@ -426,27 +456,14 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
       return null;
     }
 
+    // Match Cordn's canonical selection order. A room-scoped ordinary package
+    // is consumed before falling back to the newest reusable last-resort
+    // package. Reversing this order encrypts the Welcome for a different local
+    // private package whenever both kinds have been published by one client.
     const regular = records.find((record) => !record.isLastResort);
-    if (regular) {
-      return this.removeKeyPackage(regular.keyPackageRef);
-    }
+    if (regular) return this.removeKeyPackage(regular.keyPackageRef);
 
     return records.at(-1) ?? null;
-  }
-
-  private removeJoinRequestsForKeyPackage(keyPackageRef: string): void {
-    let changed = false;
-    for (const [groupId, records] of this.joinRequestsByGroup) {
-      const kept = records.filter((record) => record.keyPackageRef !== keyPackageRef);
-      if (kept.length === records.length) continue;
-      changed = true;
-      if (kept.length === 0) {
-        this.joinRequestsByGroup.delete(groupId);
-      } else {
-        this.joinRequestsByGroup.set(groupId, kept);
-      }
-    }
-    if (changed) this.persist();
   }
 
   private consumeKeyPackageByReference(
@@ -520,7 +537,7 @@ export class InMemoryCoordinatorStorage implements CoordinatorStorage {
         welcome: decodeWelcome(decodeBase64(record.welcome64)),
         createdAt: record.createdAt,
         readAt: record.readAt,
-        afterCursor: record.afterCursor,
+        joinAfterCursor: record.joinAfterCursor ?? record.afterCursor,
       });
       this.welcomesByIdentity.set(record.targetStablePubkey, records);
     }

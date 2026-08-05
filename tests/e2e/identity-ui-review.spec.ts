@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./established-installation-fixture";
 
 const identityStorageKey = "cordn:v1:anonymous-identity";
 const recoveryBoundaryKey = "cordn:v1:anonymous-identity-recovery";
@@ -20,6 +20,50 @@ async function openRotationDialog(page: Page): Promise<Locator> {
   const dialog = page.getByTestId("identity-rotation-dialog");
   await expect(dialog).toBeVisible();
   return dialog;
+}
+
+async function openPresenceMenu(page: Page): Promise<{ trigger: Locator; menu: Locator }> {
+  const control = page.getByTestId("presence-control");
+  const trigger = control.getByRole("button", { name: /^Presence:/ });
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  const menu = page.getByRole("dialog", { name: "Presence" });
+  await expect(menu).toBeVisible();
+  return { trigger, menu };
+}
+
+async function revealPersonalControls(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const id = "identity-controls-fixture";
+    const coordinatorPubkey = "9".repeat(64);
+    const privateBytes = new Uint8Array(32).fill(1);
+    const privateBase64 = btoa(String.fromCharCode(...privateBytes));
+    const room = {
+      version: 1,
+      id,
+      title: "Identity controls fixture",
+      coordinatorPubkey,
+      coordinatorOrigin: "https://remote.example",
+      relayUrls: ["wss://relay.example"],
+      name: "Reader",
+      stablePubkey: "b".repeat(64),
+      isHost: false,
+      stateBase64: "",
+      keyPackage: { reference: "ref", publicBase64: "public", privateBase64 },
+      anonymousSecretKey: "1".repeat(64),
+      lastCursor: 0,
+      messages: [],
+      pending: [],
+      joinRequestSent: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    localStorage.setItem(
+      `cordn-adhoc-chat-room:v2:${encodeURIComponent(coordinatorPubkey)}:${encodeURIComponent(id)}`,
+      JSON.stringify(room),
+    );
+  });
+  await page.reload();
 }
 
 test("keeps an unverified profile trigger hidden while malformed identity recovery resolves", async ({ page }) => {
@@ -166,25 +210,51 @@ test("normalizes a retryable recovery failure without making recovery dismissabl
 
 test("profile presence persists without changing coordinator lifecycle", async ({ page }) => {
   await page.goto("/");
-  const { menu } = await openIdentityMenu(page);
+  await revealPersonalControls(page);
+  const { menu } = await openPresenceMenu(page);
   const presence = menu.getByRole("radiogroup", { name: "Presence" });
 
-  await presence.getByRole("radio", { name: "Online" }).check();
-  await expect(presence.getByRole("radio", { name: "Online" })).toBeChecked();
+  await presence.getByRole("radio", { name: "Online" }).click();
+  await expect(page.getByRole("button", { name: "Presence: Online" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
-  await expect(menu).toBeVisible();
+  await expect(menu).toBeHidden();
 
   await page.reload();
-  const reloaded = await openIdentityMenu(page);
+  const reloaded = await openPresenceMenu(page);
   await expect(reloaded.menu.getByRole("radio", { name: "Online" })).toBeChecked();
+  await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
 });
 
 test("avatar exposes presence status", async ({ page }) => {
   await page.goto("/");
+  await revealPersonalControls(page);
   const profile = page.getByTestId("user-profile");
   const trigger = profile.locator(".user-trigger");
 
   await expect(trigger).toHaveAccessibleName(/Invisible/);
   await expect(profile.getByTestId("profile-presence-status")).toHaveAttribute("data-presence", "invisible");
+});
+
+test("profile and presence panels stay within the viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 720 });
+  await page.goto("/");
+  await revealPersonalControls(page);
+  await page.getByRole("button", { name: "Open room browser" }).click();
+
+  const { menu } = await openIdentityMenu(page);
+  const profileBounds = await menu.boundingBox();
+  expect(profileBounds).not.toBeNull();
+  expect(profileBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(profileBounds!.x + profileBounds!.width).toBeLessThanOrEqual(768);
+  await page.keyboard.press("Escape");
+  const railTrigger = page.getByRole("button", { name: "Open room browser" });
+  if (await railTrigger.isVisible()) await railTrigger.click();
+
+  const presence = await openPresenceMenu(page);
+  const presenceBounds = await presence.menu.boundingBox();
+  expect(presenceBounds).not.toBeNull();
+  expect(presenceBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(presenceBounds!.x + presenceBounds!.width).toBeLessThanOrEqual(768);
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { onMount, tick } from "svelte";
   import { SvelteDate } from "svelte/reactivity";
   import { nostrSocialStore } from "../invites/nostr-social.svelte";
   import {
@@ -22,6 +22,7 @@
   let dialog: HTMLDivElement | undefined = $state();
   let closeButton: HTMLButtonElement | undefined = $state();
   let keepButton: HTMLButtonElement | undefined = $state();
+  let panelStyle = $state("");
 
   const unreadLabel = $derived(notificationCenter.unreadCount > 99 ? "99+" : String(notificationCenter.unreadCount));
   const bellName = $derived(notificationCenter.unreadCount > 0
@@ -36,7 +37,10 @@
     const renderedIds = notificationCenter.feed.map((entry) => entry.id);
     const markedUnread = notificationCenter.feed.filter((entry) => !entry.read).length;
     notificationCenter.markVisibleRead(renderedIds);
-    void tick().then(() => closeButton?.focus());
+    void tick().then(() => {
+      positionPanel();
+      closeButton?.focus();
+    });
     if (markedUnread > 0) actionError = `${markedUnread} ${markedUnread === 1 ? "notification" : "notifications"} marked read.`;
   }
 
@@ -47,6 +51,7 @@
       return;
     }
     open = false;
+    panelStyle = "";
     actionError = "";
     void tick().then(() => trigger?.focus());
   }
@@ -121,6 +126,37 @@
     }
   }
 
+  function positionPanel(): void {
+    if (!open || !trigger || !dialog) return;
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      panelStyle = "";
+      return;
+    }
+
+    const gutter = 8;
+    const gap = 7;
+    const triggerRect = trigger.getBoundingClientRect();
+    const width = Math.min(416, window.innerWidth - gutter * 2);
+    const left = Math.min(
+      Math.max(gutter, triggerRect.right - width),
+      window.innerWidth - width - gutter,
+    );
+    const spaceAbove = triggerRect.top - gap - gutter;
+    const spaceBelow = window.innerHeight - triggerRect.bottom - gap - gutter;
+    if (spaceAbove >= spaceBelow) {
+      const bottom = window.innerHeight - triggerRect.top + gap;
+      panelStyle = `left: ${left}px; bottom: ${bottom}px; width: ${width}px; max-height: ${Math.max(0, spaceAbove)}px;`;
+    } else {
+      const top = triggerRect.bottom + gap;
+      panelStyle = `left: ${left}px; top: ${top}px; width: ${width}px; max-height: ${Math.max(0, spaceBelow)}px;`;
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener("resize", positionPanel);
+    return () => window.removeEventListener("resize", positionPanel);
+  });
+
   function groupEntries(entries: FeedNotificationEntry[]): Array<{ name: "Now" | "Today" | "Earlier"; entries: FeedNotificationEntry[] }> {
     const todayStart = new SvelteDate();
     todayStart.setHours(0, 0, 0, 0);
@@ -143,7 +179,7 @@
     if (entry.category === "room_invite") return "Room invitation";
     if (entry.category === "user_online") return `${entry.actor ?? "Someone"} is online`;
     if (entry.category === "new_message") return entry.room ? `New message in #${entry.room}` : "New message";
-    return entry.action === "joined" ? "Guest joined" : "Guest waiting to join";
+    return entry.action === "joined" ? "Guest admitted" : "Guest waiting to join";
   }
 
   function entryDetail(entry: FeedNotificationEntry): string {
@@ -182,7 +218,7 @@
 
   {#if open}
     <button class="notification-feed-backdrop" type="button" aria-label="Close notifications" onclick={close}></button>
-    <div bind:this={dialog} class="notification-feed-panel" role="dialog" aria-modal="true" aria-label="Notifications" tabindex="-1" onkeydown={handleKeydown}>
+    <div bind:this={dialog} class="notification-feed-panel" role="dialog" aria-modal="true" aria-label="Notifications" tabindex="-1" style={panelStyle} onkeydown={handleKeydown}>
       <header>
         <div>
           <h2>Notifications</h2>
@@ -244,13 +280,13 @@
   .notification-feed-trigger:focus-visible, .notification-feed-panel button:focus-visible { outline: 2px solid #7cf59d; outline-offset: 2px; }
   .notification-feed-badge { position: absolute; top: -.25rem; right: -.3rem; display: grid; min-width: 1rem; height: 1rem; place-items: center; background: #7cf59d; color: #071009; font-size: .45rem; font-weight: 700; }
   .notification-feed-backdrop { position: fixed; z-index: 69; inset: 0; cursor: default; }
-  .notification-feed-panel { position: absolute; z-index: 70; top: calc(100% + .45rem); right: 0; width: min(26rem, calc(100vw - 1rem)); border: 1px solid #496451; background: #090e0b; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
+  .notification-feed-panel { position: fixed; z-index: 70; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border: 1px solid #496451; background: #090e0b; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
   .notification-feed-panel header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #293832; padding: .8rem .9rem; }
   .notification-feed-panel h2 { color: #effff2; font-size: .85rem; font-weight: 680; }
   .notification-feed-panel header p, .notification-feed-status { margin-top: .2rem; color: #718277; font-size: .52rem; }
   .notification-feed-panel header button { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #91a59a; font-size: 1rem; }
   .notification-feed-panel header button:hover { background: #162019; color: #effff2; }
-  .notification-feed-body { max-height: min(32rem, calc(100dvh - 9rem)); overflow-y: auto; overscroll-behavior: contain; }
+  .notification-feed-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .notification-feed-body section + section { border-top: 1px solid #202d25; }
   .notification-feed-body h3 { padding: .65rem .9rem .35rem; color: #718277; font-size: .5rem; letter-spacing: .14em; text-transform: uppercase; }
   article { display: flex; min-height: 4.4rem; align-items: center; justify-content: space-between; gap: .7rem; padding: .7rem .9rem; }

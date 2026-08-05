@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./established-installation-fixture";
 import { generateSecretKey } from "nostr-tools";
 import { bytesToHex } from "nostr-tools/utils";
 
@@ -20,6 +20,14 @@ async function openCoordinatorSettings(page: Page, edit = false): Promise<Locato
   const topbar = page.locator(".host-topbar");
   const settingsTrigger = topbar.getByRole("button", { name: "Settings", exact: true });
   if (!(await settingsTrigger.isVisible())) {
+    const guidedSettingsTrigger = page.getByRole("button", { name: "Review settings", exact: true });
+    if (await guidedSettingsTrigger.isVisible()) {
+      await guidedSettingsTrigger.click();
+      const settings = page.getByTestId("coordinator-settings");
+      await expect(settings).toBeVisible();
+      if (edit) await settings.getByRole("button", { name: "Edit settings" }).click();
+      return settings;
+    }
     const toolsTrigger = topbar.getByRole("button", { name: "Open host tools" });
     if (await toolsTrigger.isVisible()) await toolsTrigger.click();
   }
@@ -181,7 +189,7 @@ test("keeps a foreign host record as a leaveable previous local session after re
 
   await page.goto("/chats", { waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId("operator-shell")).toBeVisible();
+  await expect(page.getByTestId("operator-shell")).toHaveCount(0);
   await expect(page.getByTestId("chat-lobby")).toHaveCount(0);
 
   const unlock = page.getByTestId("coordinator-unlock");
@@ -189,6 +197,7 @@ test("keeps a foreign host record as a leaveable previous local session after re
   await unlock.getByPlaceholder("passphrase", { exact: true }).fill(passphrase);
   await unlock.getByRole("button", { name: "Unlock coordinator" }).click();
   await expect(unlock).toBeHidden();
+  await expect(page.getByTestId("operator-shell")).toBeVisible();
 
   const currentRoomButton = page.getByRole("button", {
     name: new RegExp(`^Open room ${currentTestTitle}, hosted by `),

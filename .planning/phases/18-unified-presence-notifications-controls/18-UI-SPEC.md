@@ -64,7 +64,7 @@ Use only these four semantic sizes and exactly the two declared weights for new 
 | Feed item title / section emphasis | 14px | 600 | 1.4 |
 | Panel heading | 18px | 600 | 1.2 |
 
-Use uppercase with the existing 0.08–0.12em tracking only for `PERSONAL`, `HOST`, category labels, and timestamps. Use `font-variant-numeric: tabular-nums` for unread counts and relative timestamps. Room titles, person names, and presence names remain sentence case; never uppercase or truncate a title in a way that hides which room an invitation concerns.
+Use uppercase with the existing 0.08–0.12em tracking only for compact metadata, category labels, and timestamps. Use `font-variant-numeric: tabular-nums` for unread counts and relative timestamps. Room titles, person names, and presence names remain sentence case; never uppercase or truncate a title in a way that hides which room an invitation concerns.
 
 ---
 
@@ -110,28 +110,28 @@ Never show raw invite URLs, room secrets, decrypted envelope data, relay URLs, s
 
 ## Phase 18 Surface and Interaction Contract
 
-### Header ownership and hierarchy
+### Shell ownership and hierarchy
 
-`HostWorkspace` renders two explicit, adjacent semantic groups in the command bar:
+The selected room content pane remains the workspace's primary visual anchor. Controls are distributed by durable context instead of collected into a dense command bar.
 
-The selected room content pane is the normal workspace's primary visual anchor. Header controls stay visually quiet, and profile, notification-feed, settings, and host-tool surfaces remain temporary overlays or drawers that preserve the room context beneath them; none may read as a competing permanent column or dashboard.
+| Surface | Accessible owner | Contents in order | Visual contract |
+|---------|------------------|-------------------|-----------------|
+| Global header | `Workspace navigation` | CAHMLS brand with coordinator status dot; live message rate; `Manage` toggle | No active-room avatar/title, room-sync label, coordinator runtime word, lifecycle control, account control, or statistics card. `Manage` aligns to the header edge with a full-height left divider. |
+| Sidebar top | `Join from invite` | One full-width invite redemption trigger | First actionable sidebar item, flat and high-contrast enough to scan without adding a card stack. |
+| Selected local coordinator heading | `Coordinator controls` | Coordinator identity/status; settings; triangle start or square stop; destroy | Runtime state appears once through the named status dot. Glyph controls keep explicit accessible labels and destructive confirmation. Remote coordinators never receive local lifecycle/destructive actions. |
+| Sidebar footer | `Personal controls` | Avatar/profile with attached presence dot; separate compact presence selector; bell/feed; plainly labelled `Notification settings` | Pinned to the bottom, compact and modern, with one quiet top divider. Profile/presence/feed/settings menus open upward on desktop and use established bottom sheets at compact widths. |
 
-| Cluster | Accessible group name | Contents in order | Visual contract |
-|---------|-----------------------|-------------------|-----------------|
-| Personal | `Personal controls` | Avatar/profile with attached presence dot; bell/feed; plainly labelled `Notification settings` | On desktop, begin with a 10px `PERSONAL` label, then use a 1px muted divider after the group. The group uses the quiet secondary field and never contains lifecycle, coordinator, or host-badge controls. |
-| Host | `Host controls` | Coordinator settings; `LifecyclePanel`; `Manage` / existing unlock action | On desktop, begin with a 10px `HOST` label. It follows the personal divider and retains existing lifecycle status/action and management treatments. |
-
-- At widths at or above 1024px, show both visual cluster labels. From 901–1023px, preserve the divider and group wrappers but allow the labels to be visually hidden; their accessible names remain exposed. At 900px and below, use the existing `Open host tools` drawer as the single compact entry point, then render the personal group before the host group with a full-width divider and the same labels inside the drawer.
-- Remove the standalone `PresenceControl` and standalone `InviteInbox` trigger. There is exactly one avatar/presence trigger, one bell/feed trigger, and one `Notification settings` trigger. The existing coordinator settings trigger remains host-only; do not present it as a personal setting.
-- Move host message identity/badge editing to coordinator/host administration (`CoordinatorSettings`); remove it completely from `UserProfile`, including its props and profile-menu heading. This is a relocation, not a new personal setting.
-- Presence actions never start, stop, wake, destroy, or otherwise mutate coordinator lifecycle. `LifecyclePanel` alone owns those actions. Do not make avatar state reflect coordinator runtime state.
+- Remove the old header-level presence owner, duplicate lifecycle/status surfaces, the header room-context cluster, and the sidebar `ResourceMonitor` panel. The only statistic retained is message rate beside the brand.
+- Move host message identity/badge editing to coordinator administration (`CoordinatorSettings`); remove it completely from `UserProfile`.
+- Presence actions never start, stop, wake, destroy, or otherwise mutate coordinator lifecycle. `LifecyclePanel` remains the behavior owner but renders its compact controls inside the coordinator heading.
+- At 900px and below the sidebar remains the contextual owner. The existing rail toggle exposes `Join from invite`, coordinator controls, rooms, and the pinned personal footer; profile/presence/feed/settings retain their viewport-contained bottom-sheet treatment.
 
 ### Profile menu and personal presence
 
-- Keep `UserProfile` as the first personal trigger. Attach the 6–8px dot inside the avatar’s positioned box at its lower-right edge; the dot has `aria-hidden="true"` because the trigger name and visible menu text carry the state.
+- Keep `UserProfile` as the first personal trigger. Attach the 6–8px dot inside the avatar’s positioned box at its lower-right edge; the trigger accessible name carries the state. The profile panel omits the Nostr `about` field and is no wider than its sidebar owner.
 - The avatar trigger remains a 44px-or-larger button with `aria-haspopup="dialog"`, `aria-expanded`, and the exact status-bearing accessible name from Copywriting. On desktop it may retain avatar/name/auth summary; compact layout may show only the avatar and dot, never an unlabeled icon.
-- In the profile panel, add a first `Presence` section directly after identity summary and before anonymous/signer-management details. Use a native radio group (`fieldset`/`legend` with radio inputs, or equivalent buttons carrying `role="radio"`, `aria-checked`, and arrow-key movement). Each option includes its named dot, title, and detail. The selected option has a quiet secondary row fill plus an accent border/indicator; do not rely on the dot alone.
-- Selecting a presence option updates local state immediately, keeps the profile panel open, and announces `Presence set to {state}.` through a polite live region. If publishing cannot occur, retain the selected state and show the documented signer helper; do not display an error or imply the coordinator is stopped.
+- The separate footer presence dropdown uses equivalent buttons carrying `role="radio"` and `aria-checked`. Each option includes its named dot and title without explanatory prose. The selected option has a quiet secondary row fill plus an accent border/indicator; do not rely on the dot alone.
+- Selecting a presence option from the separate footer dropdown updates local state immediately, closes back to its trigger, and announces `Presence set to {state}.` through a polite live region. If publishing cannot occur, retain the selected state; do not display an error or imply the coordinator is stopped.
 - Preserve profile identity, rotation, and signer behavior from Phase 15. Long display names and public-key summaries ellipsize in one line; menu prose wraps. The panel is `width: min(22rem, calc(100vw - 24px))` on desktop.
 
 ### Notification settings
@@ -160,18 +160,18 @@ The selected room content pane is the normal workspace's primary visual anchor. 
 - `Dismiss invitation` starts the inline confirmation described in Copywriting; it is not a one-click close glyph. Confirmation focus begins on `Keep invitation`; Escape/backdrop returns to the intact invitation. Confirming dismissal writes only the privacy-minimal `{id, resolvedAt}` ledger entry before removing the live invite/feed action. Do not persist invite URLs, secrets, raw envelopes, sender profiles, or decrypted content.
 - Accepted and dismissed IDs remain suppressed across reloads for at least seven days (the default retained margin above the current three-day relay replay window). A previously resolved ID must not be fetched into the feed, become unread, or re-enter the live invitation list.
 
-### Compact drawer and bottom-sheet contract
+### Compact sidebar and bottom-sheet contract
 
-- At 900px and below, keep `HostWorkspace` as the responsive owner: its existing `Open host tools` trigger, full-page scrim, `aria-controls`, `aria-expanded`, `aria-hidden`, and `inert` behavior gate the tool drawer. Closed tools cannot receive focus or pointer input.
-- The drawer is `width: min(20rem, calc(100vw - 18px))`, remains inside viewport bounds, and presents `PERSONAL` then `HOST` in one vertical reading order. Each compact trigger stays at least 44px high and keeps its full accessible name even if the visible label shortens.
-- A profile, feed, or settings panel opened from that drawer becomes a fixed bottom sheet: `left/right/bottom: 8px`, `max-height: calc(100dvh - 16px)`, dark secondary surface, 1px border, body-only vertical scrolling, and `overscroll-behavior: contain`. It sits above the drawer scrim and must not be clipped by the header. Its close action remains visible/reachable at short heights.
-- Opening a personal bottom sheet leaves the command bar and room rail visually intact behind the appropriate scrim but focus-inert. Closing the sheet returns focus to its originating compact trigger. On reduced motion, sheets/drawers may appear/disappear without transitions; state, focus, and readability remain identical.
+- At 900px and below, keep `HostWorkspace` as the responsive owner: `Open room browser`, its full-page scrim, `aria-controls`, `aria-expanded`, `aria-hidden`, and `inert` behavior gate the contextual sidebar. The closed sidebar cannot receive focus or pointer input.
+- The sidebar is `width: min(22rem, calc(100vw - 42px))`, remains inside viewport bounds, and presents invite entry, coordinator/rooms, then the pinned personal footer in one reading order. Each compact trigger stays at least 44px high and keeps its full accessible name even when represented by a glyph.
+- A profile, presence, feed, or settings panel opened from that drawer becomes a fixed bottom sheet: `left/right/bottom: 8px`, `max-height: calc(100dvh - 16px)`, dark secondary surface, 1px border, body-only vertical scrolling, and `overscroll-behavior: contain`. It sits above the drawer scrim and must not be clipped by the header. Its close action remains visible/reachable at short heights.
+- Opening a personal bottom sheet leaves the header and room rail visually intact behind the appropriate scrim but focus-inert. Closing the sheet returns focus to its originating compact trigger. On reduced motion, sheets/rails may appear/disappear without transitions; state, focus, and readability remain identical.
 
 ### Accessibility, overflow, and non-goals
 
 - Every control has a specific accessible name. Do not use a glyph, colored dot, unread count, or visual cluster separation as the only label. Use `aria-live="polite"` only for state changes, not for every rendered feed row.
 - All dialogs/sheets have a programmatic title, close control, Escape/backdrop behavior unless a destructive confirmation is pending, focus containment, and focus return. The inline invitation confirmation is the only destructive confirmation in this phase.
-- Preserve visible 2px accent focus ring with at least 2px offset. Do not rely on hover to reveal the only available action; keyboard focus reaches every feed action and profile presence radio.
+- Preserve visible 2px accent focus ring with at least 2px offset. Do not rely on hover to reveal the only available action; keyboard focus reaches every feed action and the separate presence selector.
 - Long sender/room names wrap in the feed’s text column; metadata can ellipsize after retaining an accessible full name. Action labels never truncate. Feed scrolling is vertical only; the panel and command bar must never produce horizontal viewport overflow.
 - No cross-device history, browser-prompt imitation, service worker, email/SMS/push backend, notification search/filtering, mass clear, or Phase 19 grouped-chat/reaction UI is in scope.
 
@@ -194,8 +194,8 @@ Applicable state considerations resolved: 11 covered, 5 backstop, 0 unresolved.
 | empty | Incoming invitations | ✅ covered | No invitation-specific panel remains; empty invitations are represented by the canonical feed empty state. |
 | loading | Feed open/read transition | ✅ covered | Opening marks currently rendered events read without hiding entries, resolving invitations, or displaying an indeterminate spinner. |
 | error | Browser notification permission | ✅ covered | `default`, `granted`, `denied`, and unsupported states retain an in-app alternative and only the explicit CTA can invoke permission. |
-| populated | Personal and host header clusters | ✅ covered | Explicit semantic groups and desktop labels/divider distinguish the two ownership domains. |
-| overflow | Compact tool drawer | 🧪 backstop | Existing scrim/inert/bounds pattern is retained; personal then host order and fixed-sheet containment are browser-tested. |
+| populated | Sparse header and contextual sidebar | ✅ covered | Header, invite utility, coordinator controls, and personal footer each have one owner with no duplicate runtime or room context. |
+| overflow | Compact room sidebar | 🧪 backstop | Existing scrim/inert/bounds pattern is retained; invite-first and personal-footer order plus fixed-sheet containment are browser-tested. |
 | long-text | Avatar trigger and presence menu | 🧪 backstop | Status text remains accessible, display/key summary ellipsizes, and radio detail wraps without widening the menu. |
 | zero-one-many | Feed eviction/history | 🧪 backstop | Unit coverage proves capacity pruning never evicts a pending invitation and accepted/dismissed IDs do not replay across reload. |
 | long-text | Feed action labels | ✅ covered | `Accept invitation`, `Dismiss invitation`, and confirmation labels stay fully visible and keyboard reachable. |
@@ -212,15 +212,15 @@ Applicable state considerations resolved: 11 covered, 5 backstop, 0 unresolved.
 
 ## Verification Contract
 
-- Playwright verifies at desktop width (at least 1280px) that separate `Personal controls` and `Host controls` group wrappers exist, the `PERSONAL`/`HOST` labels and divider are visible, and the personal group contains only avatar/presence, bell, and exact `Notification settings`, while lifecycle/settings/manage remain host-only.
-- Playwright verifies no standalone presence or invite-inbox trigger remains, host badge/message identity editing is absent from `UserProfile`, and coordinator settings exposes the host-only badge editing surface.
-- Playwright verifies the avatar trigger has an attached status-dot element, exposes `Presence: {state}` in its accessible name, opens a labelled presence radio group, reports the active choice programmatically, and lets keyboard users select online/invisible/offline. Changing any choice leaves coordinator lifecycle status/actions unchanged.
+- Playwright verifies at desktop width (at least 1280px) that the header contains brand/status, live rate, and Manage only; `Join from invite` is first in the rail; local coordinator controls are in the selected coordinator heading; and the pinned personal footer contains profile, separate presence, bell, and exact `Notification settings` controls.
+- Playwright verifies no header-level presence or invite-inbox trigger remains, host badge/message identity editing and long profile `about` content are absent from `UserProfile`, and coordinator settings exposes the host-only badge editing surface.
+- Playwright verifies the avatar trigger has an attached status-dot element and exposes `Presence: {state}` in its accessible name; the separate footer trigger opens a labelled presence radio group, reports the active choice programmatically, and lets keyboard users select online/invisible/offline. Changing any choice leaves coordinator lifecycle status/actions unchanged.
 - Playwright verifies opening `Notification settings` and the bell makes zero `Notification.requestPermission()` calls. Only clicking the exact `Enable desktop notifications` CTA makes one call; denied/unsupported states show the specified safe copy and the feed remains usable.
 - Playwright verifies persisted desktop category/cadence controls read back after reload, online is enabled by default, other desktop categories are opt-in, and all relevant events still appear in the in-app feed when desktop permission is default/denied, desktop delivery is disabled, or a category is disabled.
 - Playwright verifies the bell reports its unread count, opens the separate labelled feed, shows grouped Now/Today/Earlier rows newest first, and opening it marks rendered rows read while preserving a pending invitation and its actions. Zero unread hides the visual badge and exposes `no unread` / `All caught up` text.
 - Playwright verifies a trusted invitation appears only in the bell feed with sender/room/action labels, `Accept invitation` follows same-shell `autojoin=1` navigation, and `Dismiss invitation` requires the specified confirmation. Marking it read alone cannot remove it.
 - Unit tests verify event/category-key upsert and desktop cadence de-duplication; feed-first recording independent of permission; 100-entry non-actionable capacity; a pending invitation survives eviction; read does not resolve; resolution stores only ID/timestamp; malformed records are rejected; and resolved invitations remain suppressed during the seven-day retention window/reload replay.
-- Playwright verifies compact 900px, 768×1024, and 375×812 layouts: `Open host tools` controls an inert closed drawer, personal controls precede host controls when open, every shortened trigger retains its full accessible name, and profile/feed/settings open as viewport-contained bottom sheets with reachable close/actions and no horizontal overflow.
+- Playwright verifies compact 900px, 768×1024, and 375×812 layouts: `Open room browser` controls an inert closed rail, invite entry precedes room context and the personal footer follows it, every glyph retains its full accessible name, and profile/presence/feed/settings open as viewport-contained bottom sheets with reachable close/actions and no horizontal overflow.
 - Playwright verifies 375×520 or comparable short-height compact layout: sheet body—not document—is scrollable; title/close/action controls remain reachable. Test with `prefers-reduced-motion: reduce` confirms no motion is required to identify open/closed, unread, selected-presence, or permission state.
 - Browser style assertions verify representative Phase 18 controls use only the declared 10/12/14/18px hierarchy, weights 400/600, 4px spacing scale, `#7cf59d` only in its reserved roles, and `#ffaaa3` only after invitation dismissal reaches confirmation.
 

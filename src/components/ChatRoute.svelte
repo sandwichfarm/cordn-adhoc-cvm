@@ -6,6 +6,7 @@
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
   import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
+  import { createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import { userProfileStore } from "../identity/user-profile.svelte";
@@ -307,6 +308,14 @@
     return session?.status.connection === "connected" && room?.joinRequestSent !== true;
   }
 
+  function describeJoinFailure(cause: unknown): string {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    if (/\b-32001\b|request timed out|\btimeout\b/i.test(detail)) {
+      return "Couldn’t reach this coordinator through the invite’s relay paths. Make sure the host is online, then try again.";
+    }
+    return detail || "Unable to join this chat";
+  }
+
   async function toggleSounds() {
     if (soundsEnabled) {
       soundsEnabled = false;
@@ -456,7 +465,7 @@
       if (disposed) return;
       await attach(created, signer);
     } catch (cause) {
-      if (!disposed) error = cause instanceof Error ? cause.message : "Unable to join this chat";
+      if (!disposed) error = describeJoinFailure(cause);
     } finally {
       if (!disposed) joining = false;
     }
@@ -676,6 +685,8 @@
       <h1 class="sr-only">{currentRoom.title}</h1>
       <RoomActionsMenu
         roomTitle={currentRoom.title}
+        coordinatorPubkey={currentRoom.coordinatorPubkey}
+        inviteUrl={createSameShellChatHref(window.location.origin, currentRoom)}
         {soundsEnabled}
         removalMode={activeRoomRemovalMode ?? "leave"}
         onToggleSounds={toggleSounds}
@@ -714,6 +725,7 @@
                 authorName={message.name}
                 {reactions}
                 pickerOpen={reactionPickerMessageId === message.id}
+                canReact={message.sender !== currentRoom.stablePubkey}
                 disabled={!composerEnabled}
                 idPrefix="guest"
                 onTogglePicker={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}

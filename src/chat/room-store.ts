@@ -24,7 +24,12 @@ import {
   type ChatReactionMutation,
   type LocalKeyPackage,
 } from "./protocol";
-import { ChatCoordinatorClient, type RemoteJoinRequest } from "./coordinator-client";
+import {
+  ChatCoordinatorClient,
+  type ChatCoordinatorClientFactory,
+  type ChatCoordinatorOperations,
+  type RemoteJoinRequest,
+} from "./coordinator-client";
 
 const ROOM_KEY_PREFIX = "cordn-adhoc-chat-room:";
 const ROOM_KEY_V2_PREFIX = `${ROOM_KEY_PREFIX}v2:`;
@@ -43,6 +48,17 @@ export interface StoredMessage extends ChatEnvelope {
 export interface PendingMessage {
   id: string;
   opaqueBase64: string;
+}
+
+/** A committed membership change whose Welcome still needs to reach Cordn. */
+export interface PendingWelcomeDelivery {
+  requestPk: string;
+  requestKpRef: string;
+  requestAt: number;
+  targetPubkey: string;
+  keyPackageRef: string;
+  welcomeBase64: string;
+  after: number;
 }
 
 /** Bounded latest-state record: one entry per message, emoji, and participant. */
@@ -112,6 +128,8 @@ export interface StoredRoom {
   lastCursor: number;
   messages: StoredMessage[];
   pending: PendingMessage[];
+  /** Durable so a transient welcome_store failure cannot strand an admitted guest. */
+  pendingWelcomes?: PendingWelcomeDelivery[];
   /** Optional because rooms persisted before unread accounting have no ledger. */
   readState?: RoomReadState;
   /** Optional for version-1 cached rooms written before reactions existed. */
@@ -140,9 +158,22 @@ export interface RoomStatus {
   detail?: string;
 }
 
+/**
+ * Canonical Cordn clients identify an invitation by its group id and do not
+ * send CAHMLS's optional rotating token. A present token is therefore an
+ * additional freshness check, not a requirement for protocol admission.
+ */
+export function isCurrentInviteRequest(
+  inviteToken: string | undefined,
+  request: Pick<RemoteJoinRequest, "invite_token">,
+): boolean {
+  return !inviteToken || !request.invite_token || request.invite_token === inviteToken;
+}
+
 export class ChatRoomSession {
-  private client: ChatCoordinatorClient | null = null;
+  private client: ChatCoordinatorOperations | null = null;
   private timer: number | null = null;
+  private joinRequestUnsubscribe: (() => void) | null = null;
   private operationQueue: Promise<void> = Promise.resolve();
   private pendingSync: Promise<void> | null = null;
   private serverWasOnline = false;
@@ -155,7 +186,12 @@ export class ChatRoomSession {
   status: RoomStatus = { connection: "connecting" };
   pendingJoinRequests: RemoteJoinRequest[] = [];
 
-  constructor(public room: StoredRoom, private signer: NostrSigner) {}
+  constructor(
+    public room: StoredRoom,
+    private signer: NostrSigner,
+    private readonly createClient: ChatCoordinatorClientFactory = (target, clientSigner) =>
+      new ChatCoordinatorClient(target, clientSigner),
+  ) {}
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -165,15 +201,19 @@ export class ChatRoomSession {
   async start(): Promise<void> {
     const generation = ++this.lifecycleGeneration;
     this.stopped = false;
-    if (this.timer) window.clearInterval(this.timer);
-    this.timer = null;
-    window.removeEventListener("online", this.handleOnline);
-    window.removeEventListener("offline", this.handleOffline);
+    this.detachSteadyState();
     await this.sync();
     if (this.stopped || generation !== this.lifecycleGeneration) return;
-    this.timer = window.setInterval(() => void this.sync(), 4_000);
-    window.addEventListener("online", this.handleOnline);
-    window.addEventListener("offline", this.handleOffline);
+    this.attachSteadyState(generation);
+  }
+
+  /**
+   * Continue polling after a successful startup recovery without performing a
+   * second synchronous fetch inside the coordinator's recovery deadline.
+   */
+  activateSteadyState(): void {
+    if (this.stopped) return;
+    this.attachSteadyState(this.lifecycleGeneration);
   }
 
   /**
@@ -185,10 +225,7 @@ export class ChatRoomSession {
     if (signal.aborted) throw new DOMException("Recovery cancelled", "AbortError");
     const generation = ++this.lifecycleGeneration;
     this.stopped = false;
-    if (this.timer) window.clearInterval(this.timer);
-    this.timer = null;
-    window.removeEventListener("online", this.handleOnline);
-    window.removeEventListener("offline", this.handleOffline);
+    this.detachSteadyState();
     const abort = () => {
       if (generation !== this.lifecycleGeneration) return;
       this.lifecycleGeneration += 1;
@@ -206,12 +243,50 @@ export class ChatRoomSession {
   stop(): void {
     this.lifecycleGeneration += 1;
     this.stopped = true;
-    if (this.timer) window.clearInterval(this.timer);
-    this.timer = null;
-    window.removeEventListener("online", this.handleOnline);
-    window.removeEventListener("offline", this.handleOffline);
+    this.detachSteadyState();
     void this.client?.close();
     this.client = null;
+  }
+
+  private attachSteadyState(generation: number): void {
+    this.detachSteadyState();
+    if (this.stopped || generation !== this.lifecycleGeneration) return;
+    if (this.room.isHost && this.client?.subscribeJoinRequests) {
+      this.joinRequestUnsubscribe = this.client.subscribeJoinRequests(
+        this.room.id,
+        () => this.syncAfterJoinRequest(generation),
+      );
+    }
+    this.timer = window.setInterval(() => {
+      if (this.stopped || generation !== this.lifecycleGeneration) return;
+      void this.sync();
+    }, 4_000);
+    window.addEventListener("online", this.handleOnline);
+    window.addEventListener("offline", this.handleOffline);
+  }
+
+  private detachSteadyState(): void {
+    if (this.timer) window.clearInterval(this.timer);
+    this.timer = null;
+    this.joinRequestUnsubscribe?.();
+    this.joinRequestUnsubscribe = null;
+    window.removeEventListener("online", this.handleOnline);
+    window.removeEventListener("offline", this.handleOffline);
+  }
+
+  private async syncAfterJoinRequest(generation: number): Promise<void> {
+    if (this.stopped || generation !== this.lifecycleGeneration) return;
+    const syncAlreadyInFlight = this.pendingSync !== null;
+    await this.sync();
+    // If the signal arrived after an in-flight sync had already fetched its
+    // requests, perform one more pass so the request cannot wait for polling.
+    if (
+      syncAlreadyInFlight
+      && !this.stopped
+      && generation === this.lifecycleGeneration
+    ) {
+      await this.sync();
+    }
   }
 
   /**
@@ -261,8 +336,12 @@ export class ChatRoomSession {
         throw new Error("The coordinator must be connected before you can react");
       }
       if (this.room.joinRequestSent) throw new Error("Wait for the host to admit you before reacting");
-      if (!this.room.messages.some((message) => message.id === targetMessageId)) {
+      const targetMessage = this.room.messages.find((message) => message.id === targetMessageId);
+      if (!targetMessage) {
         throw new Error("That message is no longer available for reactions");
+      }
+      if (targetMessage.sender === this.room.stablePubkey) {
+        throw new Error("You cannot react to your own message");
       }
       if (!(CHAT_EMOJI_SHORTCUTS as readonly string[]).includes(emoji)) {
         throw new Error("That emoji is not available as a reaction");
@@ -277,7 +356,13 @@ export class ChatRoomSession {
         badgeEmoji: this.room.badgeEmoji,
         content: `${active ? "Reacted" : "Removed reaction"} ${emoji}`,
         createdAt: Date.now(),
-        reaction: { targetMessageId, emoji, active },
+        reaction: {
+          targetMessageId,
+          targetPubkey: targetMessage.sender,
+          targetKind: 9,
+          emoji,
+          active,
+        },
       }, this.signer);
       const encrypted = await encryptMessage(decodeState(this.room.stateBase64), event);
       this.room.stateBase64 = encodeState(encrypted.state);
@@ -325,8 +410,9 @@ export class ChatRoomSession {
       const requests = this.pendingJoinRequests.length > 0
         ? [...this.pendingJoinRequests]
         : this.currentInviteRequests(await client.fetchJoinRequests(this.room.id));
-      await this.acceptJoinRequests(client, requests);
-      this.pendingJoinRequests = [];
+      const result = await this.acceptJoinRequests(client, requests);
+      this.recordJoinedGuests(result.accepted);
+      this.pendingJoinRequests = result.retryable;
       await this.syncOnce();
     });
   }
@@ -366,25 +452,23 @@ export class ChatRoomSession {
     try {
       const client = this.getClient();
       if (this.room.isHost) {
+        this.recordJoinedGuests(await this.flushPendingWelcomes(client));
         const requests = this.currentInviteRequests(await client.fetchJoinRequests(this.room.id));
         const newRequests = requests.filter((request) => !this.knownJoinRequestIds.has(request.kp_ref));
         for (const request of requests) this.knownJoinRequestIds.add(request.kp_ref);
-        for (const request of newRequests) {
-          notificationCenter.record({
-            category: "join_request",
-            key: `${this.room.id}:${request.kp_ref}`,
-            room: this.room.title,
-            action: this.room.autoApprove !== false ? "joined" : "waiting",
-          });
-        }
         if (this.room.autoApprove !== false) {
-          await this.acceptJoinRequests(client, requests);
-          this.pendingJoinRequests = [];
+          const result = await this.acceptJoinRequests(client, requests);
+          this.recordJoinedGuests(result.accepted);
+          this.pendingJoinRequests = result.retryable;
         } else {
+          this.recordWaitingGuests(newRequests);
           this.pendingJoinRequests = requests;
         }
       }
-      if (!this.room.isHost && this.room.joinRequestSent) await this.acceptWelcome(client);
+      if (!this.room.isHost && this.room.joinRequestSent) {
+        await this.upgradeLegacyJoinRequest(client);
+        await this.acceptWelcome(client);
+      }
       if (!this.room.isHost && this.room.joinRequestSent) {
         this.markServerOnline("Waiting for the host to admit you");
         return;
@@ -410,27 +494,23 @@ export class ChatRoomSession {
     try {
       const client = this.getClient();
       if (this.room.isHost) {
+        this.recordJoinedGuests(await this.flushPendingWelcomes(client));
         const requests = this.currentInviteRequests(await client.fetchJoinRequests(this.room.id));
         if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
         const newRequests = requests.filter((request) => !this.knownJoinRequestIds.has(request.kp_ref));
         for (const request of requests) this.knownJoinRequestIds.add(request.kp_ref);
-        for (const request of newRequests) {
-          notificationCenter.record({
-            category: "join_request",
-            key: `${this.room.id}:${request.kp_ref}`,
-            room: this.room.title,
-            action: this.room.autoApprove !== false ? "joined" : "waiting",
-          });
-        }
         if (this.room.autoApprove !== false) {
-          await this.acceptJoinRequests(client, requests);
+          const result = await this.acceptJoinRequests(client, requests);
+          this.recordJoinedGuests(result.accepted);
           if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
-          this.pendingJoinRequests = [];
+          this.pendingJoinRequests = result.retryable;
         } else {
+          this.recordWaitingGuests(newRequests);
           this.pendingJoinRequests = requests;
         }
       }
       if (!this.room.isHost && this.room.joinRequestSent) {
+        await this.upgradeLegacyJoinRequest(client);
         await this.acceptWelcome(client);
         if (!active()) throw new DOMException("Recovery cancelled", "AbortError");
       }
@@ -492,50 +572,190 @@ export class ChatRoomSession {
     }));
   }
 
-  private getClient(): ChatCoordinatorClient {
+  private getClient(): ChatCoordinatorOperations {
     if (!this.client) {
-      this.client = new ChatCoordinatorClient({ coordinatorPubkey: this.room.coordinatorPubkey, relayUrls: this.room.relayUrls }, this.signer);
+      this.client = this.createClient(
+        { coordinatorPubkey: this.room.coordinatorPubkey, relayUrls: this.room.relayUrls },
+        this.signer,
+      );
     }
     return this.client;
   }
 
   private currentInviteRequests(requests: RemoteJoinRequest[]): RemoteJoinRequest[] {
-    if (!this.room.inviteToken) return requests;
-    return requests.filter((request) => request.invite_token === this.room.inviteToken);
+    const inFlight = new Set((this.room.pendingWelcomes ?? [])
+      .map((pending) => `${pending.requestPk}:${pending.requestAt}`));
+    return requests.filter((request) => isCurrentInviteRequest(this.room.inviteToken, request)
+      && !inFlight.has(`${request.pk}:${request.at}`));
   }
 
-  private async acceptJoinRequests(client: ChatCoordinatorClient, requests: RemoteJoinRequest[]): Promise<void> {
+  private async acceptJoinRequests(
+    client: ChatCoordinatorOperations,
+    requests: RemoteJoinRequest[],
+  ): Promise<{ accepted: RemoteJoinRequest[]; retryable: RemoteJoinRequest[] }> {
+    const retryable: RemoteJoinRequest[] = [];
     for (const request of requests) {
-      const consumed = await client.consumeKeyPackage(request.kp_ref);
-      if (!consumed) continue;
-      const event = consumed.event as { content?: string };
-      const published = JSON.parse(event.content ?? "{}") as { params?: { arguments?: { kp_64?: string } } };
-      const keyPackageBase64 = published.params?.arguments?.kp_64;
-      if (!keyPackageBase64) continue;
-      const added = await addMember(decodeState(this.room.stateBase64), keyPackageBase64);
-      const posted = await client.postGroupMessage(added.commitBase64);
-      this.room.stateBase64 = encodeState(added.state);
-      this.room.lastCursor = Math.max(this.room.lastCursor, posted.cursor);
-      await client.storeWelcome(consumed.pk, request.kp_ref, added.welcomeBase64, posted.cursor);
+      try {
+        // Prefer the exact package named by this request. A stable Nostr
+        // identity can have packages from several Cordn-compatible clients;
+        // consuming by identity first can produce a valid Welcome for the
+        // wrong device, leaving the requester waiting forever. If that exact
+        // package was rotated or evicted, retain Cordn's identity fallback so
+        // a refreshed last-resort package can still complete admission.
+        const consumed = await client.consumeKeyPackage(request.kp_ref)
+          ?? await client.consumeKeyPackage(request.pk);
+        if (!consumed) {
+          retryable.push(request);
+          continue;
+        }
+        const event = consumed.event as { content?: string };
+        const published = JSON.parse(event.content ?? "{}") as {
+          params?: { arguments?: { kp_64?: string; keyPackageBase64?: string } };
+        };
+        const keyPackageBase64 = published.params?.arguments?.kp_64
+          ?? published.params?.arguments?.keyPackageBase64;
+        if (!keyPackageBase64) {
+          console.warn("Cordn join request contained no published key package", request.pk);
+          continue;
+        }
+        const added = await addMember(decodeState(this.room.stateBase64), keyPackageBase64);
+        const posted = await client.postGroupMessage(this.room.id, added.commitBase64);
+        this.room.stateBase64 = encodeState(added.state);
+        this.room.lastCursor = Math.max(this.room.lastCursor, posted.cursor);
+        this.room.pendingWelcomes = [...(this.room.pendingWelcomes ?? []), {
+          requestPk: request.pk,
+          requestKpRef: request.kp_ref,
+          requestAt: request.at,
+          targetPubkey: consumed.pk,
+          keyPackageRef: consumed.kp_ref,
+          welcomeBase64: added.welcomeBase64,
+          after: posted.cursor,
+        }];
+        // Persist the advanced epoch and its delivery outbox atomically from
+        // the browser's perspective before attempting the network delivery.
+        // A storage failure must not interrupt the canonical post -> Welcome
+        // sequence after the membership commit is already public.
+        try {
+          this.persist();
+        } catch (error) {
+          console.warn("Could not persist Cordn Welcome outbox before delivery", error);
+        }
+      } catch (error) {
+        // A malformed or stale remote request must not take the hosted room
+        // offline. Requests that failed before consumption can be retried.
+        console.warn("Could not admit Cordn join request", request.pk, error);
+        retryable.push(request);
+      }
+    }
+    return { accepted: await this.flushPendingWelcomes(client), retryable };
+  }
+
+  private async flushPendingWelcomes(client: ChatCoordinatorOperations): Promise<RemoteJoinRequest[]> {
+    const accepted: RemoteJoinRequest[] = [];
+    for (const pending of [...(this.room.pendingWelcomes ?? [])]) {
+      try {
+        await client.storeWelcome(
+          pending.targetPubkey,
+          pending.keyPackageRef,
+          pending.welcomeBase64,
+          pending.after,
+        );
+        this.room.pendingWelcomes = (this.room.pendingWelcomes ?? []).filter((entry) => entry !== pending);
+        accepted.push({
+          gid: this.room.id,
+          pk: pending.requestPk,
+          kp_ref: pending.requestKpRef,
+          at: pending.requestAt,
+        });
+        this.persist();
+      } catch (error) {
+        // Keep the durable outbox item. A later room sync will retry it while
+        // the room itself remains online and usable.
+        console.warn("Could not deliver Cordn Welcome; will retry", pending.targetPubkey, error);
+      }
+    }
+    if (accepted.length > 0) {
+      try {
+        await client.fetchJoinRequests(this.room.id, accepted.map(({ pk, at }) => ({ pk, at })));
+      } catch (error) {
+        // Welcome delivery is the admission boundary. Failure to acknowledge
+        // an already-consumed request must not undo it or report a false outage.
+        console.warn("Could not acknowledge admitted Cordn join requests", error);
+      }
+    }
+    return accepted;
+  }
+
+  private recordWaitingGuests(requests: RemoteJoinRequest[]): void {
+    for (const request of requests) {
+      notificationCenter.record({
+        category: "join_request",
+        key: `${this.room.id}:${request.kp_ref}`,
+        room: this.room.title,
+        action: "waiting",
+      });
     }
   }
 
-  private async acceptWelcome(client: ChatCoordinatorClient): Promise<void> {
-    const welcome = (await client.fetchWelcomes()).find((entry) => entry.kp_ref === this.room.keyPackage.reference);
-    if (!welcome) return;
-    const state = await joinWelcome(welcome.welcome_64, this.room.keyPackage);
-    if (groupId(state) !== this.room.id) {
-      throw new Error("The coordinator welcome does not match this room");
+  private recordJoinedGuests(requests: RemoteJoinRequest[]): void {
+    for (const request of requests) {
+      notificationCenter.record({
+        category: "join_request",
+        key: `${this.room.id}:${request.kp_ref}`,
+        room: this.room.title,
+        action: "joined",
+      });
     }
-    this.room.host = reconcileRoomHostIdentity(this.room.host, groupCreatorPubkey(state));
-    this.room.stateBase64 = encodeState(state);
-    this.room.lastCursor = welcome.after ?? 0;
-    this.room.joinRequestSent = false;
   }
 
-  private async flushPending(client: ChatCoordinatorClient): Promise<void> {
+  private async acceptWelcome(client: ChatCoordinatorOperations): Promise<void> {
+    const welcomes = (await client.fetchWelcomes())
+      .filter((entry) => entry.kp_ref === this.room.keyPackage.reference);
+    for (const welcome of welcomes) {
+      try {
+        const state = await joinWelcome(welcome.welcome_64, this.room.keyPackage);
+        // One canonical last-resort KeyPackage can have pending Welcomes for
+        // several rooms. Leave non-matching Welcomes queued for their room.
+        if (groupId(state) !== this.room.id) continue;
+        this.room.host = reconcileRoomHostIdentity(this.room.host, groupCreatorPubkey(state));
+        this.room.stateBase64 = encodeState(state);
+        this.room.lastCursor = welcome.after ?? 0;
+        this.room.joinRequestSent = false;
+        await client.fetchWelcomes([{ kp_ref: welcome.kp_ref, at: welcome.at }]);
+        return;
+      } catch {
+        // The Welcome may belong to a different room sharing this reusable
+        // KeyPackage. A matching Welcome later in the queue can still succeed.
+      }
+    }
+  }
+
+  /**
+   * Rooms saved before canonical Cordn interoperability used a one-time MLS
+   * KeyPackage. Cordn resolves admission by stable identity and expects a
+   * reusable last-resort package, so repair those pending rooms in place on
+   * their next retry. Commit the replacement locally only after both remote
+   * publications succeed; a transient failure can then safely retry.
+   */
+  private async upgradeLegacyJoinRequest(client: ChatCoordinatorOperations): Promise<void> {
+    if (this.room.isHost || !this.room.joinRequestSent || this.room.keyPackage.lastResort === true) return;
+    const reusable = storedRoomEntries()
+      .map(({ room }) => room)
+      .find((room) => room !== this.room
+        && room.coordinatorPubkey === this.room.coordinatorPubkey
+        && room.stablePubkey === this.room.stablePubkey
+        && room.keyPackage.lastResort === true)
+      ?.keyPackage;
+    const keyPackage = reusable ?? (await createKeyPackage(this.room.stablePubkey, { lastResort: true })).stored;
+    await client.publishKeyPackage(keyPackage.reference, keyPackage.publicBase64);
+    await client.storeJoinRequest(this.room.id, keyPackage.reference, this.room.inviteToken);
+    this.room.keyPackage = keyPackage;
+    this.persist();
+  }
+
+  private async flushPending(client: ChatCoordinatorOperations): Promise<void> {
     for (const pending of [...this.room.pending]) {
-      const posted = await client.postGroupMessage(pending.opaqueBase64);
+      const posted = await client.postGroupMessage(this.room.id, pending.opaqueBase64);
       this.room.lastCursor = Math.max(this.room.lastCursor, posted.cursor);
       this.room.messages = this.room.messages.map((message) => message.id === pending.id ? { ...message, cursor: posted.cursor, pending: false } : message);
       this.room.reactions = (this.room.reactions ?? []).map((reaction) => reaction.id === pending.id ? { ...reaction, cursor: posted.cursor } : reaction);
@@ -543,7 +763,7 @@ export class ChatRoomSession {
     }
   }
 
-  private async pullMessages(client: ChatCoordinatorClient): Promise<void> {
+  private async pullMessages(client: ChatCoordinatorOperations): Promise<void> {
     const messages = await client.fetchMessages(this.room.id, this.room.lastCursor);
     let state = decodeState(this.room.stateBase64);
     const shouldNotify = this.hasCompletedInitialMessageSync;
@@ -639,13 +859,17 @@ export class ChatRoomSession {
 export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; signer: NostrSigner; identityOwner: RoomIdentityOwner; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity; coordinatorKeyMode?: CoordinatorKeyMode }): Promise<StoredRoom> {
   const stablePubkey = await input.signer.getPublicKey();
   const key = await createKeyPackage(stablePubkey);
-  const state = await createRoomState(key.keyPackage, key.privateKeyPackage);
+  const title = input.title.trim() || "Untitled chat";
+  const state = await createRoomState(key.keyPackage, key.privateKeyPackage, {
+    name: title,
+    adminPubkeys: [stablePubkey],
+  });
   const name = input.identity?.name.trim() || "Host";
   const avatar = input.identity?.avatar?.trim() || undefined;
   const room: StoredRoom = {
     version: 1,
     id: groupId(state),
-    title: input.title.trim() || "Untitled chat",
+    title,
     coordinatorPubkey: input.coordinatorPubkey,
     coordinatorOrigin: input.coordinatorOrigin ?? window.location.origin,
     relayUrls: input.relayUrls,
@@ -674,7 +898,13 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
 
 export async function createJoiningRoom(input: { invite: ChatInvite; name: string; signer: NostrSigner; identityOwner: RoomIdentityOwner; avatar?: string }): Promise<StoredRoom> {
   const stablePubkey = await input.signer.getPublicKey();
-  const key = await createKeyPackage(stablePubkey);
+  const reusable = storedRoomEntries()
+    .map(({ room }) => room)
+    .find((room) => room.coordinatorPubkey === input.invite.coordinatorPubkey
+      && room.stablePubkey === stablePubkey
+      && room.keyPackage.lastResort === true);
+  const keyPackage = reusable?.keyPackage
+    ?? (await createKeyPackage(stablePubkey, { lastResort: true })).stored;
   const room: StoredRoom = {
     version: 1,
     id: input.invite.groupId,
@@ -688,7 +918,7 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
     identityOwner: input.identityOwner,
     isHost: false,
     stateBase64: "",
-    keyPackage: key.stored,
+    keyPackage,
     lastCursor: 0,
     messages: [],
     pending: [],
@@ -701,8 +931,8 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
   };
   const client = new ChatCoordinatorClient({ coordinatorPubkey: room.coordinatorPubkey, relayUrls: room.relayUrls }, input.signer);
   try {
-    await client.publishKeyPackage(key.stored.reference, key.stored.publicBase64);
-    await client.storeJoinRequest(room.id, key.stored.reference, room.inviteToken);
+    await client.publishKeyPackage(keyPackage.reference, keyPackage.publicBase64);
+    await client.storeJoinRequest(room.id, keyPackage.reference, room.inviteToken);
   } finally {
     await client.close();
   }
@@ -1078,6 +1308,21 @@ export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubke
   }));
 }
 
+/** Remove every local room owned by a coordinator whose durable identity is being destroyed. */
+export function removeHostedRoomsForCoordinator(coordinatorPubkey: string): void {
+  const normalizedCoordinatorPubkey = coordinatorPubkey.trim().toLowerCase();
+  if (!normalizedCoordinatorPubkey) return;
+
+  const targets = new Map<string, Pick<StoredRoom, "id" | "coordinatorPubkey">>();
+  for (const { room } of storedRoomEntries()) {
+    if (!room.isHost || room.coordinatorPubkey.trim().toLowerCase() !== normalizedCoordinatorPubkey) continue;
+    targets.set(roomIdentityKey(room.coordinatorPubkey, room.id), room);
+  }
+
+  for (const room of targets.values()) removeStoredRoom(room);
+  forgetLastOpenRoom(coordinatorPubkey);
+}
+
 /** Return the validated exact-room unread count, never a coerced persisted value. */
 export function roomUnreadCount(room: Pick<StoredRoom, "readState">): number {
   return isRoomReadState(room.readState) && room.readState.baselineEstablished ? room.readState.unreadCount : 0;
@@ -1149,6 +1394,10 @@ function readStoredRoom(raw: string | null): StoredRoom | null {
       || !Array.isArray(room.pending)
       || !room.pending.every(isPendingMessage)) return null;
     const stored = room as unknown as StoredRoom;
+    if (!Array.isArray(stored.pendingWelcomes)
+      || !stored.pendingWelcomes.every(isPendingWelcomeDelivery)) {
+      delete stored.pendingWelcomes;
+    }
     if (!isRoomReadState(stored.readState)) delete stored.readState;
     if (stored.membershipStatus !== "active" && stored.membershipStatus !== "retired") {
       delete stored.membershipStatus;
@@ -1189,6 +1438,19 @@ function readStoredRoom(raw: string | null): StoredRoom | null {
   } catch {
     return null;
   }
+}
+
+function isPendingWelcomeDelivery(value: unknown): value is PendingWelcomeDelivery {
+  return isRecord(value)
+    && typeof value.requestPk === "string"
+    && typeof value.requestKpRef === "string"
+    && typeof value.requestAt === "number"
+    && Number.isFinite(value.requestAt)
+    && typeof value.targetPubkey === "string"
+    && typeof value.keyPackageRef === "string"
+    && typeof value.welcomeBase64 === "string"
+    && typeof value.after === "number"
+    && Number.isFinite(value.after);
 }
 
 function isRoomReadState(value: unknown): value is RoomReadState {

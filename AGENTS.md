@@ -62,6 +62,14 @@ git diff --check
 
 When a command cannot run because an external service, credential, or browser capability is unavailable, document the exact blocker and retain all locally provable evidence. Do not claim completion for an unproven requirement.
 
+## Cordn Interoperability Guardrails
+
+For changes to `src/cordn/`, the coordinator methods/contracts, or chat admission and wire-protocol paths:
+
+- Run `pnpm check:upstream` to detect live Cordn method and schema drift.
+- Run `pnpm test:upstream-interop` to execute the pinned upstream `CliSession` against CAHMLS's real ContextVM/Nostr transport. The gate must prove join-request admission, a CAHMLS-to-Cordn direct invitation, a Cordn-to-CAHMLS direct invitation, and encrypted messages in both directions for every membership path.
+- Keep the browser invite tests for CAHMLS-created and externally shaped canonical links. Do not treat tests that use CAHMLS client code on both sides as sufficient cross-client proof.
+
 ## Completion Standard
 
 A phase is complete only when its requirements are implemented, automated checks pass, verifier evidence exists, and any required human/visual checks are resolved. A milestone is complete only after a requirement-by-requirement audit passes and the requested pull request is open on the remote.

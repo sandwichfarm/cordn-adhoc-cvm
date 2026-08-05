@@ -461,7 +461,7 @@ function summarizeOne(event: CordnNotificationEvent): NotificationCopy {
   if (event.category === "user_online") return { title: `${actor} is online`, body: "Available on Cordn." };
   if (event.category === "new_message") return { title: room ? `New message in #${room}` : "New message", body: `From ${actor}.` };
   if (event.category === "room_invite") return { title: "New room invite", body: room ? `${actor} invited you to ${room}.` : `From ${actor}.` };
-  if (event.action === "joined") return { title: room ? `Guest joined #${room}` : "A guest joined", body: "Admitted automatically." };
+  if (event.action === "joined") return { title: room ? `Guest admitted to #${room}` : "A guest was admitted", body: "Welcome delivered; connection may still be in progress." };
   return { title: "Guest waiting to join", body: room ? `Review #${room}.` : "Open Cordn to review access." };
 }
 

@@ -46,7 +46,7 @@
 ### Conversation Presentation & Reactions
 
 - [ ] **REACT-01**: Each message or message group exposes a compact reaction-add affordance that overlaps the bubble border and opens an inline emoji picker.
-- [ ] **REACT-02**: Reactions are aggregated by emoji across all participants, show total counts, and let the current participant toggle their own reaction without duplicating counts.
+- [ ] **REACT-02**: Reactions are aggregated by emoji across all participants, show total counts, and let the current participant toggle their own reaction on messages authored by other participants without duplicating counts; participants cannot react to their own messages.
 - [ ] **CHAT-01**: Consecutive messages from the same sender are rendered as one sender group with the avatar and display name shown once and individual message bubbles beneath it.
 - [ ] **CHAT-02**: Every message keeps its timestamp and relevant metadata visible in a smaller, lower-contrast treatment without repeating sender chrome.
 
@@ -54,6 +54,16 @@
 
 - [ ] **DOC-01**: Root `AGENTS.md` documents the repository's desired GSD-centered SDLC, including requirements, planning, plan checking, execution, verification, gap closure, review, and shipping expectations.
 - [ ] **TEST-01**: Unit and Playwright coverage proves identity persistence/rotation, exact room leave targeting, unread badges, startup recovery, notification behavior, shell control placement, grouped messages, and aggregated reactions.
+- [ ] **INTEROP-01**: Every room exposes one current-origin invite link whose group id, coordinator nprofile/relay hints, and Cordn `name` metadata can be consumed by both CAHMLS and canonical cordn.net clients; a canonical client can then complete MLS admission without a CAHMLS-only invite extension.
+
+### First-Run Coordinator Identity & Profile
+
+- [ ] **SETUP-01**: Before the first coordinator start, an operator chooses either an existing supported Nostr sign-in method or the durable anonymous identity, with anonymous operation remaining fully supported.
+- [ ] **SETUP-02**: After choosing identity, the operator must provide a non-empty normalized coordinator name; an authenticated profile name is used as an editable prefill when available and anonymous setup provides a sensible editable default.
+- [ ] **SETUP-03**: Setup completion and coordinator name persist across ordinary restarts, while existing installations with a meaningful configured name migrate without unnecessary onboarding.
+- [ ] **SETUP-04**: The operator can edit the coordinator name later through settings and a changed name is republished without replacing either the operator identity or coordinator transport identity.
+- [ ] **PROFILE-01**: CAHMLS publishes the selected coordinator name in the coordinator-key-signed kind-0 profile and the ContextVM kind-11316 announcement `name` tag through configured shareable relays, and exposes that same name through MCP initialize so invitees see it as the coordinator name instead of an `npub` fallback.
+- [ ] **PROFILE-02**: Coordinator profile updates preserve existing metadata where possible, surface actionable retry state on publication failure, and never corrupt or prevent an otherwise valid coordinator runtime.
 
 ## Future Requirements
 
@@ -105,13 +115,20 @@
 | CHAT-02 | Phase 19 | Pending |
 | DOC-01 | Phase 20 | Pending |
 | TEST-01 | Phase 20 | Pending |
+| INTEROP-01 | Phase 20 | Pending |
+| SETUP-01 | Phase 21 | Pending |
+| SETUP-02 | Phase 21 | Pending |
+| SETUP-03 | Phase 21 | Pending |
+| SETUP-04 | Phase 21 | Pending |
+| PROFILE-01 | Phase 21 | Pending |
+| PROFILE-02 | Phase 21 | Pending |
 
 **Coverage:**
 
-- v1.1 requirements: 26 total
-- Mapped to phases: 26
+- v1.1 requirements: 33 total
+- Mapped to phases: 33
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-02*
-*Last updated: 2026-08-02 after milestone scope confirmation from the user's annotated screenshots*
+*Last updated: 2026-08-05 after first-run coordinator identity and profile scope confirmation*

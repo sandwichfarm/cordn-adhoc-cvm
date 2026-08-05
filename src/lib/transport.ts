@@ -37,6 +37,10 @@ export interface TransportDiagnostics {
   onClosed?: () => void;
 }
 
+type LegacyBrowserCoordinatorOptions = Omit<BrowserCoordinatorOptions, "coordinatorName"> & {
+  coordinatorName?: string;
+};
+
 interface InspectableNostrServerTransport {
   processIncomingEvent: (event: NostrEvent) => Promise<void>;
   getInternalStateForTesting: () => {
@@ -54,7 +58,7 @@ function closeIfPresent(value: unknown): void {
   }
 }
 
-function createBrowserAbuseProtection(options: BrowserCoordinatorOptions): AbuseProtectionOptions {
+function createBrowserAbuseProtection(options: Pick<BrowserCoordinatorOptions, "maxUsers">): AbuseProtectionOptions {
   return {
     rateLimit: {
       enabled: true,
@@ -77,6 +81,20 @@ export class TransportFactory {
     options: BrowserCoordinatorOptions,
     persistent: boolean,
     diagnostics?: TransportDiagnostics,
+  ): Promise<RunningTransport>;
+  async create(
+    privateKey: Uint8Array,
+    relayUrls: string[],
+    options: LegacyBrowserCoordinatorOptions,
+    persistent: boolean,
+    diagnostics?: TransportDiagnostics,
+  ): Promise<RunningTransport>;
+  async create(
+    privateKey: Uint8Array,
+    relayUrls: string[],
+    options: LegacyBrowserCoordinatorOptions,
+    persistent: boolean,
+    diagnostics?: TransportDiagnostics,
   ): Promise<RunningTransport> {
     const websocketPool = withRequiredLocalRelay(relayUrls);
     if (websocketPool.length === 0) {
@@ -85,8 +103,9 @@ export class TransportFactory {
 
     const signer = new BrowserNostrSigner(privateKey);
     const coordinatorPubkey = await signer.getPublicKey();
+    const coordinatorName = options.coordinatorName ?? "cordn-browser";
     const server = new McpServer({
-      name: "cordn-browser",
+      name: coordinatorName,
       version: "0.1.0",
     });
     diagnostics?.onStartupPhase?.({ phase: "opening-storage" });
@@ -101,7 +120,7 @@ export class TransportFactory {
       signer,
       relayHandler,
       serverInfo: {
-        name: "cordn-browser",
+        name: coordinatorName,
         about: `Cordn coordinator running in a browser tab; key package quota ${options.maxUsers} per identity`,
       },
       isAnnouncedServer: options.announce,

@@ -16,7 +16,7 @@ cleanup() {
 trap cleanup EXIT
 
 git clone --depth=1 --filter=blob:none --sparse --branch "$upstream_ref" "$upstream_url" "$workdir" >/dev/null
-git -C "$workdir" sparse-checkout set src/server src/contracts >/dev/null
+git -C "$workdir" sparse-checkout set packages/server/src packages/core/src >/dev/null
 upstream_commit="$(git -C "$workdir" rev-parse HEAD)"
 
 node --input-type=module - "$workdir" "$upstream_commit" <<'NODE'
@@ -25,40 +25,57 @@ import { relative } from "node:path";
 
 const upstreamDir = process.argv[2];
 const upstreamCommit = process.argv[3];
-const upstreamSource = readFileSync(`${upstreamDir}/src/server/coordinatorMethods.ts`, "utf8");
+const upstreamContracts = readFileSync(`${upstreamDir}/packages/core/src/contracts.ts`, "utf8");
 const browserContracts = readFileSync("src/cordn/contracts/index.ts", "utf8");
 
-const upstreamKeys = [
-  ...new Set(
-    [...upstreamSource.matchAll(/COORDINATOR_METHODS\.([A-Za-z0-9_]+)/g)]
-      .map((match) => match[1])
-      .filter(Boolean),
-  ),
-].sort();
-
-const browserMethodsObject = browserContracts.match(
-  /export const COORDINATOR_METHODS = \{([\s\S]*?)\} as const;/,
-)?.[1];
-
-if (!browserMethodsObject) {
-  throw new Error("Could not find browser COORDINATOR_METHODS export");
+function methodMap(source, label) {
+  const body = source.match(
+    /export const COORDINATOR_METHODS = \{([\s\S]*?)\} as const;/,
+  )?.[1];
+  if (!body) throw new Error(`Could not find ${label} COORDINATOR_METHODS export`);
+  return new Map(
+    [...body.matchAll(/\s*([A-Za-z0-9_]+):\s*"([^"]+)"/g)]
+      .map((match) => [match[1], match[2]]),
+  );
 }
 
-const browserKeys = [...browserMethodsObject.matchAll(/\s*([A-Za-z0-9_]+):\s*"[^"]+"/g)]
-  .map((match) => match[1])
-  .filter(Boolean)
-  .sort();
+function schemaKeys(source, name, label) {
+  const body = source.match(
+    new RegExp(`export const ${name} = z\\.object\\(\\{([\\s\\S]*?)\\n\\}\\);`),
+  )?.[1];
+  if (body === undefined) throw new Error(`Could not find ${label} ${name}`);
+  return [...body.matchAll(/^\s*([A-Za-z0-9_]+):/gm)].map((match) => match[1]);
+}
 
-const missingInBrowser = upstreamKeys.filter((key) => !browserKeys.includes(key));
-const extraInBrowser = browserKeys.filter((key) => !upstreamKeys.includes(key));
+const upstreamMethods = methodMap(upstreamContracts, "upstream");
+const browserMethods = methodMap(browserContracts, "browser");
+const missingOrChangedMethods = [...upstreamMethods].flatMap(([key, value]) =>
+  browserMethods.get(key) === value ? [] : [{ key, expected: value, actual: browserMethods.get(key) }],
+);
 
-if (missingInBrowser.length > 0 || extraInBrowser.length > 0) {
-  process.stderr.write("Cordn server method parity failed\n");
-  process.stderr.write(`${JSON.stringify({ missingInBrowser, extraInBrowser }, null, 2)}\n`);
+const canonicalSchemas = [
+  "fetchPendingWelcomesInputSchema",
+  "storeJoinRequestInputSchema",
+  "fetchManyPendingJoinRequestsInputSchema",
+  "postGroupMessageInputSchema",
+  "fetchGroupMessagesInputSchema",
+  "fetchManyGroupMessagesInputSchema",
+  "subscribeManyGroupMessagesInputSchema",
+];
+const schemaDrift = canonicalSchemas.flatMap((name) => {
+  const upstreamKeys = schemaKeys(upstreamContracts, name, "upstream");
+  const browserKeys = schemaKeys(browserContracts, name, "browser");
+  const missing = upstreamKeys.filter((key) => !browserKeys.includes(key));
+  return missing.length > 0 ? [{ name, missing }] : [];
+});
+
+if (missingOrChangedMethods.length > 0 || schemaDrift.length > 0) {
+  process.stderr.write("Cordn canonical contract parity failed\n");
+  process.stderr.write(`${JSON.stringify({ missingOrChangedMethods, schemaDrift }, null, 2)}\n`);
   process.exit(1);
 }
 
 process.stdout.write(
-  `Cordn server method parity passed: ${browserKeys.length} methods match ${upstreamCommit} at ${relative(process.cwd(), upstreamDir)}\n`,
+  `Cordn canonical contract parity passed: ${upstreamMethods.size} methods and ${canonicalSchemas.length} schemas match ${upstreamCommit} at ${relative(process.cwd(), upstreamDir)}\n`,
 );
 NODE

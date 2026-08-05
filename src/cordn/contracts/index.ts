@@ -84,7 +84,24 @@ export const pendingWelcomeSchema = z.object({
   after: z.number().int().positive().optional(),
 });
 
-export const fetchPendingWelcomesInputSchema = emptyInputSchema;
+export const consumedWelcomeRefSchema = z.object({
+  kp_ref: z.string().min(1),
+  at: z.number().int(),
+});
+
+export const consumedJoinRequestRefSchema = z.object({
+  pk: z.string().min(1),
+  at: z.number().int(),
+});
+
+export const consumedJoinRequestWithGroupRefSchema =
+  consumedJoinRequestRefSchema.extend({
+    gid: z.string().min(1),
+  });
+
+export const fetchPendingWelcomesInputSchema = z.object({
+  consumed: z.array(consumedWelcomeRefSchema).optional(),
+});
 
 export const fetchPendingWelcomesOutputSchema = z.object({
   welcomes: z.array(pendingWelcomeSchema),
@@ -134,6 +151,7 @@ export const fetchManyPendingJoinRequestsGroupInputSchema = z.object({
 
 export const fetchManyPendingJoinRequestsInputSchema = z.object({
   groups: z.array(fetchManyPendingJoinRequestsGroupInputSchema).min(1),
+  consumed: z.array(consumedJoinRequestWithGroupRefSchema).optional(),
 });
 
 export const joinRequestWithGroupSchema = joinRequestSchema.extend({
@@ -146,6 +164,7 @@ export const fetchManyPendingJoinRequestsOutputSchema = z.object({
 
 export const postGroupMessageInputSchema = z.object({
   msg_64: z.string().min(1),
+  gid: z.string().min(1),
 });
 
 export const postGroupMessageOutputSchema = z.object({

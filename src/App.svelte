@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import HostWorkspace from "./components/HostWorkspace.svelte";
+  import PassphrasePrompt from "./components/PassphrasePrompt.svelte";
   import { configStore } from "./config/config.svelte";
   import { coordinatorStore } from "./coordinator/coordinator.svelte";
   import { userProfileStore } from "./identity/user-profile.svelte";
@@ -15,6 +16,8 @@
   const rootUrl = new URL("/", shellOrigin).href;
   const initialIntent = initialWorkspaceIntent(window.location.href, window.history.state, shellOrigin);
   let currentUrl = $state(initialIntent ?? rootUrl);
+  let lockedWorkspaceOpen = $state(initialIntent !== null);
+  const hasWorkspaceIntent = $derived(currentUrl !== rootUrl);
   const homeCoordinatorPubkey = $derived(
     coordinatorStore.loadState === "ready" ? coordinatorStore.identity.publicKeyHex : undefined,
   );
@@ -66,17 +69,24 @@
   });
 </script>
 
-{#key coordinatorStore.loadState}
-  <HostWorkspace
+{#if coordinatorStore.loadState === "prompting" && !lockedWorkspaceOpen && !hasWorkspaceIntent}
+  <PassphrasePrompt
     coordinator={coordinatorStore}
-    config={configStore}
-    identity={coordinatorStore.loadState === "ready" ? coordinatorStore.identity : emptyIdentity}
-    coordinatorPubkey={homeCoordinatorPubkey ?? ""}
-    relayUrls={configStore.enabledRelayUrls}
-    {currentUrl}
-    {homeCoordinatorPubkey}
-    {identityReady}
-    locked={coordinatorStore.loadState === "prompting"}
-    onNavigate={navigate}
+    onOpenChats={() => lockedWorkspaceOpen = true}
   />
-{/key}
+{:else}
+  {#key coordinatorStore.loadState}
+    <HostWorkspace
+      coordinator={coordinatorStore}
+      config={configStore}
+      identity={coordinatorStore.loadState === "ready" ? coordinatorStore.identity : emptyIdentity}
+      coordinatorPubkey={homeCoordinatorPubkey ?? ""}
+      relayUrls={configStore.inviteRelayUrls}
+      {currentUrl}
+      {homeCoordinatorPubkey}
+      {identityReady}
+      locked={coordinatorStore.loadState === "prompting"}
+      onNavigate={navigate}
+    />
+  {/key}
+{/if}

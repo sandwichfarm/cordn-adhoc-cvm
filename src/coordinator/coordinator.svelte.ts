@@ -11,8 +11,21 @@ import {
   type CoordinatorKeyBackup,
 } from "../crypto/key-storage";
 import { transportFactory, type RunningTransport, type TransportDiagnostics } from "../lib/transport";
+import { removeHostedRoomsForCoordinator } from "../chat/room-store";
+import {
+  CHAT_COORDINATOR_CONNECT_TIMEOUT_MS,
+  CHAT_COORDINATOR_REQUEST_TIMEOUT_MS,
+  type ChatCoordinatorOperations,
+  type CoordinatorTarget,
+} from "../chat/coordinator-client";
+import { LocalHostCoordinatorClient } from "../chat/local-coordinator-client";
 import { resourceMonitor } from "./resource-monitor.svelte";
 import {
+  publishCoordinatorProfile,
+  type CoordinatorProfilePublisherInput,
+} from "./coordinator-profile";
+import {
+  clearCoordinatorInstanceRecords,
   INSTANCE_RUNNING_MESSAGE,
   SingleInstanceGuard,
   type InstanceLease,
@@ -42,7 +55,14 @@ export interface DebugLogEntry {
 
 export const ROOM_RECOVERY_POLICY = {
   maxAttempts: 3,
-  attemptTimeoutMs: 4_000,
+  // Probe quickly first, then allow one complete Nostr connection-plus-request
+  // window. Real relays commonly exceed the in-process test relay's latency,
+  // while an unreachable room should still fail in bounded time.
+  attemptTimeoutMs: [
+    4_000,
+    CHAT_COORDINATOR_CONNECT_TIMEOUT_MS,
+    CHAT_COORDINATOR_CONNECT_TIMEOUT_MS + CHAT_COORDINATOR_REQUEST_TIMEOUT_MS + 6_000,
+  ] as const,
   retryDelayMs: [250, 750] as const,
 } as const;
 
@@ -60,6 +80,14 @@ export interface CoordinatorStoreRuntime {
   stopResourceMonitor(): void;
   wait(milliseconds: number, signal: AbortSignal): Promise<void>;
   runAttempt(operation: (signal: AbortSignal) => Promise<void>, timeoutMs: number, signal: AbortSignal): Promise<void>;
+  profilePublisher(input: CoordinatorProfilePublisherInput): Promise<unknown>;
+}
+
+export type CoordinatorProfilePublicationState = "idle" | "publishing" | "published" | "failed";
+
+export interface CoordinatorProfilePublicationResult {
+  localSaved: boolean;
+  published: boolean;
 }
 
 function abortError(): DOMException {
@@ -116,6 +144,9 @@ export const defaultCoordinatorStoreRuntime: CoordinatorStoreRuntime = {
       if (timer !== null) window.clearTimeout(timer);
       signal.removeEventListener("abort", abort);
     }
+  },
+  profilePublisher(input) {
+    return publishCoordinatorProfile(input);
   },
 };
 
@@ -205,6 +236,7 @@ export class CoordinatorStore {
   persistenceEnabled = $state(false);
   relayStatuses = $state<Record<string, RelayConnectionStatus>>({});
   debugLog = $state<DebugLogEntry[]>([]);
+  profilePublicationState = $state<CoordinatorProfilePublicationState>("idle");
   startupProgress = $state<CoordinatorStartupProgress>(startupProgress("idle"));
   appliedConfigRevision = $state<number | null>(null);
   private running: RunningTransport | null = null;
@@ -216,6 +248,7 @@ export class CoordinatorStore {
   private startupGeneration = 0;
   private startupController: AbortController | null = null;
   private startupPromise: Promise<void> | null = null;
+  private profilePublicationPromise: Promise<CoordinatorProfilePublicationResult> | null = null;
   private readonly runtime: CoordinatorStoreRuntime;
 
   constructor(runtime: CoordinatorStoreRuntime = defaultCoordinatorStoreRuntime) {
@@ -246,6 +279,17 @@ export class CoordinatorStore {
   get exhaustedRoomRecoveryTarget(): HostedRoomRecoveryTarget | null {
     if (this.startupProgress.roomRecovery.state !== "exhausted") return null;
     return this.recoveryTargets.find((target) => !this.recoveryCompleted.has(target.roomIdentityKey)) ?? null;
+  }
+
+  /**
+   * Return the in-process room client only for this running coordinator.
+   * Remote rooms intentionally fall back to the public Nostr transport.
+   */
+  createHostedRoomClient(target: CoordinatorTarget): ChatCoordinatorOperations | null {
+    if (!this.running || target.coordinatorPubkey.toLowerCase() !== this.identity.publicKeyHex.toLowerCase()) {
+      return null;
+    }
+    return new LocalHostCoordinatorClient(this.running.coordinator);
   }
 
   async loadFromPassphrase(passphrase: string): Promise<void> {
@@ -350,8 +394,54 @@ export class CoordinatorStore {
     };
   }
 
+  completeSetupAndPublish(name: unknown): Promise<CoordinatorProfilePublicationResult> {
+    if (!configStore.completeSetup(name)) return Promise.resolve({ localSaved: false, published: false });
+    return this.publishPersistedCoordinatorProfile();
+  }
+
+  saveCoordinatorNameAndPublish(name: unknown): Promise<CoordinatorProfilePublicationResult> {
+    if (!configStore.setCoordinatorName(name)) return Promise.resolve({ localSaved: false, published: false });
+    return this.publishPersistedCoordinatorProfile();
+  }
+
+  retryCoordinatorProfilePublication(): Promise<CoordinatorProfilePublicationResult> {
+    if (!configStore.isSetupComplete) return Promise.resolve({ localSaved: false, published: false });
+    return this.publishPersistedCoordinatorProfile();
+  }
+
+  private publishPersistedCoordinatorProfile(): Promise<CoordinatorProfilePublicationResult> {
+    if (this.profilePublicationPromise) return this.profilePublicationPromise;
+
+    const keyManager = this.requireKeyManager();
+    this.profilePublicationState = "publishing";
+    const transaction = Promise.resolve()
+      .then(() => this.runtime.profilePublisher({
+        name: configStore.coordinatorName,
+        coordinatorPubkey: keyManager.identity.publicKeyHex,
+        getSecretKeyBytes: () => keyManager.getSecretKeyBytes(),
+        relayUrls: configStore.inviteRelayUrls,
+      }))
+      .then(() => {
+        this.profilePublicationState = "published";
+        return { localSaved: true, published: true };
+      })
+      .catch(() => {
+        this.profilePublicationState = "failed";
+        this.addDebugLog("warn", "coordinator profile publication failed");
+        return { localSaved: true, published: false };
+      })
+      .finally(() => {
+        if (this.profilePublicationPromise === transaction) this.profilePublicationPromise = null;
+      });
+    this.profilePublicationPromise = transaction;
+    return transaction;
+  }
+
   async start(): Promise<void> {
     if (this.startupPromise) return this.startupPromise;
+    if (!configStore.isSetupComplete) {
+      throw new Error("Complete coordinator setup before starting.");
+    }
     const generation = ++this.startupGeneration;
     const controller = new AbortController();
     this.startupController = controller;
@@ -576,7 +666,7 @@ export class CoordinatorStore {
         try {
           await this.runtime.runAttempt(
             (attemptSignal) => adapter.recover(target, attemptSignal),
-            ROOM_RECOVERY_POLICY.attemptTimeoutMs,
+            ROOM_RECOVERY_POLICY.attemptTimeoutMs[attempt - 1]!,
             signal,
           );
           if (!this.ownsGeneration(generation, signal)) {
@@ -587,7 +677,13 @@ export class CoordinatorStore {
           this.setRoomRecoveryProgress("restoring", this.recoveryCompleted.size, total, target.roomName, attempt);
           succeeded = true;
           break;
-        } catch {
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          this.addDebugLog(
+            "warn",
+            "hosted room recovery attempt failed",
+            `# ${target.roomName} attempt ${attempt}/${ROOM_RECOVERY_POLICY.maxAttempts}: ${details}`,
+          );
           await adapter.discard?.(target);
           if (!this.ownsGeneration(generation, signal)) {
             return false;
@@ -667,18 +763,22 @@ export class CoordinatorStore {
   }
 
   async destroy(): Promise<void> {
+    const destroyedCoordinatorPubkey = this.identity.publicKeyHex;
     if (this.status === "running") {
       await this.stop();
+    } else {
+      await this.stopSync();
     }
 
+    removeHostedRoomsForCoordinator(destroyedCoordinatorPubkey);
     this.destroyStateSynchronously();
     await clearPersistedCoordinatorState();
     await this.clearBrowserCaches();
+    clearCoordinatorInstanceRecords(destroyedCoordinatorPubkey);
   }
 
   private destroyStateSynchronously(): void {
     this.runtime.stopResourceMonitor();
-    void this.releaseInstanceLease();
     this.keyManager?.destroy();
     keyStorage.clear();
     this.keyManager = KeyManager.generate();

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./established-installation-fixture";
 import { finalizeEvent, generateSecretKey, getPublicKey, nip19, nip44 } from "nostr-tools";
 
 import { startMockRelay, type MockRelay } from "./mock-relay";
@@ -142,6 +142,14 @@ async function openCoordinatorSettings(page: Page): Promise<Locator> {
   const topbar = page.locator(".host-topbar");
   const settingsTrigger = topbar.getByRole("button", { name: "Settings", exact: true });
   if (!(await settingsTrigger.isVisible())) {
+    const guidedSettingsTrigger = page.getByRole("button", { name: "Review settings", exact: true });
+    if (await guidedSettingsTrigger.isVisible()) {
+      await guidedSettingsTrigger.click();
+      const settings = page.getByTestId("coordinator-settings");
+      await expect(settings).toBeVisible();
+      await settings.getByRole("button", { name: "Edit settings" }).click();
+      return settings;
+    }
     const toolsTrigger = topbar.getByRole("button", { name: "Open host tools" });
     if (await toolsTrigger.isVisible()) await toolsTrigger.click();
   }
@@ -318,7 +326,8 @@ test("restores NIP-07 before a legacy invite is consumed in the unified root she
   await host.goto("/");
   await configureMockRelay(host);
   await host.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(host.getByTestId("status-badge")).toHaveText("running");
+  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible();
+  await expect(host.getByTestId("status-badge")).toBeHidden();
   const roomTitle = "NIP-07 restored signer room";
   const invite = await createRoom(host, roomTitle);
 

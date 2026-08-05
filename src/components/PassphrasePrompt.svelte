@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { listRooms } from "../chat/room-store";
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
 
   interface Props {
     coordinator: CoordinatorStore;
     embedded?: boolean;
+    onOpenChats?: () => void;
   }
 
-  let { coordinator, embedded = false }: Props = $props();
+  let { coordinator, embedded = false, onOpenChats }: Props = $props();
   let passphrase = $state("");
+  const hasJoinedChats = listRooms().some((room) => !room.isHost);
 </script>
 
 <section class:embedded class="operator-field unlock-page" data-testid="coordinator-unlock">
@@ -24,6 +27,15 @@
           {#if coordinator.passphraseError}<p class="unlock-error" data-testid="passphrase-error">{coordinator.passphraseError}</p>{/if}
           <button class="unlock-primary" type="submit">Unlock coordinator</button>
         </form>
+        {#if hasJoinedChats && onOpenChats}
+          <button class="chat-escape" data-testid="open-chats" type="button" onclick={onOpenChats}>
+            <span>
+              <strong>Open chats</strong>
+              <small>Keep this coordinator locked and offline</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </button>
+        {/if}
         <details class="reset-key">
           <summary>Coordinator recovery</summary>
           <p>Create a new coordinator identity only if this key is no longer needed. This cannot be undone.</p>
@@ -54,6 +66,12 @@
   .unlock-error { color: #ffaaa3; font-size: .68rem; }
   .unlock-primary { min-height: 2.85rem; border: 1px solid #7cf59d; background: #7cf59d; color: #08110b; font-size: .72rem; font-weight: 700; }
   .unlock-primary:hover { background: #c5ffcf; }
+  .chat-escape { display: flex; width: 100%; min-height: 3.3rem; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .7rem; border: 1px solid #3c5544; padding: .65rem .75rem; color: #bfeac8; text-align: left; }
+  .chat-escape:hover, .chat-escape:focus-visible { border-color: #7cf59d; background: #101a13; outline: none; }
+  .chat-escape strong, .chat-escape small { display: block; }
+  .chat-escape strong { font-size: .72rem; }
+  .chat-escape small { margin-top: .2rem; color: #718277; font-size: .55rem; font-weight: 400; }
+  .chat-escape > span:last-child { color: #7cf59d; }
   .reset-key { margin-top: .8rem; border-top: 1px solid #202d25; padding-top: .7rem; }
   .reset-key summary { cursor: pointer; color: #718277; font-size: .58rem; }
   .reset-key p { margin-top: .65rem; color: #66786d; font-size: .58rem; line-height: 1.55; }

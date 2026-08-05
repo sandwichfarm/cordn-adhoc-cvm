@@ -6,10 +6,26 @@ interface StoredEvent {
   pubkey?: string;
   created_at?: number;
   tags?: string[][];
+  content?: string;
+  sig?: string;
+}
+
+/** Only public Nostr event fields are observable by browser tests. */
+export interface PublicRelayEvent {
+  id?: string;
+  kind?: number;
+  pubkey?: string;
+  created_at?: number;
+  tags?: string[][];
+  content?: string;
+  sig?: string;
 }
 
 export interface MockRelay {
   url: string;
+  setBroadcastDelay: (milliseconds: number) => void;
+  setPublishAcknowledgement: (accepted: boolean, delayMs?: number) => void;
+  events: () => PublicRelayEvent[];
   close: () => Promise<void>;
 }
 
@@ -18,6 +34,9 @@ export async function startMockRelay(port = 8765): Promise<MockRelay> {
   const sockets = new Set<WebSocket>();
   const events: StoredEvent[] = [];
   const subscriptions = new Map<WebSocket, Array<{ id: string; filters: Filter[] }>>();
+  let broadcastDelayMs = 0;
+  let publishAccepted = true;
+  let publishAcknowledgementDelayMs = 0;
 
   server.on("connection", (socket) => {
     sockets.add(socket);
@@ -55,9 +74,16 @@ export async function startMockRelay(port = 8765): Promise<MockRelay> {
         const eventId = event?.id ?? "";
         if (event) {
           events.push(event);
-          broadcastEvent(event, subscriptions);
+          if (publishAccepted) broadcastEvent(event, subscriptions, broadcastDelayMs);
         }
-        socket.send(JSON.stringify(["OK", eventId, true, ""]));
+        const acknowledgement = JSON.stringify(["OK", eventId, publishAccepted, ""]);
+        if (publishAcknowledgementDelayMs === 0) {
+          socket.send(acknowledgement);
+        } else {
+          setTimeout(() => {
+            if (socket.readyState === 1) socket.send(acknowledgement);
+          }, publishAcknowledgementDelayMs);
+        }
       }
 
       if (type === "CLOSE" && typeof second === "string") {
@@ -73,6 +99,16 @@ export async function startMockRelay(port = 8765): Promise<MockRelay> {
 
   return {
     url: `ws://127.0.0.1:${port}`,
+    setBroadcastDelay(milliseconds) {
+      broadcastDelayMs = Math.max(0, milliseconds);
+    },
+    setPublishAcknowledgement(accepted, delayMs = 0) {
+      publishAccepted = accepted;
+      publishAcknowledgementDelayMs = Math.max(0, delayMs);
+    },
+    events() {
+      return events.map(copyPublicEvent);
+    },
     close: async () => {
       for (const socket of sockets) {
         socket.close();
@@ -92,7 +128,23 @@ export async function startMockRelay(port = 8765): Promise<MockRelay> {
   };
 }
 
-function broadcastEvent(event: StoredEvent, subscriptions: Map<WebSocket, Array<{ id: string; filters: Filter[] }>>): void {
+function copyPublicEvent(event: StoredEvent): PublicRelayEvent {
+  return {
+    id: event.id,
+    kind: event.kind,
+    pubkey: event.pubkey,
+    created_at: event.created_at,
+    tags: event.tags?.map((tag) => [...tag]),
+    content: event.content,
+    sig: event.sig,
+  };
+}
+
+function broadcastEvent(
+  event: StoredEvent,
+  subscriptions: Map<WebSocket, Array<{ id: string; filters: Filter[] }>>,
+  delayMs: number,
+): void {
   for (const [socket, socketSubscriptions] of subscriptions) {
     if (socket.readyState !== 1) {
       continue;
@@ -100,7 +152,14 @@ function broadcastEvent(event: StoredEvent, subscriptions: Map<WebSocket, Array<
 
     for (const subscription of socketSubscriptions) {
       if (subscription.filters.some((filter) => matchesFilter(event, filter))) {
-        socket.send(JSON.stringify(["EVENT", subscription.id, event]));
+        const payload = JSON.stringify(["EVENT", subscription.id, event]);
+        if (delayMs === 0) {
+          socket.send(payload);
+        } else {
+          setTimeout(() => {
+            if (socket.readyState === 1) socket.send(payload);
+          }, delayMs);
+        }
       }
     }
   }

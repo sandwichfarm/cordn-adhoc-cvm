@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./established-installation-fixture";
 import type { NostrPool } from "applesauce-signers";
 import { NostrConnectProvider, PrivateKeySigner } from "applesauce-signers/signers";
 import { SimplePool, type Filter, type NostrEvent } from "nostr-tools";

@@ -14,7 +14,7 @@ Unify personal presence, notification settings, in-app notifications, and incomi
 ## Implementation Decisions
 
 ### Personal presence ownership
-- **D-01:** Online, invisible, and offline are selected inside the user/profile menu; the standalone header presence control is removed.
+- **D-01:** Online, invisible, and offline are selected from a compact, separate presence dropdown in the pinned personal footer; presence does not occupy the global header or inflate the profile panel.
 - **D-02:** The active presence dot is attached to the avatar trigger and has an accessible textual status in the trigger/menu, not only a decorative color.
 - **D-03:** Presence is personal availability/privacy state. Changing it must not start, stop, wake, or destroy the coordinator; `LifecyclePanel` remains the sole lifecycle owner.
 - **D-04:** The existing validated `ConfigStore.presenceState` remains the durable selected state, and signed social publication continues through the existing Nostr social store when an eligible signer is active.
@@ -32,9 +32,11 @@ Unify personal presence, notification settings, in-app notifications, and incomi
 - **D-12:** Accepting or dismissing an invite is distinct from marking its feed entry read; unread state must not silently dispose of an actionable invitation.
 
 ### Header and responsive ownership
-- **D-13:** The command bar is visually divided into a personal cluster (avatar/presence, bell, `Notification settings`) and a host cluster (coordinator settings, lifecycle, management). Duplicate status/settings actions are removed.
+- **D-13:** The global header stays sparse: CAHMLS brand and live message rate on the left, with the `Manage` workspace toggle as the only host action on the right. Active-room identity, room-sync copy, and redundant coordinator-runtime labels are removed from the header.
 - **D-14:** Host message-identity/badge editing is not part of the personal profile menu; it belongs with host/room administration.
-- **D-15:** At compact widths, the existing host-tools drawer and bottom-sheet panel treatment remain the responsive owners. Every compact control retains an explicit accessible name even when its visible label is shortened.
+- **D-15:** Personal identity, a separate compact presence selector, the notification bell, and `Notification settings` are pinned in a modern account footer at the bottom of the room sidebar. The profile panel excludes the long Nostr `about` field and remains contained by the rail/viewport. All menus retain the established compact bottom-sheet behavior and explicit accessible names.
+- **D-16:** Coordinator settings, start/stop, and destroy belong to the selected local coordinator heading in the sidebar. Runtime state is communicated once through its status dot; start/stop use compact cassette-style triangle/square controls with accessible names.
+- **D-17:** `Join from invite` is a full-width primary utility at the top of the sidebar. The obsolete sidebar statistics panel is removed; only the live message rate moves beside the CAHMLS brand.
 
 ### the agent's Discretion
 - Exact feed-entry density, iconography, timestamp phrasing, empty-state copy, and visual separators may follow the existing restrained CAHMLS shell, provided the personal/host ownership boundary and accessible labels remain unmistakable.
@@ -65,7 +67,7 @@ No external specifications are required; the milestone requirements and decision
 
 ### Reusable Assets
 - `src/components/UserProfile.svelte`: Existing avatar trigger, accessible personal menu, profile presentation, and compact bottom-sheet behavior.
-- `src/components/PresenceControl.svelte`: Existing presence options and state styling to fold into `UserProfile`, while removing coordinator lifecycle side effects.
+- `src/components/PresenceControl.svelte`: Compact footer-owned presence dropdown with durable social state and no coordinator lifecycle side effects.
 - `src/components/NotificationCenter.svelte`: Existing preference UI shell to split into labeled settings and a feed trigger.
 - `src/notifications/notification-center.svelte.ts`: Versioned preference persistence, cadence validation, queued-event de-duplication, and grouped browser delivery.
 - `src/components/InviteInbox.svelte`: Existing trusted invitation accept/dismiss UX and same-shell navigation behavior.
@@ -79,8 +81,8 @@ No external specifications are required; the milestone requirements and decision
 - Current notification enqueueing is browser-permission-gated; Phase 18 must separate durable in-app recording from optional desktop projection.
 
 ### Integration Points
-- `src/components/HostWorkspace.svelte`: Replace the undifferentiated command-bar sequence with explicit personal and host clusters.
-- `src/components/UserProfile.svelte`: Absorb presence options/dot and remove host-specific badge editing.
+- `src/components/HostWorkspace.svelte`: Distribute global, coordinator, invite, and personal controls to the header and sidebar owners defined above.
+- `src/components/UserProfile.svelte`: Keep the avatar presence dot, remove embedded presence options, omit the long Nostr `about` field, and remove host-specific badge editing.
 - `src/components/NotificationCenter.svelte` and notification store: Separate feed, settings, permission, unread, persistence, and cadence responsibilities.
 - `src/components/InviteInbox.svelte` and `src/invites/nostr-social.svelte.ts`: Feed invitation actions through the existing validated redemption path and durable resolution suppression.
 - `tests/unit/notification-center.test.ts`, `tests/unit/config-store.test.ts`, `tests/unit/nostr-invites.test.ts`, `tests/e2e/workspace-lifecycle.spec.ts`, and `tests/e2e/identity-ui-review.spec.ts`: Extend existing behavioral and accessibility coverage rather than creating SDLC-named source/test files.
@@ -93,7 +95,7 @@ No external specifications are required; the milestone requirements and decision
 - Presence belongs inside the avatar dropdown, with the status dot physically attached to the avatar.
 - `Notification settings` must be a plainly labeled action; the bell is a separate in-app feed, not another settings icon.
 - Room invitations should be discoverable within the personal notification experience rather than living in an awkward isolated popover.
-- Personal controls and coordinator/host controls should read as two different ownership groups at a glance.
+- Personal controls and coordinator/host controls should read as two different ownership groups because they live at opposite ends of the sidebar, not because the header is divided into busy clusters.
 - Notification bursts should collapse into short cadence summaries rather than overwhelming the user.
 
 </specifics>

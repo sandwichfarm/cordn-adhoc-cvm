@@ -2,7 +2,7 @@
   import { tick } from "svelte";
   import type { CoordinatorIdentity } from "../crypto/key-manager";
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
-  import type { ConfigStore } from "../config/config.svelte";
+  import { normalizeCoordinatorName, type ConfigStore } from "../config/config.svelte";
   import NpubDisplay from "./NpubDisplay.svelte";
 
   interface Props {
@@ -25,11 +25,22 @@
   let exportDialog = $state<HTMLDialogElement>();
   let exportPassphraseInput = $state<HTMLInputElement>();
   let badgeEmojiPickerOpen = $state(false);
+  let coordinatorNameDraft = $state("");
+  let coordinatorNameTouched = $state(false);
+  let coordinatorNameAction = $state<HTMLButtonElement>();
 
   const badgeEmojis = ["🛡️", "👑", "⚡", "🌿", "🛰️", "🫡", "🔐", "🧭", "🦉", "🦊", "🐙", "✨", "💚", "🏠", "🎛️", "☕"];
 
   const transitioning = $derived(coordinator.status === "starting" || coordinator.status === "stopping");
   const editable = $derived(config.editMode && !transitioning);
+  const normalizedCoordinatorName = $derived(normalizeCoordinatorName(coordinatorNameDraft));
+  const coordinatorNameChanged = $derived(normalizedCoordinatorName !== null && normalizedCoordinatorName !== config.coordinatorName);
+  const coordinatorNameInvalid = $derived(coordinatorNameTouched && normalizedCoordinatorName === null);
+  const publicationInFlight = $derived(coordinator.profilePublicationState === "publishing");
+
+  $effect(() => {
+    if (!coordinatorNameTouched && !publicationInFlight) coordinatorNameDraft = config.coordinatorName;
+  });
 
   function addRelay(): void {
     if (config.addRelay(relayInput)) relayInput = "";
@@ -37,6 +48,25 @@
 
   function updateMaxUsers(event: Event): void {
     config.setMaxUsers((event.currentTarget as HTMLInputElement).valueAsNumber);
+  }
+
+  async function saveCoordinatorName(): Promise<void> {
+    if (!editable || publicationInFlight || !coordinatorNameChanged || normalizedCoordinatorName === null) {
+      coordinatorNameTouched = true;
+      return;
+    }
+
+    await coordinator.saveCoordinatorNameAndPublish(normalizedCoordinatorName);
+    coordinatorNameTouched = false;
+    await tick();
+    coordinatorNameAction?.focus();
+  }
+
+  async function retryCoordinatorNamePublication(): Promise<void> {
+    if (!editable || publicationInFlight) return;
+    await coordinator.retryCoordinatorProfilePublication();
+    await tick();
+    coordinatorNameAction?.focus();
   }
 
   async function savePersistence(): Promise<void> {
@@ -139,7 +169,7 @@
 
     {#if coordinator.restartRequired}
       <div class="restart-banner" data-testid="restart-required">
-        <span><strong>Changes ready</strong><small>The running coordinator is still using its previous runtime settings.</small></span>
+        <span><strong>Restart required</strong><small>This coordinator name is published now. Restart to apply it to the coordinator’s MCP label.</small></span>
         <button type="button" disabled={transitioning} onclick={() => void coordinator.restart()}>Restart to apply</button>
       </div>
     {:else if coordinator.status === "running" && editable}
@@ -165,13 +195,41 @@
           Coordinator name
           <input
             class="settings-input"
-            value={config.coordinatorName}
+            bind:value={coordinatorNameDraft}
             maxlength="48"
-            disabled={!editable}
+            disabled={!editable || publicationInFlight}
             placeholder="My coordinator"
-            oninput={(event) => config.setCoordinatorName(event.currentTarget.value)}
+            aria-invalid={coordinatorNameInvalid}
+            aria-describedby="coordinator-name-helper coordinator-name-error"
+            data-testid="coordinator-name-input"
+            oninput={() => coordinatorNameTouched = true}
+            onblur={() => coordinatorNameTouched = true}
           />
         </label>
+        <p id="coordinator-name-helper" class="coordinator-name-helper">This name is published as this coordinator’s public profile. Your personal operator profile remains separate.</p>
+        {#if coordinatorNameInvalid}<p id="coordinator-name-error" class="field-error" data-testid="coordinator-name-error" role="alert">Enter a coordinator name to continue.</p>{/if}
+        <div class="coordinator-name-actions" data-testid="coordinator-name-publication" data-publication-state={coordinator.profilePublicationState}>
+          <button
+            bind:this={coordinatorNameAction}
+            class="primary-small"
+            type="button"
+            disabled={!editable || publicationInFlight || !coordinatorNameChanged}
+            onclick={() => void saveCoordinatorName()}
+          >{publicationInFlight ? "Publishing…" : "Save coordinator name"}</button>
+          {#if coordinator.profilePublicationState === "published"}
+            <p role="status">Coordinator name published.</p>
+          {:else if coordinator.profilePublicationState === "failed"}
+            <p class="field-error" role="alert">Couldn’t publish the coordinator profile. The coordinator name is saved locally and the coordinator is still running. Try again.</p>
+            <button
+              bind:this={coordinatorNameAction}
+              type="button"
+              disabled={!editable || publicationInFlight}
+              onclick={() => void retryCoordinatorNamePublication()}
+            >{publicationInFlight ? "Publishing…" : "Retry publishing"}</button>
+          {:else if publicationInFlight}
+            <p role="status">Publishing…</p>
+          {/if}
+        </div>
         <div class="host-message-identity">
           <div class="field-heading">
             <span class="field-label">Message identity</span>
@@ -391,6 +449,11 @@
   .field-label .settings-input { margin-top: .45rem; text-transform: none; }
   .settings-input:focus { border-color: #7cf59d; }
   .settings-input:disabled { color: #82958a; opacity: .72; }
+  .coordinator-name-helper { color: #91a59a; font-size: .58rem; line-height: 1.45; }
+  .coordinator-name-actions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: .55rem; }
+  .coordinator-name-actions button { min-height: 44px; }
+  .coordinator-name-actions p { flex: 1 1 12rem; color: #9bf6b3; font-size: .62rem; line-height: 1.45; }
+  .coordinator-name-actions .field-error { color: #ffaaa3; }
   .host-message-identity { display: grid; gap: .65rem; border: 1px solid #293832; background: #0b0e0d; padding: .75rem; }
   .field-heading { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
   .host-marker { color: #7cf59d; font-size: .5rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }

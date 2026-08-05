@@ -7,6 +7,7 @@
     authorName: string;
     reactions: ReactionSummary[];
     pickerOpen: boolean;
+    canReact?: boolean;
     disabled?: boolean;
     idPrefix: "host" | "guest";
     onTogglePicker: () => void;
@@ -20,6 +21,7 @@
     authorName,
     reactions,
     pickerOpen,
+    canReact = true,
     disabled = false,
     idPrefix,
     onTogglePicker,
@@ -46,38 +48,47 @@
   aria-label={`Reactions for message from ${authorName}`}
   onfocusout={closeAfterFocusLeaves}
 >
-  <button
-    id={triggerId}
-    type="button"
-    class="reaction-add"
-    aria-label="Add reaction"
-    aria-haspopup="menu"
-    aria-controls={pickerOpen ? menuId : undefined}
-    aria-expanded={pickerOpen}
-    {disabled}
-    onclick={onTogglePicker}
-  ><span aria-hidden="true">+</span></button>
+  {#if canReact}
+    <button
+      id={triggerId}
+      type="button"
+      class="reaction-add"
+      aria-label="Add reaction"
+      aria-haspopup="menu"
+      aria-controls={pickerOpen ? menuId : undefined}
+      aria-expanded={pickerOpen}
+      {disabled}
+      onclick={onTogglePicker}
+    ><span aria-hidden="true">+</span></button>
+  {/if}
 
   {#if reactions.length > 0}
     <div class="reaction-strip">
       {#each reactions as reaction (reaction.emoji)}
-        <button
-          type="button"
-          class:pressed={reaction.viewerActive}
-          class="reaction-chip"
-          aria-pressed={reaction.viewerActive}
-          aria-label={`${reaction.viewerActive ? "Remove" : "Add"} ${reaction.emoji} reaction, ${reaction.count} participant${reaction.count === 1 ? "" : "s"}`}
-          {disabled}
-          onclick={() => void onToggleReaction(reaction.emoji)}
-        >
-          <span aria-hidden="true">{reaction.emoji}</span>
-          <span class="reaction-count">{reaction.count}</span>
-        </button>
+        {#if canReact}
+          <button
+            type="button"
+            class:pressed={reaction.viewerActive}
+            class="reaction-chip"
+            aria-pressed={reaction.viewerActive}
+            aria-label={`${reaction.viewerActive ? "Remove" : "Add"} ${reaction.emoji} reaction, ${reaction.count} participant${reaction.count === 1 ? "" : "s"}`}
+            {disabled}
+            onclick={() => void onToggleReaction(reaction.emoji)}
+          >
+            <span aria-hidden="true">{reaction.emoji}</span>
+            <span class="reaction-count">{reaction.count}</span>
+          </button>
+        {:else}
+          <span class="reaction-chip" aria-label={`${reaction.emoji} reaction, ${reaction.count} participant${reaction.count === 1 ? "" : "s"}`}>
+            <span aria-hidden="true">{reaction.emoji}</span>
+            <span class="reaction-count">{reaction.count}</span>
+          </span>
+        {/if}
       {/each}
     </div>
   {/if}
 
-  {#if pickerOpen}
+  {#if canReact && pickerOpen}
     <div id={menuId} class="reaction-picker" role="menu" aria-label={`Choose reaction for message from ${authorName}`}>
       {#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}
         <button
@@ -160,7 +171,7 @@
     padding: .2rem .48rem .2rem .72rem;
   }
 
-  .reaction-chip:hover:not(:disabled),
+  button.reaction-chip:hover:not(:disabled),
   .reaction-chip:focus-visible {
     border-color: #45604d;
     background: #152219;

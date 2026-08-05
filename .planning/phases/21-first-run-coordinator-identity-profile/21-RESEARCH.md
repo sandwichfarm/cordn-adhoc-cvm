@@ -238,7 +238,7 @@ const signed = finalizeEvent({
 await Promise.any(pool.publish([...relayUrls], signed));
 ```
 
-Use `Promise.any` as the success policy: one configured shareable relay accepting the signed event is enough to report success; `AggregateError` means all target attempts failed. Always call `secretKey.fill(0)` and `pool.destroy()` in `finally`. [VERIFIED: local `nostr-tools` API + existing `SimplePoolNostrInstanceNetwork` cleanup pattern] [ASSUMED: one-relay acknowledgement is the product's intended availability threshold; confirm if all-relay acknowledgement is desired]
+Invoke publication for the complete configured shareable relay list before awaiting the result. Use `Promise.any` as the acknowledgement policy: at least one configured relay accepting the signed event is enough to report success, while `AggregateError` means every attempted target failed. Total failure retains the locally persisted name and exposes retry state. Always call `secretKey.fill(0)` and `pool.destroy()` in `finally`. [VERIFIED: local `nostr-tools` API + existing `SimplePoolNostrInstanceNetwork` cleanup pattern] [LOCKED: `21-CONTEXT.md` D-16]
 
 ### Anti-Patterns to Avoid
 
@@ -275,7 +275,7 @@ Use `Promise.any` as the success policy: one configured shareable relay acceptin
 
 **What goes wrong:** The installed `NostrServerTransport` exposes setup methods for extra tags/pricing but no public setter for the constructor-owned `serverInfo` or `profileMetadata`. [VERIFIED: local SDK `.d.ts`]
 
-**How to avoid:** Persist and publish kind-0 immediately; make transport initialize metadata correct for the next transport creation. Do not reach into private SDK fields. Treat an immediate live Cordn-label update without reconnect/restart as an explicit product decision requiring upstream support. [VERIFIED: local SDK declarations] [ASSUMED: no public dynamic setter exists beyond the installed type surface]
+**How to avoid:** Persist and publish kind-0 immediately; make transport initialize metadata correct for the next transport creation. Do not reach into private SDK fields. Show truthful restart-required guidance while a running transport still exposes its constructor-time name. [VERIFIED: local SDK declarations] [LOCKED: `21-CONTEXT.md` D-15]
 
 ### Pitfall 3: Publishing with a stale/corrupt metadata object
 
@@ -368,21 +368,15 @@ The production implementation should extend `BrowserCoordinatorOptions` with a v
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | One accepted shareable relay is the correct success threshold for UI publication success. | Architecture Patterns | Product may expect all configured relays to succeed before success feedback. |
-| A2 | The installed SDK has no supported live setter for `serverInfo`/`profileMetadata`; initialize metadata therefore refreshes on a new transport connection. | Common Pitfalls | A missed public SDK API could allow immediate label refresh more cleanly. |
 | A3 | Filtering parsed existing metadata to safe JSON-object fields is enough for preserving profile fields where possible. | Common Pitfalls | A more specific metadata-preservation policy may be required. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Must a running coordinator's Cordn-web label change immediately after rename?**
-   - What we know: current Cordn web uses coordinator initialize/discovery `serverInfo.name`; the installed SDK only exposes static constructor options. [VERIFIED: Cordn web source + local SDK `.d.ts`]
-   - What's unclear: whether a client reconnect/new session is acceptable until a future coordinator restart, or whether upstream SDK support is required now.
-   - Recommendation: Plan immediate kind-0 publication and next-start initialize metadata; add a plan checkpoint before promising live remote-label refresh without restart.
+1. **Rename timing and visible server identity — resolved.** A valid rename persists locally and publishes coordinator-key kind-0 immediately. The installed transport's MCP initialize/`serverInfo.name` remains constructor-static, so the changed label is applied on the next transport creation and a running coordinator must show truthful restart-required guidance. [VERIFIED: Cordn web source + local SDK `.d.ts`] [LOCKED: `21-CONTEXT.md` D-15]
 
-2. **What acknowledgment policy should public profile publication use?**
-   - What we know: `SimplePool.publish()` returns an independent promise per target relay. [VERIFIED: local `nostr-tools` types]
-   - What's unclear: one relay vs all relay acknowledgements for a user-visible success state.
-   - Recommendation: Use one successful configured shareable relay with a failure retry if none succeed, unless product direction requires stricter replication.
+2. **Relay acknowledgement policy — resolved.** A publication call attempts every currently configured shareable relay. One or more acknowledgements produce the `published` state; only total failure produces actionable retry state, without rolling back the local coordinator name or disturbing the running coordinator. [VERIFIED: local `nostr-tools` types] [LOCKED: `21-CONTEXT.md` D-16]
+
+3. **Phase dependency and overlapping shell ownership — resolved.** Phase 21 depends on completed Phase 17 and can execute without Phase 18 completing. Executors must inspect current targeted diffs and integrate the in-progress Phase 18 personal/host ownership work; compatible edits are preserved, and incompatible overlapping hunks are escalated instead of reset or overwritten. [VERIFIED: `.planning/ROADMAP.md`, current worktree] [LOCKED: `21-CONTEXT.md` D-17 and D-18]
 
 ## Environment Availability
 
@@ -425,7 +419,7 @@ The production implementation should extend `BrowserCoordinatorOptions` with a v
 
 ### Wave 0 Gaps
 
-- [ ] `tests/unit/coordinator-profile.test.ts` — test pure merge, malformed metadata fallback, coordinator pubkey/signature verification, shareable target list, one-success/all-fail semantics, zeroization/destroy cleanup.
+- [ ] `tests/unit/coordinator-profile.test.ts` — test pure merge, malformed metadata fallback, coordinator pubkey/signature verification, every configured shareable target attempted, mixed-acknowledgement success, total-failure retry, zeroization, and pool cleanup.
 - [ ] `tests/e2e/first-run-coordinator-profile.spec.ts` — stable selectors from `21-UI-SPEC.md`, initial gate/no flash, anonymous and mocked NIP-07/NIP-46 paths, profile prefill/edit preservation, migration/reload, settings retry.
 - [ ] Extend `tests/unit/config-store.test.ts` — explicit marker and all legacy classification cases.
 - [ ] Extend `tests/unit/state-machine.test.ts` — incomplete setup rejects before lease/transport and autostart has no bypass.
@@ -474,7 +468,7 @@ The production implementation should extend `BrowserCoordinatorOptions` with a v
 
 - Standard stack: HIGH — all proposed runtime dependencies are already pinned/used in the repo.
 - Architecture: HIGH — derived from the real config, coordinator, identity, transport, and canonical Cordn-web source paths.
-- Pitfalls: HIGH — direct evidence identifies the autostart call, separate server/profile metadata paths, and installed SDK limitation; the acknowledgment policy is explicitly marked assumed.
+- Pitfalls: HIGH — direct evidence identifies the autostart call, separate server/profile metadata paths, and installed SDK limitation; rename timing, relay acknowledgement, and phase-integration policies are now locked in `21-CONTEXT.md` D-15 through D-18.
 
 **Research date:** 2026-08-05
 **Valid until:** 2026-08-12 (fast-moving upstream Cordn/ContextVM API surface)

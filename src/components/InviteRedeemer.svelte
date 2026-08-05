@@ -181,7 +181,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <button bind:this={trigger} class="redeem-trigger" type="button" onclick={openDialog} aria-haspopup="dialog" aria-expanded={open}>
-  Redeem invite
+  <span>Join from invite</span><span aria-hidden="true">＋</span>
 </button>
 
 {#if open}
@@ -191,7 +191,7 @@
       <header>
         <div>
           <p>Join a remote room</p>
-          <h2 id="redeemer-title">Redeem invite</h2>
+          <h2 id="redeemer-title">Join from invite</h2>
         </div>
         <button class="close" type="button" aria-label="Close invite redemption" onclick={closeDialog}>×</button>
       </header>
@@ -225,8 +225,9 @@
 {/if}
 
 <style>
-  .redeem-trigger { border: 1px solid #496451; background: #101814; color: #dfffe7; padding: .42rem .62rem; font: inherit; font-size: .67rem; font-weight: 650; cursor: pointer; }
-  .redeem-trigger:hover { border-color: #7cf59d; color: #fff; }
+  .redeem-trigger { display: flex; width: 100%; min-height: 2.75rem; align-items: center; justify-content: space-between; border: 0; border-bottom: 1px solid #293832; background: #101814; padding: .6rem .75rem; color: #dfffe7; font: inherit; font-size: .67rem; font-weight: 650; cursor: pointer; }
+  .redeem-trigger > span:last-child { color: #7cf59d; font-size: .9rem; font-weight: 400; }
+  .redeem-trigger:hover, .redeem-trigger[aria-expanded="true"] { background: #17241b; color: #fff; }
   .redeemer-layer, .redeemer-scrim { position: fixed; z-index: 100; inset: 0; }
   .redeemer-scrim { border: 0; background: rgb(0 0 0 / .58); backdrop-filter: blur(2px); }
   .redeemer-dialog { position: fixed; z-index: 101; top: 50%; left: 50%; width: min(30rem, calc(100vw - 1.5rem)); transform: translate(-50%, -50%); border: 1px solid #496451; background: #0b0e0d; box-shadow: 0 24px 64px rgb(0 0 0 / .62); padding: 1rem; color: #e8f5eb; }
