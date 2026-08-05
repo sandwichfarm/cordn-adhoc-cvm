@@ -11,10 +11,10 @@ import {
 
 const relayUrls = ["wss://one.example", "wss://two.example"];
 
-function profileEvent(createdAt: number, content: string): NostrEvent {
+function profileEvent(createdAt: number, content: string, pubkey = "1".repeat(64)): NostrEvent {
   return {
     id: "0".repeat(64),
-    pubkey: "1".repeat(64),
+    pubkey,
     created_at: createdAt,
     kind: 0,
     tags: [],
@@ -67,9 +67,10 @@ describe("publishCoordinatorProfile", () => {
     const coordinator = KeyManager.generate();
     const copiedSecret = coordinator.getSecretKeyBytes();
     const pool = createPool([
-      profileEvent(40, "not metadata"),
-      profileEvent(30, JSON.stringify({ display_name: "Previous host", about: "Preserved" })),
-      profileEvent(20, JSON.stringify({ display_name: "Older host" })),
+      profileEvent(100, JSON.stringify({ display_name: "Foreign host" }), "f".repeat(64)),
+      profileEvent(40, "not metadata", coordinator.identity.publicKeyHex),
+      profileEvent(30, JSON.stringify({ display_name: "Previous host", about: "Preserved" }), coordinator.identity.publicKeyHex),
+      profileEvent(20, JSON.stringify({ display_name: "Older host" }), coordinator.identity.publicKeyHex),
     ], [Promise.reject(new Error("relay one rejected")), Promise.resolve("accepted")]);
     const createPoolFactory = vi.fn(() => pool);
 

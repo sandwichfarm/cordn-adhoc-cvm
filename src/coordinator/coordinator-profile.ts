@@ -110,6 +110,7 @@ async function newestUsableMetadata(
     }, { maxWait: PROFILE_QUERY_MAX_WAIT_MS });
 
     for (const event of [...events].sort((left, right) => right.created_at - left.created_at)) {
+      if (event.pubkey.toLowerCase() !== coordinatorPubkey.toLowerCase()) continue;
       const metadata = parseCoordinatorProfileMetadata(event.content);
       if (metadata) return metadata;
     }
