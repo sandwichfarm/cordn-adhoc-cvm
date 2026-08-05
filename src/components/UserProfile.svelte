@@ -172,6 +172,7 @@
       {:else}
         <div class="user-menu-section">
           {#if userProfileStore.profile?.nip05}<p class="profile-nip05">{userProfileStore.profile.nip05}</p>{/if}
+          {#if userProfileStore.profile?.about}<p class="profile-about">{userProfileStore.profile.about}</p>{/if}
           <div class="profile-actions">
             <button type="button" onclick={() => void userProfileStore.refreshProfile()}>Refresh profile</button>
             <button class="disconnect" type="button" onclick={() => void disconnect()}>Disconnect</button>

@@ -70,9 +70,17 @@ async function openProfileMenu(page: Page): Promise<Locator> {
   const menu = page.getByRole("dialog", { name: "User profile" });
   if (await menu.isVisible()) return menu;
   const trigger = profile.getByRole("button", { name: /^Open profile for / });
+  const roomBrowser = page.getByRole("button", { name: "Open room browser" });
+  if (await roomBrowser.isVisible() && await roomBrowser.getAttribute("aria-expanded") === "false") {
+    await roomBrowser.click();
+  }
   if (!(await trigger.isVisible())) {
     const toolsTrigger = page.getByRole("button", { name: "Open host tools" });
-    if (await toolsTrigger.isVisible()) await toolsTrigger.click();
+    if (await toolsTrigger.isVisible()) {
+      await toolsTrigger.click();
+    } else {
+      if (await roomBrowser.isVisible()) await roomBrowser.click();
+    }
   }
   await trigger.click();
   await expect(menu).toBeVisible();

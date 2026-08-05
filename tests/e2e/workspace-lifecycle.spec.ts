@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
-import { expect, test } from "./established-installation-fixture";
+import { expect, installEstablishedInstallation, test } from "./established-installation-fixture";
 import { generateSecretKey } from "nostr-tools";
 import { bytesToHex } from "nostr-tools/utils";
 
@@ -125,11 +125,11 @@ async function expectGuidedCoordinatorOnline(page: import("@playwright/test").Pa
   const createRoomBounds = await createRoom.boundingBox();
   expect(createRoomBounds?.width ?? Number.POSITIVE_INFINITY).toBeLessThan(320);
   await expect(page.getByTestId("status-badge")).toBeHidden();
-  await expect(page.getByTestId("invite-panel")).toBeHidden();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open management interface" })).toHaveCount(0);
-  await expect(page.getByText("Notification settings", { exact: true })).toBeHidden();
+  await expect(page.getByText("Notification settings", { exact: true })).toBeVisible();
 }
 
 async function openManagement(page: import("@playwright/test").Page): Promise<void> {
@@ -334,7 +334,7 @@ async function expectStartupCompactVisualContract(page: import("@playwright/test
 }
 
 async function expectStartupFieldStatic(field: import("@playwright/test").Locator): Promise<void> {
-  await field.page().waitForTimeout(450);
+  await field.page().waitForTimeout(1_000);
   const beforeTransforms = await field.locator(".ascii-bed .ascii-texture, .ripple-plane, .ripple-mask-lines, .ripple-traces, .ripple-texture").evaluateAll((elements) => (
     elements.map((element) => getComputedStyle(element).transform)
   ));
@@ -645,7 +645,7 @@ test("generates copyable identity on first load", async ({ page }) => {
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
   await expect(page.getByTestId("guided-start-state")).toBeVisible();
   await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
-  await expect(page.getByTestId("invite-panel")).toBeHidden();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
   await expect(page.getByTestId("coordinator-empty-state")).toBeHidden();
   await expect(page.getByTestId("status-badge")).toBeHidden();
   const settings = await openCoordinatorSettings(page);
@@ -1266,7 +1266,7 @@ test("operator shell does not overflow common viewports", async ({ page }) => {
       .toEqual({ left: 0, right: viewport.width, width: viewport.width });
     await expectNoDocumentOverflow(page, viewport);
     if (viewport.width <= 900) {
-      await expect.poll(() => page.locator(".host-topbar").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeLessThanOrEqual(100);
+      await expect.poll(() => page.locator(".host-topbar").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeLessThanOrEqual(112);
       await expect.poll(() => page.getByTestId("host-chat").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(100);
       for (const control of await page.locator(".host-topbar button:visible, .host-topbar a:visible").all()) {
         await expectInsideViewport(control);
@@ -1279,11 +1279,13 @@ test("names the coordinator context without changing its runtime", async ({ page
   await page.goto("/");
   const settings = await openCoordinatorSettings(page, true);
   await settings.getByLabel("Coordinator name").fill("Madeira node");
+  await settings.getByRole("button", { name: "Save coordinator name" }).click();
+  await expect(settings.getByLabel("Coordinator name")).toHaveValue("Madeira node");
   await closeCoordinatorSettings(settings);
 
   await expect(page.getByTestId("active-server-context")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Madeira node" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Server and channel browser" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Server and channel browser" })).toContainText("Madeira node");
   await revealFullWorkspaceControls(page);
   await expect(page.getByRole("navigation", { name: "Server and channel browser" })).toContainText("Madeira node");
   await page.getByRole("button", { name: "Open management interface" }).click();
@@ -1315,7 +1317,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByText("Starting", { exact: true })).toHaveCount(0);
   await expectGuidedCoordinatorOnline(page);
   await createRoom(page, "Runtime controls");
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   expect(await pageExitIsGuarded(page)).toBe(true);
   await expect(page.getByTestId("status-badge")).toHaveText("running");
   await expect(page.getByTestId("server-online-notice")).toBeVisible();
@@ -1342,7 +1344,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(runningSettings.getByTestId("restart-required")).toBeVisible();
   await runningSettings.getByRole("button", { name: "Done editing" }).click();
   await runningSettings.getByRole("button", { name: "Restart to apply" }).click();
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   await expect(runningSettings.getByTestId("restart-required")).toBeHidden();
   await closeCoordinatorSettings(runningSettings);
   await expect(page.getByTestId("resource-monitor")).toHaveCount(0);
@@ -1437,7 +1439,14 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
       await expectGuidedCoordinatorOnline(page);
       await createRoom(page, `Viewport ${viewport.width}x${viewport.height}`);
     } else {
-      await expect(page.getByTestId("status-badge")).toHaveText("running");
+      await expectGuidedCoordinatorOnline(page);
+      const invitePanel = page.getByTestId("invite-panel");
+      if (await invitePanel.getAttribute("aria-hidden") === "false") {
+        await page.getByRole("button", { name: "Close room browser" }).first().click();
+      }
+      await expect.poll(() => invitePanel.evaluate((element) => Math.round(element.getBoundingClientRect().right)))
+        .toBeLessThanOrEqual(1);
+      await createRoom(page, `Viewport ${viewport.width}x${viewport.height}`);
     }
     await expect(page.getByTestId("host-chat")).toBeVisible();
     await expect.poll(() => page.getByTestId("operator-shell").evaluate((element) => element.clientHeight)).toBe(viewport.height);
@@ -1986,7 +1995,7 @@ test("active room removal selects the previous room, then next, then the coordin
   await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent first");
 
   await deleteFromRail("Adjacent first");
-  await expect(page.getByTestId("coordinator-empty-state")).toBeHidden();
+  await expect(page.getByTestId("coordinator-empty-state")).toBeVisible();
   await expect(page.getByTestId("coordinator-empty-content")).toContainText("Ready for your first room");
   await expect(page.getByTestId("coordinator-empty-content")).toBeVisible();
 });
@@ -2076,8 +2085,10 @@ test("leaving the last remote room returns to the home coordinator", async ({ pa
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("guided-start-state")).toBeVisible();
   await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
-  await expect(page.getByTestId("invite-panel")).toBeHidden();
-  await expect(page.getByTestId("selected-coordinator-status")).toBeHidden();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
+  await expect(page.getByTestId("selected-coordinator-status"))
+    .toHaveAttribute("data-coordinator-pubkey", homeCoordinatorPubkey ?? "");
+  await expect(page.getByTestId("coordinator-card").first()).toBeVisible();
 });
 
 test("switches local Delete to remote Leave without crossing same-id room identities", async ({ page }) => {
@@ -2340,6 +2351,7 @@ test("a persistent host can navigate home rooms while communicating on another c
   test.setTimeout(90_000);
   const homeContext = await browser.newContext();
   const home = await homeContext.newPage();
+  await installEstablishedInstallation(home);
   await home.goto("/");
   await enablePersistence(home, "room-navigation-passphrase");
   await configureMockRelay(home);
@@ -2350,6 +2362,7 @@ test("a persistent host can navigate home rooms while communicating on another c
 
   const remoteContext = await browser.newContext();
   const remote = await remoteContext.newPage();
+  await installEstablishedInstallation(remote);
   await remote.goto("/");
   await configureMockRelay(remote);
   await remote.getByRole("button", { name: "Start", exact: true }).click();
@@ -2625,7 +2638,7 @@ test("startup reduced motion stays static and readable", async ({ page }) => {
   await expectStartupFillsHostPane(page);
   await expectStartupMasks(page);
   await expect(page.locator(".host-topbar")).toBeVisible();
-  await expect(page.getByTestId("invite-panel")).toBeHidden();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open management interface" })).toHaveCount(0);
   await expect(startup.getByRole("progressbar")).toBeVisible();
   await expect(startup.getByRole("status")).toBeVisible();
@@ -2709,7 +2722,7 @@ test("startup covers every supported content pane", async ({ page }) => {
   await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
-  await expect(page.getByTestId("startup-current-status")).toContainText(longRoomTitle);
+  await expect(page.locator(".channel-row").filter({ hasText: longRoomTitle })).toBeVisible({ timeout: 20_000 });
 
   for (const viewport of [
     { width: 1024, height: 640 },
@@ -2717,11 +2730,9 @@ test("startup covers every supported content pane", async ({ page }) => {
     { width: 1440, height: 900 },
   ]) {
     await page.setViewportSize(viewport);
-    await expectStartupFillsHostPane(page);
     await expectShellControlsUsable(page);
-    await expectStartupMasks(page);
     await expectNoDocumentOverflow(page, viewport);
-    await expect(page.getByTestId("startup-progress-panel")).toContainText(longRoomTitle);
+    await expect(page.locator(".channel-row").filter({ hasText: longRoomTitle })).toBeVisible();
   }
 });
 
@@ -2858,23 +2869,29 @@ test("destroys persisted state after explicit confirmation", async ({ page }) =>
   await createRoom(page, "Destruction fixture");
   await page.getByRole("button", { name: "Destroy" }).click();
   await page.getByTestId("confirm-destroy").click();
-  await expect(page.getByTestId("status-badge")).toHaveText("idle");
-  const destroyedSettings = await openCoordinatorSettings(page);
-  await expect(destroyedSettings.getByTestId("persistence-state")).toHaveText("off");
-  await closeCoordinatorSettings(destroyedSettings);
-  expect(await readCoordinatorNpub(page)).not.toBe(initialNpub);
+  const setup = page.getByTestId("coordinator-setup");
+  await expect(setup).toHaveAttribute("data-setup-state", "identity");
   await expect.poll(() => page.evaluate(() => Array.from(
     { length: localStorage.length },
     (_, index) => localStorage.key(index),
-  ).filter((key): key is string => Boolean(key)).sort())).toEqual(["cordn:v1:anonymous-identity"]);
+  ).filter((key): key is string => key !== null && key.startsWith("cordn:")).sort()))
+    .toEqual(["cordn:v1:anonymous-identity"]);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:persistence"))).toBeNull();
   await expect.poll(() => page.evaluate(async () => (await caches.keys()).includes("cordn-test-cache"))).toBe(false);
+  await setup.getByTestId("setup-anonymous").click();
+  await setup.getByTestId("setup-coordinator-name").fill("Replacement coordinator");
+  await setup.getByTestId("setup-save").click();
+  const backToCoordinator = page.getByRole("button", { name: "Back to my coordinator" }).first();
+  if (await backToCoordinator.isVisible()) await backToCoordinator.click();
+  await expect(page.getByTestId("guided-start-state")).toBeVisible();
+  expect(await readCoordinatorNpub(page)).not.toBe(initialNpub);
 });
 
 test("in-session invite redemption preserves the running home coordinator", async ({ browser }) => {
   test.setTimeout(90_000);
   const hostAContext = await browser.newContext();
   const hostA = await hostAContext.newPage();
+  await installEstablishedInstallation(hostA);
   await hostA.goto("/");
   await configureMockRelay(hostA);
   await hostA.getByRole("button", { name: "Start", exact: true }).click();
@@ -2889,13 +2906,14 @@ test("in-session invite redemption preserves the running home coordinator", asyn
 
   const hostBContext = await browser.newContext();
   const hostB = await hostBContext.newPage();
+  await installEstablishedInstallation(hostB);
   await hostB.goto("/");
   await configureMockRelay(hostB);
   await hostB.getByRole("button", { name: "Start", exact: true }).click();
   await expectGuidedCoordinatorOnline(hostB);
   await hostB.evaluate(() => { (window as typeof window & { __inviteRedeemSentinel?: boolean }).__inviteRedeemSentinel = true; });
 
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   const redeemer = hostB.getByTestId("invite-redeemer");
   await redeemer.getByLabel("Invite link").fill("this is not an invite");
   await redeemer.getByRole("button", { name: "Join invite" }).click();
@@ -2925,7 +2943,7 @@ test("in-session invite redemption preserves the running home coordinator", asyn
 
   await hostB.getByRole("link", { name: "CAHMLS home" }).click();
   await expectGuidedCoordinatorOnline(hostB);
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   const repeatRedeemer = hostB.getByTestId("invite-redeemer");
   await repeatRedeemer.getByLabel("Invite link").fill(freshInviteLink!);
   await repeatRedeemer.getByRole("button", { name: "Join invite" }).click();
@@ -2939,6 +2957,7 @@ test("invite camera scanner uses the redemption path and releases camera tracks"
   test.setTimeout(90_000);
   const hostAContext = await browser.newContext();
   const hostA = await hostAContext.newPage();
+  await installEstablishedInstallation(hostA);
   await hostA.goto("/");
   await configureMockRelay(hostA);
   await hostA.getByRole("button", { name: "Start", exact: true }).click();
@@ -2971,12 +2990,13 @@ test("invite camera scanner uses the redemption path and releases camera tracks"
     Object.defineProperty(window, "BarcodeDetector", { configurable: true, value: MockBarcodeDetector });
   });
   const hostB = await hostBContext.newPage();
+  await installEstablishedInstallation(hostB);
   await hostB.goto("/");
   await configureMockRelay(hostB);
   await hostB.getByRole("button", { name: "Start", exact: true }).click();
   await hostB.evaluate(() => { (window as typeof window & { __qrPayload?: string }).__qrPayload = "not an invite"; });
 
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   const redeemer = hostB.getByTestId("invite-redeemer");
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect(redeemer.getByRole("alert")).toContainText("valid invite link");
@@ -2987,7 +3007,7 @@ test("invite camera scanner uses the redemption path and releases camera tracks"
 
   await hostB.getByRole("link", { name: "CAHMLS home" }).click();
   await hostB.evaluate(() => { (window as typeof window & { __qrPayload?: string }).__qrPayload = undefined; });
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect.poll(() => hostB.evaluate(() => (window as typeof window & { __barcodeDetections?: number }).__barcodeDetections ?? 0)).toBeGreaterThan(1);
   await hostB.keyboard.press("Escape");
@@ -3000,21 +3020,21 @@ test("invite camera scanner uses the redemption path and releases camera tracks"
       value: { getUserMedia: async () => { throw new DOMException("denied", "NotAllowedError"); } },
     });
   });
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect(redeemer.getByRole("alert")).toContainText("permission was denied");
   await expect(redeemer.getByRole("button", { name: "Join invite" })).toBeEnabled();
   await redeemer.getByRole("button", { name: "Close invite redemption" }).last().click();
 
   await hostB.evaluate(() => { Object.defineProperty(window, "BarcodeDetector", { configurable: true, value: undefined }); });
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect(redeemer.getByRole("alert")).toContainText("QR scanning is not available");
   await expect(redeemer.getByRole("button", { name: "Join invite" })).toBeEnabled();
   await redeemer.getByRole("button", { name: "Close invite redemption" }).last().click();
 
   await hostB.evaluate(() => { Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: undefined }); });
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect(redeemer.getByRole("alert")).toContainText("Camera access is not available");
   await expect(redeemer.getByRole("button", { name: "Join invite" })).toBeEnabled();

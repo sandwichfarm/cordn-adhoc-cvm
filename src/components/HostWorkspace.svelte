@@ -1276,7 +1276,7 @@
         {onNavigate}
       />
       <div class:guided-setup={guidedSetupMode} class="host-commandbar">
-        {#if !guidedSetupMode && !setupRequired}
+        {#if !setupRequired}
           <button
             class:active={mobileRailOpen}
             class="mobile-rail-toggle"
@@ -1387,7 +1387,9 @@
                   </button>
                   {#if selectedServerIsHome && !locked}
                     <div class="coordinator-actions" role="group" aria-label="Coordinator controls">
-                      <LifecyclePanel {coordinator} compact minimal onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+                      {#if !guidedSetupMode}
+                        <LifecyclePanel {coordinator} compact minimal onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+                      {/if}
                       <button
                         class:pending={coordinator.restartRequired}
                         class="channel-settings"
@@ -1684,7 +1686,7 @@
               {/each}
             </nav>
             <SidebarHistory entries={sidebarHistory} />
-          <div class="sidebar-account" role="group" aria-label="Personal controls">
+          {#if !locked}<div class="sidebar-account" role="group" aria-label="Personal controls">
             <UserProfile
               {config}
               {coordinatorPubkey}
@@ -1697,13 +1699,13 @@
               <NotificationFeed onNavigate={navigateFromRail} />
               <NotificationCenter />
             </div>
-          </div>
+          </div>{/if}
         </div>
       </aside>
       {/if}
 
       <section class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
-        {#if locked}
+        {#if locked && !embeddedChatActive}
           <PassphrasePrompt embedded {coordinator} />
         {:else if setupRequired}
           <div class="startup-stage coordinator-setup-stage">
@@ -2110,8 +2112,6 @@
   .host-commandbar :global(.compact-controls) { height: 2.65rem; gap: .08rem; border: 0; background: transparent; padding: .2rem .16rem; }
   .host-commandbar :global(.lifecycle-status) { border: 0; padding-inline: .55rem; }
   .host-layout { position: relative; width: 100%; max-width: 100%; overflow: hidden; grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .host-layout.guided-setup { grid-template-columns: minmax(0, 1fr); }
-  .host-layout.guided-setup .host-rail { display: none; }
   .host-chat { position: relative; width: 100%; height: 100%; max-width: 100%; }
   .host-layout:not(.management-open) .management-main { display: none; }
   .host-layout.management-open { grid-template-columns: minmax(21rem, 28rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
@@ -2438,7 +2438,6 @@
     .host-commandbar :global(.destroy-action) { width: 2.75rem; height: 2.75rem; }
     .manage-toggle { padding-inline: .58rem; }
     .host-layout, .host-layout:not(.management-open), .host-layout.management-open { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-    .host-layout.guided-setup .host-rail { display: none !important; }
     .host-rail { position: absolute; z-index: 30; inset: 0 auto 0 0; display: block !important; width: min(22rem, calc(100% - 2.65rem)); max-width: 100%; transform: translateX(-102%); border-right: 1px solid #3c5544; border-bottom: 0; padding: .65rem; box-shadow: 18px 0 42px rgb(0 0 0 / .52); opacity: 0; pointer-events: none; overscroll-behavior: contain; transition: transform .18s ease, opacity .18s ease; }
     .host-rail.mobile-open { transform: translateX(0); opacity: 1; pointer-events: auto; }
     .mobile-rail-scrim { position: absolute; z-index: 25; inset: 0; display: block; width: 100%; height: 100%; border: 0; background: rgb(0 0 0 / .46); cursor: default; backdrop-filter: blur(1px); }
