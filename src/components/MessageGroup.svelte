@@ -89,7 +89,7 @@
 {/if}
 
 <style>
-  .message-streak { display: grid; width: fit-content; max-width: min(88%, 44rem); grid-template-columns: 2rem minmax(0, 1fr); align-items: end; gap: .6rem; margin: 0 0 1.15rem; }
+  .message-streak { display: grid; width: max(60%, 18rem); max-width: min(88%, 44rem); grid-template-columns: 2rem minmax(0, 1fr); align-items: end; gap: .6rem; margin: 0 0 1.15rem; }
   .message-streak.mine { margin-left: auto; grid-template-columns: minmax(0, 1fr) 2rem; }
   .streak-avatar { grid-column: 1; width: 2rem; height: 2rem; border: 1px solid rgb(124 245 157 / .16); background: #0b0e0d; object-fit: cover; }
   .mine .streak-avatar { grid-column: 2; }
@@ -108,7 +108,7 @@
   .mine .message-bubble :global(.message-reactions) { right: .75rem; left: auto; }
   .mine .message-bubble :global(.reaction-picker) { right: 0; left: auto; }
   @media (max-width: 520px) {
-    .message-streak { max-width: 96%; gap: .45rem; }
+    .message-streak { max-width: 88%; gap: .45rem; }
     .message-bubble { padding-inline: .65rem; }
   }
 </style>

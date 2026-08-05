@@ -1764,6 +1764,7 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   await expect(hostStreak.getByTestId("message-badge")).toHaveCSS("user-select", "text");
   await expect(hostStreak.locator("time")).toHaveCount(10);
   await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((list) => {
+    const listBounds = list.getBoundingClientRect();
     const [own, host] = Array.from(list.querySelectorAll<HTMLElement>('[data-testid="message-streak"]'));
     const ownAvatar = own?.querySelector<HTMLElement>('[data-testid="message-avatar"]')?.getBoundingClientRect();
     const ownBubble = own?.querySelector<HTMLElement>('[data-testid="message-bubble"]')?.getBoundingClientRect();
@@ -1771,7 +1772,11 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
     const hostBubble = host?.querySelector<HTMLElement>('[data-testid="message-bubble"]')?.getBoundingClientRect();
     return Boolean(ownAvatar && ownBubble && hostAvatar && hostBubble
       && ownBubble.right < ownAvatar.left
-      && hostAvatar.right < hostBubble.left);
+      && hostAvatar.right < hostBubble.left
+      && ownBubble.width >= listBounds.width * .5
+      && hostBubble.width >= listBounds.width * .5
+      && ownBubble.left > listBounds.left
+      && hostBubble.right < listBounds.right);
   })).toBe(true);
   await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)).toBeLessThanOrEqual(2);
   await guestContext.close();

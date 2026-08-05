@@ -6,14 +6,14 @@ current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
 status: executing
 stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-08-03T06:19:49.128Z"
+last_updated: "2026-08-05T23:00:32.664Z"
 last_activity: 2026-08-03
 last_activity_desc: Phase 18 execution started
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 14
-  completed_plans: 13
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 20
+  completed_plans: 19
 ---
 
 # Project State
@@ -113,6 +113,7 @@ None yet.
 | 260802-f3u | Add in-session invite redemption by paste or camera scan without disrupting the local coordinator | 2026-08-02 | uncommitted | [260802-f3u](./quick/260802-f3u-add-in-session-invite-redemption-by-past/) |
 | 2 | Add a camel emoji to the left of CAHMLS | 2026-08-02 | uncommitted | — |
 | 3 | Set the site title to CAHMLS | 2026-08-02 | ae42349 | — |
+| 6 | Give chat bubbles a 50% pane minimum and preserve directional negative space | 2026-08-05 | uncommitted | — |
 
 ## Deferred Items
 
