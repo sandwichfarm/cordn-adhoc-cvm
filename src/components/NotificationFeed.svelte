@@ -56,6 +56,12 @@
     void tick().then(() => trigger?.focus());
   }
 
+  function clearAll(): void {
+    pendingDismissId = null;
+    notificationCenter.clearAll();
+    actionError = "All notifications cleared.";
+  }
+
   function liveInvitation(entry: FeedNotificationEntry) {
     if (entry.category !== "room_invite") return undefined;
     return nostrSocialStore.incomingInvites.find((invite) => invite.id === entry.key);
@@ -224,7 +230,10 @@
           <h2>Notifications</h2>
           <p>{notificationCenter.unreadCount > 0 ? `${notificationCenter.unreadCount} unread` : "All caught up"}</p>
         </div>
-        <button bind:this={closeButton} type="button" aria-label="Close notifications" onclick={close}>×</button>
+        <div class="notification-feed-header-actions">
+          <button class="notification-clear-all" type="button" disabled={notificationCenter.feed.length === 0} onclick={clearAll}>Clear all</button>
+          <button bind:this={closeButton} type="button" aria-label="Close notifications" onclick={close}>×</button>
+        </div>
       </header>
 
       <div class="notification-feed-body">
@@ -267,7 +276,7 @@
           {/each}
         {/if}
       </div>
-      <p class="notification-feed-status" aria-live="polite">{actionError}</p>
+      <p class="notification-feed-status" role="status" aria-live="polite">{actionError}</p>
     </div>
   {/if}
 </div>
@@ -286,6 +295,9 @@
   .notification-feed-panel header p, .notification-feed-status { margin-top: .2rem; color: #718277; font-size: .52rem; }
   .notification-feed-panel header button { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #91a59a; font-size: 1rem; }
   .notification-feed-panel header button:hover { background: #162019; color: #effff2; }
+  .notification-feed-header-actions { display: flex; align-items: center; gap: .25rem; }
+  .notification-feed-panel header .notification-clear-all { width: auto; min-width: 2.75rem; padding: 0 .55rem; font-size: .54rem; }
+  .notification-feed-panel header .notification-clear-all:disabled { color: #4f5d55; cursor: not-allowed; }
   .notification-feed-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .notification-feed-body section + section { border-top: 1px solid #202d25; }
   .notification-feed-body h3 { padding: .65rem .9rem .35rem; color: #718277; font-size: .5rem; letter-spacing: .14em; text-transform: uppercase; }

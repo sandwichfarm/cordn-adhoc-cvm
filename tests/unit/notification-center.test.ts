@@ -168,6 +168,24 @@ describe("NotificationCenterStore", () => {
     store.destroy();
   });
 
+  test("clears persisted feed history without resolving live invitations", () => {
+    const store = new NotificationCenterStore();
+    store.record({ category: "room_invite", key: "invite-1", actor: "Alice", room: "lobby" });
+    store.record({ category: "new_message", key: "message-1", actor: "Bob", room: "lobby" });
+
+    store.clearAll();
+
+    expect(store.feed).toEqual([]);
+    expect(store.unreadCount).toBe(0);
+    expect(store.isInvitationResolved("invite-1")).toBe(false);
+    expect(JSON.parse(localStorage.getItem(NOTIFICATION_FEED_STORAGE_KEY) ?? "null")).toEqual({
+      version: 1,
+      entries: [],
+    });
+    expect(new NotificationCenterStore().feed).toEqual([]);
+    store.destroy();
+  });
+
   test("persists only bounded, safe feed metadata without evicting pending invitations", () => {
     const store = new NotificationCenterStore();
     store.record({ category: "room_invite", key: "keep", actor: "Alice", room: "private room" });

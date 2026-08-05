@@ -89,7 +89,7 @@ and closes with repeatable delivery guidance and automated proof.
 
 **Goal**: Users can find personal presence, notification, and invitation actions in one coherent surface, distinct from coordinator lifecycle controls.
 **Depends on**: Phase 16
-**Requirements**: PRES-01, PRES-02, INVITE-01, SHELL-01, NOTF-01, NOTF-02, NOTF-03
+**Requirements**: PRES-01, PRES-02, INVITE-01, SHELL-01, NOTF-01, NOTF-02, NOTF-03, NOTF-05
 **Success Criteria** (what must be TRUE):
 
   1. The profile dropdown lets a user select online, invisible, or offline presence, and its active accessible status dot is attached to the user/avatar control.
@@ -97,6 +97,7 @@ and closes with repeatable delivery guidance and automated proof.
   3. A clearly labeled `Notification settings` action opens a working settings surface and retains the user's choices.
   4. A separate bell opens a grouped in-app notification feed with unread state and actionable incoming room invitations.
   5. Browser-notification permission is requested only after a user action, and enabled desktop notifications follow the configured cadence without duplicate bursts.
+  6. Users can clear all persisted in-app notification history without implicitly resolving live room invitations.
 
 **Plans**: 2/3 plans executed
 

@@ -1145,6 +1145,36 @@ test("notification feed accepts trusted invite only from live state", async ({ p
   await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeVisible();
 });
 
+test("notification feed clears all history without resolving invitations", async ({ page }) => {
+  await page.goto("/");
+  await revealFullWorkspaceControls(page);
+  await page.evaluate(() => {
+    localStorage.setItem("cordn:v1:notification-feed", JSON.stringify({
+      version: 1,
+      entries: [
+        { id: "room_invite:keep-live", category: "room_invite", key: "keep-live", actor: "Mara", room: "Gathering", createdAt: Date.now(), occurrences: 1, read: false },
+        { id: "new_message:message-1", category: "new_message", key: "message-1", actor: "Jo", room: "Lobby", createdAt: Date.now() - 1, occurrences: 1, read: false },
+      ],
+    }));
+  });
+  await page.reload();
+
+  await page.getByRole("button", { name: "Notifications, 2 unread" }).click();
+  const feed = page.getByRole("dialog", { name: "Notifications" });
+  await feed.getByRole("button", { name: "Clear all", exact: true }).click();
+
+  await expect(feed.getByText("No personal activity")).toBeVisible();
+  await expect(feed.getByRole("button", { name: "Clear all", exact: true })).toBeDisabled();
+  await expect(feed.getByRole("status")).toHaveText("All notifications cleared.");
+  await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("cordn:v1:notification-feed") ?? "null"))).toEqual({ version: 1, entries: [] });
+  expect(await page.evaluate(() => localStorage.getItem("cordn:v1:notification-resolutions"))).toBeNull();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Notifications, no unread" }).click();
+  await expect(page.getByRole("dialog", { name: "Notifications" }).getByText("No personal activity")).toBeVisible();
+});
+
 test("compact notification feed and Notification settings stay viewport-bound", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 520 });
   await page.addInitScript(() => {

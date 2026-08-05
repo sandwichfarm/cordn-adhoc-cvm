@@ -197,6 +197,12 @@ export class NotificationCenterStore {
     if (changed) this.persistFeed();
   }
 
+  clearAll(): void {
+    if (this.feed.length === 0) return;
+    this.feed = [];
+    this.persistFeed();
+  }
+
   isInvitationResolved(id: string, now = Date.now()): boolean {
     const safeId = normalizeKey(id);
     if (!safeId) return false;
