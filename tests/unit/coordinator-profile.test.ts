@@ -121,6 +121,27 @@ describe("publishCoordinatorProfile", () => {
     expect(pool.destroy).toHaveBeenCalledOnce();
   });
 
+  test("does not treat a fulfilled SimplePool connection failure as a relay acknowledgement", async () => {
+    const coordinator = KeyManager.generate();
+    const copiedSecret = coordinator.getSecretKeyBytes();
+    const pool = createPool([], [
+      Promise.resolve("connection failure: relay socket closed"),
+      Promise.reject(new Error("second relay rejected")),
+    ]);
+
+    await expect(publishCoordinatorProfile({
+      name: "Failed relay coordinator",
+      coordinatorPubkey: coordinator.identity.publicKeyHex,
+      getSecretKeyBytes: () => copiedSecret,
+      relayUrls,
+    }, { createPool: () => pool, now: () => 1_700_000_000_000 }))
+      .rejects.toBeInstanceOf(CoordinatorProfilePublicationError);
+
+    expect(pool.publish).toHaveBeenCalledWith(relayUrls, expect.objectContaining({ kind: 0 }));
+    expect(copiedSecret.every((byte) => byte === 0)).toBe(true);
+    expect(pool.destroy).toHaveBeenCalledOnce();
+  });
+
   test("rejects an empty relay target list with a fixed safe error", async () => {
     const coordinator = KeyManager.generate();
     const pool = createPool();

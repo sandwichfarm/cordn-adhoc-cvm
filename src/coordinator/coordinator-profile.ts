@@ -83,7 +83,7 @@ export async function publishCoordinatorProfile(
 
     const acknowledgements = pool.publish(relayUrls, event);
     const results = await Promise.allSettled(acknowledgements);
-    if (!results.some((result) => result.status === "fulfilled")) {
+    if (!results.some(isRelayAcknowledgement)) {
       throw new CoordinatorProfilePublicationError();
     }
 
@@ -95,6 +95,11 @@ export async function publishCoordinatorProfile(
     secretKey?.fill(0);
     pool.destroy();
   }
+}
+
+function isRelayAcknowledgement(result: PromiseSettledResult<unknown>): boolean {
+  if (result.status !== "fulfilled") return false;
+  return typeof result.value !== "string" || !result.value.startsWith("connection failure:");
 }
 
 async function newestUsableMetadata(
