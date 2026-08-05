@@ -117,7 +117,7 @@ Use existing labels exactly for supported sign-in methods: `NIP-07 browser signe
 
 `HostWorkspace` owns a single blocking setup state inside its existing content pane. The normal coordinator start/wake controls are not rendered or focusable while setup is required; navigation branding may remain visible, but the room rail, management toggle, room creation, and coordinator lifecycle controls remain hidden. This is a UI guard paired with the required start-time validation; it is not a new authentication protocol.
 
-The setup state uses the existing centered startup focal column: `width: min(34rem, calc(100% - 32px))`, background `#101614`, a fixed content-pane fill, and an internal vertical scroller only when height is constrained. It does not cover the viewport or create document scroll. It contains a visually quiet `First run` kicker, the stage heading, one explanatory paragraph, and the current step body.
+The setup state uses the existing centered startup focal column: `width: min(34rem, calc(100% - 32px))`, background `#101614`, a fixed content-pane fill, and an internal vertical scroller only when height is constrained. While setup is required, the absent room rail reserves no grid column: the content pane spans the full available viewport width and the focal card is horizontally centered against that width. It does not cover the viewport or create document scroll. It contains a visually quiet `First run` kicker, the stage heading, one explanatory paragraph, and the current step body.
 
 The sequence is fixed and has no back-skipping around the identity decision:
 

@@ -1308,6 +1308,7 @@
       class:management-open={managementOpen}
       class:startup-mode={coordinator.status === "starting" || coordinator.status === "stopping"}
       class:guided-setup={guidedSetupMode}
+      class:setup-required={setupRequired}
       class="host-layout grid min-h-0 min-w-0"
     >
       {#if mobileRailOpen && compactViewport}
@@ -2112,6 +2113,7 @@
   .host-commandbar :global(.compact-controls) { height: 2.65rem; gap: .08rem; border: 0; background: transparent; padding: .2rem .16rem; }
   .host-commandbar :global(.lifecycle-status) { border: 0; padding-inline: .55rem; }
   .host-layout { position: relative; width: 100%; max-width: 100%; overflow: hidden; grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .host-layout.setup-required { grid-template-columns: minmax(0, 1fr); }
   .host-chat { position: relative; width: 100%; height: 100%; max-width: 100%; }
   .host-layout:not(.management-open) .management-main { display: none; }
   .host-layout.management-open { grid-template-columns: minmax(21rem, 28rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
