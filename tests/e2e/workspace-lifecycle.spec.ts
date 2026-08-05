@@ -1770,13 +1770,22 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
     const ownBubble = own?.querySelector<HTMLElement>('[data-testid="message-bubble"]')?.getBoundingClientRect();
     const hostAvatar = host?.querySelector<HTMLElement>('[data-testid="message-avatar"]')?.getBoundingClientRect();
     const hostBubble = host?.querySelector<HTMLElement>('[data-testid="message-bubble"]')?.getBoundingClientRect();
+    const ownStyle = ownBubble ? getComputedStyle(own!.querySelector<HTMLElement>('[data-testid="message-bubble"]')!) : null;
+    const hostStyle = hostBubble ? getComputedStyle(host!.querySelector<HTMLElement>('[data-testid="message-bubble"]')!) : null;
     return Boolean(ownAvatar && ownBubble && hostAvatar && hostBubble
       && ownBubble.right < ownAvatar.left
       && hostAvatar.right < hostBubble.left
       && ownBubble.width >= listBounds.width * .5
       && hostBubble.width >= listBounds.width * .5
       && ownBubble.left > listBounds.left
-      && hostBubble.right < listBounds.right);
+      && hostBubble.right < listBounds.right
+      && ownStyle?.borderTopWidth === "0px"
+      && ownStyle.boxShadow === "none"
+      && hostStyle?.borderTopWidth === "0px"
+      && hostStyle.boxShadow !== "none"
+      && ownStyle.backgroundColor !== hostStyle.backgroundColor
+      && ownBubble.height < 70
+      && hostBubble.height < 70);
   })).toBe(true);
   await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)).toBeLessThanOrEqual(2);
   await guestContext.close();
@@ -1801,6 +1810,10 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   const guestMessage = guest.locator("article.message").filter({ hasText: "A reaction target" });
   await expect(guestMessage).toBeVisible({ timeout: 20_000 });
   await expect(hostMessage.getByRole("button", { name: "Add reaction" })).toHaveCount(0);
+  await expect.poll(() => hostMessage.evaluate((message) => {
+    const style = getComputedStyle(message);
+    return { border: style.borderTopWidth, shadow: style.boxShadow };
+  })).toEqual({ border: "0px", shadow: "none" });
 
   const hostPaneActions = page.getByTestId("host-chat").getByRole("button", { name: "More room actions" });
   await expect(hostPaneActions).toBeVisible();

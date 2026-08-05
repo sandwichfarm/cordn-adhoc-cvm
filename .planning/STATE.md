@@ -6,7 +6,7 @@ current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
 status: executing
 stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-08-05T23:00:32.664Z"
+last_updated: "2026-08-05T23:23:01.268Z"
 last_activity: 2026-08-03
 last_activity_desc: Phase 18 execution started
 progress:
@@ -114,6 +114,7 @@ None yet.
 | 2 | Add a camel emoji to the left of CAHMLS | 2026-08-02 | uncommitted | — |
 | 3 | Set the site title to CAHMLS | 2026-08-02 | ae42349 | — |
 | 6 | Give chat bubbles a 50% pane minimum and preserve directional negative space | 2026-08-05 | uncommitted | — |
+| 7 | Reduce chat bubble border noise and compact message spacing | 2026-08-06 | uncommitted | — |
 
 ## Deferred Items
 
