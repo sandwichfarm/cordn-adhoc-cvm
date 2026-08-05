@@ -42,13 +42,14 @@
 - [x] **NOTF-01**: The existing notification preference control is labeled `Notification settings` and opens a working settings surface with persisted choices.
 - [x] **NOTF-02**: A separate bell control opens an in-app notification feed with unread state, concise grouped entries, and actions for applicable events such as room invitations.
 - [x] **NOTF-03**: Browser notification permission is requested only from an explicit user action, and enabled desktop notifications are delivered on the configured cadence without duplicate bursts.
+- [x] **NOTF-05**: The in-app notification feed provides an accessible clear-all action that removes persisted feed history and unread state without accepting, dismissing, or resolving live room invitations.
 
 ### Conversation Presentation & Reactions
 
-- [ ] **REACT-01**: Each message or message group exposes a compact reaction-add affordance that overlaps the bubble border and opens an inline emoji picker.
-- [ ] **REACT-02**: Reactions are aggregated by emoji across all participants, show total counts, and let the current participant toggle their own reaction on messages authored by other participants without duplicating counts; participants cannot react to their own messages.
-- [ ] **CHAT-01**: Consecutive messages from the same sender are rendered as one sender group with the avatar and display name shown once and individual message bubbles beneath it.
-- [ ] **CHAT-02**: Every message keeps its timestamp and relevant metadata visible in a smaller, lower-contrast treatment without repeating sender chrome.
+- [x] **REACT-01**: Each message or message group exposes a compact reaction-add affordance that overlaps the bubble border and opens an inline emoji picker.
+- [x] **REACT-02**: Reactions are aggregated by emoji across all participants, show total counts, and let the current participant toggle their own reaction on messages authored by other participants without duplicating counts; participants cannot react to their own messages.
+- [x] **CHAT-01**: Consecutive messages from the same sender are rendered as one sender group with the avatar and display name shown once and individual message bubbles beneath it.
+- [x] **CHAT-02**: Every message keeps its timestamp and relevant metadata visible in a smaller, lower-contrast treatment without repeating sender chrome.
 
 ### Delivery Process & Verification
 
@@ -118,10 +119,11 @@
 | NOTF-01 | Phase 18 | Complete |
 | NOTF-02 | Phase 18 | Complete |
 | NOTF-03 | Phase 18 | Complete |
-| REACT-01 | Phase 19 | Pending |
-| REACT-02 | Phase 19 | Pending |
-| CHAT-01 | Phase 19 | Pending |
-| CHAT-02 | Phase 19 | Pending |
+| NOTF-05 | Phase 18 | Complete |
+| REACT-01 | Phase 19 | Complete |
+| REACT-02 | Phase 19 | Complete |
+| CHAT-01 | Phase 19 | Complete |
+| CHAT-02 | Phase 19 | Complete |
 | DOC-01 | Phase 20 | Pending |
 | TEST-01 | Phase 20 | Pending |
 | INTEROP-01 | Phase 20 | Pending |
@@ -140,8 +142,8 @@
 
 **Coverage:**
 
-- v1.1 requirements: 39 total
-- Mapped to phases: 39
+- v1.1 requirements: 40 total
+- Mapped to phases: 40
 - Unmapped: 0 ✓
 
 ---

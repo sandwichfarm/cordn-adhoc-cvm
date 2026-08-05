@@ -13,6 +13,7 @@
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { emptySidebarLedger, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
+  import { groupMessageStreaks } from "../chat/message-presentation";
   import {
     type ChatCoordinatorClientFactory,
     type RemoteJoinRequest,
@@ -24,8 +25,7 @@
   import ChatRoute from "./ChatRoute.svelte";
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
   import LifecyclePanel from "./LifecyclePanel.svelte";
-  import MessageAuthor from "./MessageAuthor.svelte";
-  import MessageReactions from "./MessageReactions.svelte";
+  import MessageGroup from "./MessageGroup.svelte";
   import NotificationCenter from "./NotificationCenter.svelte";
   import NotificationFeed from "./NotificationFeed.svelte";
   import InviteRedeemer from "./InviteRedeemer.svelte";
@@ -1739,27 +1739,21 @@
             />
             <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">
               {#if room.messages.length === 0}<div class="flex h-full items-center justify-center"><p class="max-w-sm text-center text-sm leading-6 text-[#82958a]">Your room is ready. Invite someone from the left to begin.</p></div>{/if}
-              {#each room.messages as message (message.id)}
-                {@const reactions = reactionSummary(room, message.id, room.stablePubkey)}
-                <article class:mine={message.sender === room.stablePubkey} class="host-message">
-                  <MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} />
-                  <p>{message.content}</p>
-                  <MessageReactions
-                    messageId={message.id}
-                    authorName={message.name}
-                    {reactions}
-                    pickerOpen={reactionPickerMessageId === message.id}
-                    canReact={message.sender !== room.stablePubkey}
-                    disabled={!composerEnabled}
-                    idPrefix="host"
-                    onTogglePicker={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}
-                    onClosePicker={() => {
-                      if (reactionPickerMessageId === message.id) reactionPickerMessageId = null;
-                    }}
-                    onToggleReaction={(emoji) => toggleReaction(message.id, emoji)}
-                    onSetReaction={(emoji) => setReaction(message.id, emoji, true)}
-                  />
-                </article>
+              {#each groupMessageStreaks(room.messages) as streak (`${streak.sender}:${streak.messages[0].id}`)}
+                <MessageGroup
+                  messages={streak.messages}
+                  viewerPubkey={room.stablePubkey}
+                  reactionsFor={(messageId) => reactionSummary(room, messageId, room.stablePubkey)}
+                  pickerOpenMessageId={reactionPickerMessageId}
+                  disabled={!composerEnabled}
+                  idPrefix="host"
+                  onTogglePicker={(messageId) => reactionPickerMessageId = reactionPickerMessageId === messageId ? null : messageId}
+                  onClosePicker={(messageId) => {
+                    if (reactionPickerMessageId === messageId) reactionPickerMessageId = null;
+                  }}
+                  onToggleReaction={toggleReaction}
+                  onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+                />
               {/each}
             </div>
             <form class="shrink-0 border-t border-[#293832] p-3 sm:p-4" onsubmit={(event) => { event.preventDefault(); void send(); }}><div class="mb-2 flex gap-1 overflow-x-auto pb-1">{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div><div class="flex gap-2"><input bind:this={composerInput} bind:value={composer} class="host-input min-w-0 flex-1" disabled={!composerEnabled} placeholder={roomConnection === "offline" ? "Room offline" : roomConnection === "connecting" ? "Connecting…" : "Message as host"} /><button class="host-primary px-4 sm:px-5" disabled={!composerEnabled || !composer.trim()}>Send</button></div><p class:unavailable={!composerEnabled} class="host-composer-status">{roomConnection === "offline" ? "Cached messages are read-only while this room is offline." : roomConnection === "connecting" ? "Connecting this room…" : "Connected. Messages are end-to-end encrypted."}</p>{#if reactionError}<p class="reaction-error" role="status">{reactionError}</p>{/if}</form>
@@ -2325,9 +2319,6 @@
   .host-connection-banner.offline { border-bottom-color: #604326; background: #21170f; color: #ffc17d; }
   .host-composer-status { margin-top: .5rem; color: #7ca087; text-align: center; font-size: .65rem; }
   .host-composer-status.unavailable { color: #a98b69; }
-  .host-message { position: relative; max-width: min(78%, 42rem); margin-bottom: 1rem; border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem 1rem; color: #e4f2e7; }
-  .host-message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
-  .host-message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
   .room-pane { position: relative; }
   .reaction-error { margin-top: .45rem; color: #ffaaa3; font-size: .65rem; }
   .startup-stage { position: absolute; z-index: 1; inset: 0; display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; padding: 16px; background: #101614; }

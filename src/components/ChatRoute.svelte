@@ -9,9 +9,9 @@
   import { createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
+  import { groupMessageStreaks } from "../chat/message-presentation";
   import { userProfileStore } from "../identity/user-profile.svelte";
-  import MessageAuthor from "./MessageAuthor.svelte";
-  import MessageReactions from "./MessageReactions.svelte";
+  import MessageGroup from "./MessageGroup.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
@@ -715,27 +715,21 @@
       {#if currentRoom.joinRequestSent}<div class="m-4 border border-[#2e553b] bg-[#112219] p-4 text-sm text-[#b9eac5]">Your encrypted join request is with the host. This page keeps checking for your welcome.</div>{:else}
         <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="guest-message-list" onscroll={updateFollowLatest}>
           {#if currentRoom.messages.length === 0}<p class="pt-16 text-center text-sm text-[#82958a]">Say hello — messages are encrypted before they leave your device.</p>{/if}
-          {#each currentRoom.messages as message (message.id)}
-            {@const reactions = reactionSummary(currentRoom, message.id, currentRoom.stablePubkey)}
-            <article class:mine={message.sender === currentRoom.stablePubkey} class="message">
-              <MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} />
-              <p>{message.content}</p>
-              <MessageReactions
-                messageId={message.id}
-                authorName={message.name}
-                {reactions}
-                pickerOpen={reactionPickerMessageId === message.id}
-                canReact={message.sender !== currentRoom.stablePubkey}
-                disabled={!composerEnabled}
-                idPrefix="guest"
-                onTogglePicker={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}
-                onClosePicker={() => {
-                  if (reactionPickerMessageId === message.id) reactionPickerMessageId = null;
-                }}
-                onToggleReaction={(emoji) => toggleReaction(message.id, emoji)}
-                onSetReaction={(emoji) => setReaction(message.id, emoji, true)}
-              />
-            </article>
+          {#each groupMessageStreaks(currentRoom.messages) as streak (`${streak.sender}:${streak.messages[0].id}`)}
+            <MessageGroup
+              messages={streak.messages}
+              viewerPubkey={currentRoom.stablePubkey}
+              reactionsFor={(messageId) => reactionSummary(currentRoom, messageId, currentRoom.stablePubkey)}
+              pickerOpenMessageId={reactionPickerMessageId}
+              disabled={!composerEnabled}
+              idPrefix="guest"
+              onTogglePicker={(messageId) => reactionPickerMessageId = reactionPickerMessageId === messageId ? null : messageId}
+              onClosePicker={(messageId) => {
+                if (reactionPickerMessageId === messageId) reactionPickerMessageId = null;
+              }}
+              onToggleReaction={toggleReaction}
+              onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+            />
           {/each}
         </div>
         <form class="chat-composer shrink-0 border-t border-[#293832] bg-[#101614] p-3 sm:p-4" data-testid="chat-composer" onsubmit={(event) => { event.preventDefault(); void send(); }}>
@@ -811,9 +805,6 @@
   .emoji-button { flex: 0 0 auto; border: 1px solid #293832; background: #0b0e0d; padding: .2rem .4rem; font-size: .9rem; line-height: 1; }
   .emoji-button:hover { border-color: #7cf59d; background: #112219; }
   .emoji-button:disabled { cursor: not-allowed; opacity: .28; }
-  .message { position: relative; max-width: min(78%, 38rem); margin-bottom: 1rem; border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem 1rem; color: #e4f2e7; }
-  .message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
-  .message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
   .room-pane { position: relative; }
   @media (max-width: 900px) {
     .chat-page { position: fixed; inset: 0; width: 100%; height: 100dvh; max-height: 100dvh; overscroll-behavior: none; }
@@ -852,8 +843,6 @@
     .remote-resume-qr { flex-direction: row; align-items: center; }
     .remote-resume-qr img { width: 5.5rem; height: 5.5rem; }
     [data-testid="guest-message-list"] { min-block-size: 6rem; padding: .75rem .65rem; overscroll-behavior: contain; }
-    .message { max-width: 88%; padding: .55rem .65rem; }
-    .message p { margin-top: .35rem; }
     .chat-composer { padding: .45rem .55rem; }
     .composer-row { gap: .35rem; }
     .composer-row .guest-input { padding: .58rem .65rem; }

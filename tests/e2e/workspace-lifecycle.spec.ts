@@ -1750,11 +1750,29 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
     await page.getByPlaceholder("Message as host").press("Enter");
   }
   await expect(guest.getByText("Host note 10")).toBeVisible({ timeout: 30_000 });
-  const hostMessage = guest.locator("article.message").filter({ hasText: "Host note 10" });
-  await expect(hostMessage.getByTestId("message-author")).toContainText("Mara");
-  await expect(hostMessage.getByTestId("message-badge")).toContainText(/🦉\s*guide/);
-  await expect(hostMessage.getByTestId("message-author").locator("img")).toHaveAttribute("src", /^data:image\/svg\+xml/);
-  await expect(hostMessage.getByTestId("message-badge")).toHaveCSS("user-select", "text");
+  const streaks = guest.getByTestId("guest-message-list").getByTestId("message-streak");
+  const ownStreak = streaks.filter({ hasText: "Hello from BDD" });
+  const hostStreak = streaks.filter({ hasText: "Host note 10" });
+  await expect(streaks).toHaveCount(2);
+  await expect(ownStreak).toHaveAttribute("data-message-count", "1");
+  await expect(hostStreak).toHaveAttribute("data-message-count", "10");
+  await expect(hostStreak.getByTestId("message-author")).toHaveCount(1);
+  await expect(hostStreak.getByTestId("message-author")).toContainText("Mara");
+  await expect(hostStreak.getByTestId("message-avatar")).toHaveCount(1);
+  await expect(hostStreak.getByTestId("message-avatar")).toHaveAttribute("src", /^data:image\/svg\+xml/);
+  await expect(hostStreak.getByTestId("message-badge")).toContainText(/🦉\s*guide/);
+  await expect(hostStreak.getByTestId("message-badge")).toHaveCSS("user-select", "text");
+  await expect(hostStreak.locator("time")).toHaveCount(10);
+  await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((list) => {
+    const [own, host] = Array.from(list.querySelectorAll<HTMLElement>('[data-testid="message-streak"]'));
+    const ownAvatar = own?.querySelector<HTMLElement>('[data-testid="message-avatar"]')?.getBoundingClientRect();
+    const ownBubble = own?.querySelector<HTMLElement>('[data-testid="message-bubble"]')?.getBoundingClientRect();
+    const hostAvatar = host?.querySelector<HTMLElement>('[data-testid="message-avatar"]')?.getBoundingClientRect();
+    const hostBubble = host?.querySelector<HTMLElement>('[data-testid="message-bubble"]')?.getBoundingClientRect();
+    return Boolean(ownAvatar && ownBubble && hostAvatar && hostBubble
+      && ownBubble.right < ownAvatar.left
+      && hostAvatar.right < hostBubble.left);
+  })).toBe(true);
   await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)).toBeLessThanOrEqual(2);
   await guestContext.close();
 });

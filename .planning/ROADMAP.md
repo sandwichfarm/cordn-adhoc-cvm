@@ -15,7 +15,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [x] **Phase 16: Resilient Rooms & Recovery** - Make room navigation, unread state, and coordinator-led room restoration accurate and actionable. (completed 2026-08-02)
 - [x] **Phase 17: Content-Pane Startup Motion** - Turn truthful room-recovery progress into an accessible GSAP ASCII startup experience that fills the workspace content pane. (completed 2026-08-03)
 - [ ] **Phase 18: Unified Presence, Notifications & Controls** - Consolidate personal presence and notifications while separating them from host lifecycle actions.
-- [ ] **Phase 19: Grouped Conversations & Reactions** - Make active conversations easier to scan and react to without visual repetition.
+- [x] **Phase 19: Grouped Conversations & Reactions** - Make active conversations easier to scan and react to without visual repetition.
 - [ ] **Phase 20: Delivery Contract & Regression Proof** - Document the GSD lifecycle and protect the complete v1.1 experience with automated coverage.
 - [ ] **Phase 21: First-Run Coordinator Identity & Profile** - Require deliberate operator identity and coordinator naming before first startup.
 - [ ] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history.
@@ -120,7 +120,9 @@ Plans:
   3. Each message or message group offers a compact reaction-add affordance overlapping the bubble border and opens an inline emoji picker.
   4. Reactions aggregate by emoji across participants, show total counts, and let the current participant toggle their own reaction without duplicating the count.
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [x] 19-01-PLAN.md — Deliver one ownership-aware grouped renderer with adaptive timestamps and retained reaction interoperability.
 **UI hint**: yes
 
 ### Phase 20: Delivery Contract & Regression Proof
@@ -191,7 +193,7 @@ Plans:
 | 16. Resilient Rooms & Recovery | 6/6 | Complete | 2026-08-02 |
 | 17. Content-Pane Startup Motion | 2/2 | Complete | 2026-08-03 |
 | 18. Unified Presence, Notifications & Controls | 2/3 | In Progress|  |
-| 19. Grouped Conversations & Reactions | 0/TBD | Not started | - |
+| 19. Grouped Conversations & Reactions | 1/1 | Complete | 2026-08-05 |
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
 | 21. First-Run Coordinator Identity & Profile | 0/TBD | Not started | - |
 | 22. Coordinator-Grouped Sidebar | 0/2 | Not started | - |
