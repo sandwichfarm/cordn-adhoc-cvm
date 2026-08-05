@@ -1,0 +1,1 @@
+No external API integration: Phase 16 changes existing local Svelte stores, persisted browser state, room-session recovery, and UI behavior without adding or expanding an external API, SDK, or service surface.

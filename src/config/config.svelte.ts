@@ -1,10 +1,14 @@
 import { DEFAULT_MAX_USERS, validateMaxUsers, validateRelayUrl } from "./config-validator";
-import { withRequiredLocalRelay } from "../lib/relay-pool";
+import { shareableRelayUrls, withRequiredLocalRelay } from "../lib/relay-pool";
 
 const CONFIG_STORAGE_KEY = "cordn:v1:config";
 const CONFIG_STORAGE_VERSION = 1;
+const DEFAULT_RELAY_SET_VERSION = 1;
+const LEGACY_DEFAULT_RELAY_URL = "wss://relay.contextvm.org";
 const DEFAULT_RELAYS: RelayConfig[] = [
-  { id: "default-relay-contextvm", url: "wss://relay.contextvm.org", enabled: true },
+  { id: "default-relay-contextvm-2", url: "wss://relay2.contextvm.org", enabled: true },
+  { id: "default-relay-coracle-bucket", url: "wss://bucket.coracle.social", enabled: true },
+  { id: "default-relay-nos-lol", url: "wss://nos.lol", enabled: true },
 ];
 
 export interface RelayConfig {
@@ -16,17 +20,20 @@ export interface RelayConfig {
 export interface BrowserCoordinatorOptions {
   announce: boolean;
   maxUsers: number;
+  coordinatorName: string;
 }
 
 export type PresenceState = "online" | "invisible" | "offline";
 
 interface PersistedConfig {
   version: typeof CONFIG_STORAGE_VERSION;
+  relaySetVersion?: number;
   relays: Array<Pick<RelayConfig, "url" | "enabled">>;
   announce: boolean;
   maxUsers: number;
   autostart: boolean;
   coordinatorName?: string;
+  setupCompleted?: boolean;
   userName?: string;
   hostBadgeLabel?: string;
   hostBadgeEmoji?: string;
@@ -42,6 +49,7 @@ export class ConfigStore {
   maxUsers = $state(DEFAULT_MAX_USERS);
   autostart = $state(false);
   coordinatorName = $state("My coordinator");
+  setupCompleted = $state(false);
   userName = $state("");
   hostBadgeLabel = $state("host");
   hostBadgeEmoji = $state("🛡️");
@@ -57,11 +65,24 @@ export class ConfigStore {
     return withRequiredLocalRelay(this.relays.filter((relay) => relay.enabled).map((relay) => relay.url));
   }
 
+  get inviteRelayUrls(): string[] {
+    return shareableRelayUrls(this.relays.filter((relay) => relay.enabled).map((relay) => relay.url));
+  }
+
   get coordinatorOptions(): BrowserCoordinatorOptions {
     return {
       announce: this.announce,
       maxUsers: this.maxUsers,
+      coordinatorName: this.coordinatorName,
     };
+  }
+
+  get setupState(): "complete" | "incomplete" {
+    return this.setupCompleted ? "complete" : "incomplete";
+  }
+
+  get isSetupComplete(): boolean {
+    return this.setupCompleted && normalizeCoordinatorName(this.coordinatorName) !== null;
   }
 
   enterEdit(): void {
@@ -138,11 +159,24 @@ export class ConfigStore {
     return true;
   }
 
-  setCoordinatorName(value: string): void {
-    const name = value.trimStart().slice(0, 48);
-    if (this.coordinatorName === name) return;
+  completeSetup(value: unknown): boolean {
+    const name = normalizeCoordinatorName(value);
+    if (name === null) return false;
+
+    if (this.setupCompleted && this.coordinatorName === name) return true;
     this.coordinatorName = name;
-    this.commit();
+    this.setupCompleted = true;
+    this.commit(false);
+    return true;
+  }
+
+  setCoordinatorName(value: unknown): boolean {
+    const name = normalizeCoordinatorName(value);
+    if (name === null) return false;
+    if (this.coordinatorName === name) return true;
+    this.coordinatorName = name;
+    this.commit(this.isSetupComplete);
+    return true;
   }
 
   setUserName(value: string): void {
@@ -182,6 +216,7 @@ export class ConfigStore {
     this.maxUsers = DEFAULT_MAX_USERS;
     this.autostart = false;
     this.coordinatorName = "My coordinator";
+    this.setupCompleted = false;
     this.userName = "";
     this.hostBadgeLabel = "host";
     this.hostBadgeEmoji = "🛡️";
@@ -202,11 +237,13 @@ export class ConfigStore {
 
     const config: PersistedConfig = {
       version: CONFIG_STORAGE_VERSION,
+      relaySetVersion: DEFAULT_RELAY_SET_VERSION,
       relays: this.relays.map((relay) => ({ url: relay.url, enabled: relay.enabled })),
       announce: this.announce,
       maxUsers: this.maxUsers,
       autostart: this.autostart,
       coordinatorName: this.coordinatorName,
+      setupCompleted: this.setupCompleted,
       userName: this.userName,
       hostBadgeLabel: this.hostBadgeLabel,
       hostBadgeEmoji: this.hostBadgeEmoji,
@@ -221,7 +258,16 @@ export class ConfigStore {
       return;
     }
 
-    this.relays = persisted.relays.map((relay) => ({
+    const hasKnownDefaultRelay = persisted.relays.some((relay) =>
+      relay.url === LEGACY_DEFAULT_RELAY_URL
+      || DEFAULT_RELAYS.some((defaultRelay) => defaultRelay.url === relay.url)
+    );
+    const relayMigration = persisted.relaySetVersion !== DEFAULT_RELAY_SET_VERSION
+      && hasKnownDefaultRelay;
+    const persistedRelays = relayMigration
+      ? mergeDefaultRelaySet(persisted.relays)
+      : persisted.relays;
+    this.relays = persistedRelays.map((relay) => ({
       id: crypto.randomUUID(),
       url: relay.url,
       enabled: relay.enabled,
@@ -229,11 +275,18 @@ export class ConfigStore {
     this.announce = persisted.announce;
     this.maxUsers = persisted.maxUsers;
     this.autostart = persisted.autostart;
-    this.coordinatorName = persisted.coordinatorName || "My coordinator";
+    this.coordinatorName = persisted.coordinatorName ?? "My coordinator";
+    const hasValidCoordinatorName = normalizeCoordinatorName(this.coordinatorName) !== null;
+    const isMeaningfulLegacyName = hasValidCoordinatorName && this.coordinatorName !== "My coordinator";
+    const legacySetupMigration = persisted.setupCompleted === undefined && isMeaningfulLegacyName;
+    this.setupCompleted = persisted.setupCompleted === true
+      ? hasValidCoordinatorName
+      : legacySetupMigration;
     this.userName = persisted.userName || "";
     this.hostBadgeLabel = persisted.hostBadgeLabel ?? "host";
     this.hostBadgeEmoji = persisted.hostBadgeEmoji ?? "🛡️";
     this.presenceState = persisted.presenceState ?? "invisible";
+    if (relayMigration || legacySetupMigration) this.persistConfig();
   }
 }
 
@@ -274,11 +327,15 @@ function readPersistedConfig(): PersistedConfig | null {
 
     return {
       version: CONFIG_STORAGE_VERSION,
+      relaySetVersion: typeof parsed.relaySetVersion === "number"
+        ? parsed.relaySetVersion
+        : undefined,
       relays,
       announce: parsed.announce === true,
       maxUsers: limitError ? DEFAULT_MAX_USERS : maxUsers,
       autostart: parsed.autostart === true,
-      coordinatorName: normalizeName(parsed.coordinatorName, 48),
+      coordinatorName: normalizeCoordinatorName(parsed.coordinatorName) ?? undefined,
+      setupCompleted: typeof parsed.setupCompleted === "boolean" ? parsed.setupCompleted : undefined,
       userName: normalizeName(parsed.userName, 32),
       hostBadgeLabel: normalizeName(parsed.hostBadgeLabel, 20),
       hostBadgeEmoji: normalizeEmoji(parsed.hostBadgeEmoji),
@@ -289,6 +346,21 @@ function readPersistedConfig(): PersistedConfig | null {
   }
 }
 
+function mergeDefaultRelaySet(
+  persistedRelays: Array<Pick<RelayConfig, "url" | "enabled">>,
+): Array<Pick<RelayConfig, "url" | "enabled">> {
+  const existing = new Map(persistedRelays.map((relay) => [relay.url, relay]));
+  const defaults = DEFAULT_RELAYS.map((relay) => ({
+    url: relay.url,
+    enabled: existing.get(relay.url)?.enabled ?? true,
+  }));
+  const custom = persistedRelays.filter((relay) =>
+    relay.url !== LEGACY_DEFAULT_RELAY_URL
+    && !DEFAULT_RELAYS.some((defaultRelay) => defaultRelay.url === relay.url)
+  );
+  return [...defaults, ...custom];
+}
+
 function normalizePresenceState(value: unknown): PresenceState | undefined {
   return value === "online" || value === "invisible" || value === "offline" ? value : undefined;
 }
@@ -297,6 +369,12 @@ function normalizeName(value: unknown, maxLength: number): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().slice(0, maxLength);
   return normalized || undefined;
+}
+
+export function normalizeCoordinatorName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = Array.from(value.trim()).slice(0, 48).join("");
+  return normalized || null;
 }
 
 function normalizeEmoji(value: unknown): string | undefined {

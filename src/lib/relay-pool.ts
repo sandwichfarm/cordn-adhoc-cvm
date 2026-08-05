@@ -9,6 +9,29 @@ export function withRequiredLocalRelay(relayUrls: readonly string[]): string[] {
 }
 
 /**
+ * Relay hints embedded in a portable invite must be reachable from a secure
+ * third-party web client. In particular, advertising the browser-only local
+ * relay makes https://cordn.net attempt an insecure localhost WebSocket and
+ * can prevent its coordinator request from being published at all.
+ */
+export function shareableRelayUrls(relayUrls: readonly string[]): string[] {
+  const result = new Set<string>();
+  for (const value of relayUrls) {
+    const trimmed = value.trim();
+    try {
+      const url = new URL(trimmed);
+      if (url.protocol !== "wss:") continue;
+      if (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]") continue;
+      result.add(trimmed);
+    } catch {
+      // Invalid relay configuration is handled by the config validator. Keep
+      // invite construction defensive because stored rooms may predate it.
+    }
+  }
+  return [...result];
+}
+
+/**
  * Keeps the mandatory local relay connected without letting an unavailable
  * local developer relay interrupt a working remote path. Events and
  * subscriptions still fan out to the local pool whenever it is available.

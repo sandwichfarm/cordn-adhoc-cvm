@@ -5,6 +5,7 @@ import {
   addMember,
   createKeyPackage,
   createRoomState,
+  chatEnvelopeToCordnEvent,
   decryptMessage,
   encryptMessage,
   groupCreatorPubkey,
@@ -73,7 +74,9 @@ describe("Feature: encrypted ad-hoc chat", () => {
       expectedHostPubkey: await hostSigner.getPublicKey(),
     });
     expect(forgedReceived.envelope).toMatchObject({ content: "Authenticated host message" });
-    expect(forgedReceived.envelope).not.toHaveProperty("auth");
+    // The forged local role presentation is removed before serialization;
+    // the resulting canonical Cordn event is still authenticated by MLS AAD.
+    expect(hasValidChatEnvelopeAuth(forgedReceived.envelope!)).toBe(true);
     expect(forgedReceived.envelope).not.toHaveProperty("badgeLabel");
     expect(forgedReceived.envelope).not.toHaveProperty("badgeEmoji");
 
@@ -117,5 +120,58 @@ describe("Feature: encrypted ad-hoc chat", () => {
       content: "An authenticated ordinary message",
     });
     expect(hasValidChatEnvelopeAuth(hostReceivedOrdinaryGuest.envelope!)).toBe(true);
+  });
+
+  test("Scenario: signed reaction mutations survive MLS while forged fields fail authentication", async () => {
+    const hostSigner = new BrowserNostrSigner(generateSecretKey());
+    const guestSigner = new BrowserNostrSigner(generateSecretKey());
+    const hostKey = await createKeyPackage(await hostSigner.getPublicKey());
+    const guestKey = await createKeyPackage(await guestSigner.getPublicKey());
+    const hostState = await createRoomState(hostKey.keyPackage, hostKey.privateKeyPackage);
+    const admitted = await addMember(hostState, guestKey.stored.publicBase64);
+    const guestState = await joinWelcome(admitted.welcomeBase64, guestKey.stored);
+
+    const signedReaction = await signChatEnvelope({
+      type: "message",
+      id: "reaction-1",
+      sender: await guestSigner.getPublicKey(),
+      name: "River",
+      content: "Reacted 👍",
+      createdAt: 5_000,
+      reaction: {
+        targetMessageId: "message-1",
+        targetPubkey: await hostSigner.getPublicKey(),
+        targetKind: 9,
+        emoji: "👍",
+        active: true,
+      },
+    }, guestSigner);
+    expect(hasValidChatEnvelopeAuth(signedReaction)).toBe(true);
+    expect(chatEnvelopeToCordnEvent(signedReaction).tags).toEqual(expect.arrayContaining([
+      ["e", "message-1", "", await hostSigner.getPublicKey()],
+      ["p", await hostSigner.getPublicKey()],
+      ["k", "9"],
+    ]));
+    const encrypted = await encryptMessage(guestState, signedReaction);
+    const received = await decryptMessage(admitted.state, encrypted.opaqueBase64);
+    expect(received.envelope?.reaction).toEqual({
+      targetMessageId: "message-1",
+      targetPubkey: await hostSigner.getPublicKey(),
+      targetKind: 9,
+      emoji: "👍",
+      active: true,
+    });
+
+    for (const forged of [
+      { ...signedReaction, reaction: { ...signedReaction.reaction!, targetMessageId: "other-message" } },
+      { ...signedReaction, reaction: { ...signedReaction.reaction!, targetPubkey: await guestSigner.getPublicKey() } },
+      { ...signedReaction, reaction: { ...signedReaction.reaction!, targetKind: 1 } },
+      { ...signedReaction, reaction: { ...signedReaction.reaction!, emoji: "👎" } },
+      { ...signedReaction, reaction: { ...signedReaction.reaction!, active: false } },
+      { ...signedReaction, sender: await hostSigner.getPublicKey() },
+      { ...signedReaction, createdAt: signedReaction.createdAt + 1 },
+    ]) {
+      expect(hasValidChatEnvelopeAuth(forged as typeof signedReaction)).toBe(false);
+    }
   });
 });

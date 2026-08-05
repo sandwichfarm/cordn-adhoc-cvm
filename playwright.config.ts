@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const previewPort = process.env.PLAYWRIGHT_PORT ?? "4173";
+const previewUrl = `http://127.0.0.1:${previewPort}`;
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
@@ -9,7 +12,7 @@ export default defineConfig({
   fullyParallel: false,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: previewUrl,
     trace: "on-first-retry",
   },
   projects: [
@@ -19,8 +22,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm build && vite preview --host 127.0.0.1 --port 4173",
-    url: "http://127.0.0.1:4173",
+    command: `pnpm build && vite preview --host 127.0.0.1 --port ${previewPort}`,
+    url: previewUrl,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

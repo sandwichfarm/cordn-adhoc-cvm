@@ -90,7 +90,7 @@ describe("browser Cordn server adapter", () => {
     const encodedMessage = createPrivateApplicationMessage("group-browser", 7n);
 
     const posted = adapter.postGroupMessage(
-      { msg_64: encodeBase64(encodedMessage) },
+      { gid: "group-browser", msg_64: encodeBase64(encodedMessage) },
       createExtra("sender-pubkey"),
     );
     const fetched = adapter.fetchGroupMessages({ gid: "group-browser" });
@@ -115,7 +115,7 @@ describe("browser Cordn server adapter", () => {
     const encodedMessage = createPrivateApplicationMessage("group-persisted", 9n);
 
     firstAdapter.postGroupMessage(
-      { msg_64: encodeBase64(encodedMessage) },
+      { gid: "group-persisted", msg_64: encodeBase64(encodedMessage) },
       createExtra("sender-pubkey"),
     );
 
@@ -232,6 +232,7 @@ describe("browser Cordn server adapter", () => {
     ).toThrow("Room deleted by host");
     expect(() =>
       coordinator.postGroupMessage({
+        groupId: "deleted-room",
         ephemeralSenderPubkey: "sender",
         opaqueMessage: createPrivateApplicationMessage("deleted-room", 1n),
       }),
@@ -252,7 +253,7 @@ describe("browser Cordn server adapter", () => {
 
     adapter.setTelemetrySink({ recordOperation });
     adapter.postGroupMessage(
-      { msg_64: encodeBase64(encodedMessage) },
+      { gid: "group-telemetry", msg_64: encodeBase64(encodedMessage) },
       createExtra("sender-pubkey"),
     );
 

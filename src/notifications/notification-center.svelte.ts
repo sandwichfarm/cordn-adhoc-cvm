@@ -1,7 +1,14 @@
-import { SvelteMap } from "svelte/reactivity";
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
 export const NOTIFICATION_STORAGE_KEY = "cordn:v1:notifications";
+export const NOTIFICATION_FEED_STORAGE_KEY = "cordn:v1:notification-feed";
+export const INVITATION_RESOLUTION_STORAGE_KEY = "cordn:v1:notification-resolutions";
 export const DEFAULT_NOTIFICATION_CADENCE_MS = 15_000;
+export const INVITATION_RESOLUTION_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
+
+const MAX_NOTIFICATION_HISTORY = 100;
+const MAX_SAFE_LABEL_LENGTH = 160;
+const MAX_SAFE_KEY_LENGTH = 256;
 
 export type NotificationCategory = "user_online" | "new_message" | "room_invite" | "join_request";
 
@@ -20,11 +27,38 @@ export interface CordnNotificationEvent {
   action?: "waiting" | "joined";
 }
 
+export interface FeedNotificationEntry {
+  id: string;
+  category: NotificationCategory;
+  key: string;
+  actor?: string;
+  room?: string;
+  action?: "waiting" | "joined";
+  createdAt: number;
+  occurrences: number;
+  read: boolean;
+}
+
+export interface InvitationResolution {
+  id: string;
+  resolvedAt: number;
+}
+
 interface PersistedNotificationPreferences {
   version: 1;
   enabled: boolean;
   cadenceMs: number;
   categories: NotificationCategories;
+}
+
+interface PersistedNotificationFeed {
+  version: 1;
+  entries: FeedNotificationEntry[];
+}
+
+interface PersistedInvitationResolutions {
+  version: 1;
+  entries: InvitationResolution[];
 }
 
 interface NotificationCopy {
@@ -40,25 +74,46 @@ const DEFAULT_CATEGORIES: NotificationCategories = {
 };
 
 const ALLOWED_CADENCES = new Set([5_000, 15_000, 30_000, 60_000]);
+const NOTIFICATION_CATEGORIES = new Set<NotificationCategory>([
+  "user_online",
+  "new_message",
+  "room_invite",
+  "join_request",
+]);
 
+/**
+ * The in-app feed is the notification source of truth. The browser Notification
+ * API is only an optional, grouped projection of these safe event descriptors.
+ */
 export class NotificationCenterStore {
   permission = $state<NotificationPermission | "unsupported">(readPermission());
   enabled = $state(false);
   cadenceMs = $state(DEFAULT_NOTIFICATION_CADENCE_MS);
   categories = $state<NotificationCategories>({ ...DEFAULT_CATEGORIES });
+  feed = $state<FeedNotificationEntry[]>([]);
+  private resolutions = $state<InvitationResolution[]>([]);
   private readonly queued = new SvelteMap<string, CordnNotificationEvent>();
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     const persisted = readPreferences();
-    if (!persisted) return;
-    this.enabled = persisted.enabled;
-    this.cadenceMs = persisted.cadenceMs;
-    this.categories = { ...persisted.categories };
+    if (persisted) {
+      this.enabled = persisted.enabled;
+      this.cadenceMs = persisted.cadenceMs;
+      this.categories = { ...persisted.categories };
+    }
+    this.feed = readFeed();
+    const persistedResolutions = readInvitationResolutions();
+    this.resolutions = pruneResolutions(persistedResolutions);
+    if (this.resolutions.length !== persistedResolutions.length) this.persistInvitationResolutions();
   }
 
   get active(): boolean {
     return this.permission === "granted" && this.enabled;
+  }
+
+  get unreadCount(): number {
+    return this.feed.reduce((count, entry) => count + (entry.read ? 0 : 1), 0);
   }
 
   syncPermission(): void {
@@ -73,14 +128,14 @@ export class NotificationCenterStore {
     }
     this.permission = await Notification.requestPermission();
     if (this.permission === "granted") this.enabled = true;
-    this.persist();
+    this.persistPreferences();
     return this.permission;
   }
 
   setEnabled(value: boolean): void {
     this.enabled = value && this.permission === "granted";
     if (!this.enabled) this.cancelQueued();
-    this.persist();
+    this.persistPreferences();
   }
 
   setCategory(category: NotificationCategory, value: boolean): void {
@@ -94,7 +149,7 @@ export class NotificationCenterStore {
         this.timer = null;
       }
     }
-    this.persist();
+    this.persistPreferences();
   }
 
   setCadence(value: number): void {
@@ -104,14 +159,60 @@ export class NotificationCenterStore {
       clearTimeout(this.timer);
       this.timer = setTimeout(() => this.flush(), this.cadenceMs);
     }
-    this.persist();
+    this.persistPreferences();
   }
 
+  /** Record a safe event for the feed, then optionally offer it to desktop delivery. */
+  record(event: CordnNotificationEvent): void {
+    const normalized = normalizeEvent(event);
+    if (!normalized) return;
+
+    const id = eventId(normalized);
+    const previous = this.feed.find((entry) => entry.id === id);
+    const entry: FeedNotificationEntry = {
+      id,
+      ...normalized,
+      createdAt: Date.now(),
+      occurrences: (previous?.occurrences ?? 0) + 1,
+      read: previous?.read ?? false,
+    };
+    this.feed = this.trimFeed([entry, ...this.feed.filter((candidate) => candidate.id !== id)]);
+    this.persistFeed();
+    this.offerDesktopDelivery(normalized);
+  }
+
+  /** Compatibility for legacy producers. All producers now pass through record(). */
   enqueue(event: CordnNotificationEvent): void {
-    this.syncPermission();
-    if (!this.active || !this.categories[event.category]) return;
-    this.queued.set(`${event.category}:${event.key}`, event);
-    if (this.timer === null) this.timer = setTimeout(() => this.flush(), this.cadenceMs);
+    this.record(event);
+  }
+
+  markVisibleRead(ids: readonly string[]): void {
+    const visible = new SvelteSet(ids);
+    let changed = false;
+    this.feed = this.feed.map((entry) => {
+      if (!visible.has(entry.id) || entry.read) return entry;
+      changed = true;
+      return { ...entry, read: true };
+    });
+    if (changed) this.persistFeed();
+  }
+
+  isInvitationResolved(id: string, now = Date.now()): boolean {
+    const safeId = normalizeKey(id);
+    if (!safeId) return false;
+    const cutoff = now - INVITATION_RESOLUTION_RETENTION_MS;
+    return this.resolutions.some((entry) => entry.id === safeId && entry.resolvedAt >= cutoff);
+  }
+
+  resolveInvitation(id: string, timestamp = Date.now()): void {
+    const safeId = normalizeKey(id);
+    if (!safeId || !Number.isFinite(timestamp)) return;
+    const next = { id: safeId, resolvedAt: Math.floor(timestamp) };
+    this.resolutions = pruneResolutions([
+      next,
+      ...this.resolutions.filter((entry) => entry.id !== safeId),
+    ], timestamp);
+    this.persistInvitationResolutions();
   }
 
   flush(): void {
@@ -138,13 +239,24 @@ export class NotificationCenterStore {
     this.cancelQueued();
   }
 
+  private offerDesktopDelivery(event: CordnNotificationEvent): void {
+    this.syncPermission();
+    if (!this.active || !this.categories[event.category]) return;
+    this.queued.set(eventId(event), event);
+    if (this.timer === null) this.timer = setTimeout(() => this.flush(), this.cadenceMs);
+  }
+
+  private trimFeed(entries: FeedNotificationEntry[]): FeedNotificationEntry[] {
+    return trimFeedEntries(entries);
+  }
+
   private cancelQueued(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     this.queued.clear();
   }
 
-  private persist(): void {
+  private persistPreferences(): void {
     if (!("localStorage" in globalThis)) return;
     const preferences: PersistedNotificationPreferences = {
       version: 1,
@@ -153,6 +265,18 @@ export class NotificationCenterStore {
       categories: { ...this.categories },
     };
     localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(preferences));
+  }
+
+  private persistFeed(): void {
+    if (!("localStorage" in globalThis)) return;
+    const feed: PersistedNotificationFeed = { version: 1, entries: this.feed.map(toPersistedFeedEntry) };
+    localStorage.setItem(NOTIFICATION_FEED_STORAGE_KEY, JSON.stringify(feed));
+  }
+
+  private persistInvitationResolutions(): void {
+    if (!("localStorage" in globalThis)) return;
+    const resolutions: PersistedInvitationResolutions = { version: 1, entries: this.resolutions };
+    localStorage.setItem(INVITATION_RESOLUTION_STORAGE_KEY, JSON.stringify(resolutions));
   }
 }
 
@@ -180,6 +304,124 @@ function readPreferences(): PersistedNotificationPreferences | null {
   } catch {
     return null;
   }
+}
+
+function readFeed(): FeedNotificationEntry[] {
+  if (!("localStorage" in globalThis)) return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(NOTIFICATION_FEED_STORAGE_KEY) ?? "null") as Partial<PersistedNotificationFeed> | null;
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.entries)) return [];
+    const entries = parsed.entries.flatMap((entry) => {
+      const safe = normalizePersistedFeedEntry(entry);
+      return safe ? [safe] : [];
+    }).sort((left, right) => right.createdAt - left.createdAt);
+    const ids = new SvelteSet<string>();
+    return trimFeedEntries(entries.filter((entry) => {
+      if (ids.has(entry.id)) return false;
+      ids.add(entry.id);
+      return true;
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function readInvitationResolutions(): InvitationResolution[] {
+  if (!("localStorage" in globalThis)) return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INVITATION_RESOLUTION_STORAGE_KEY) ?? "null") as Partial<PersistedInvitationResolutions> | null;
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.entries)) return [];
+    return parsed.entries.flatMap((entry) => {
+      const id = normalizeKey(entry?.id);
+      const resolvedAt = entry?.resolvedAt;
+      return id && Number.isFinite(resolvedAt) ? [{ id, resolvedAt: Math.floor(resolvedAt) }] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function pruneResolutions(entries: InvitationResolution[], now = Date.now()): InvitationResolution[] {
+  const cutoff = now - INVITATION_RESOLUTION_RETENTION_MS;
+  const ids = new SvelteSet<string>();
+  return entries.filter((entry) => {
+    if (entry.resolvedAt < cutoff || ids.has(entry.id)) return false;
+    ids.add(entry.id);
+    return true;
+  });
+}
+
+function trimFeedEntries(entries: FeedNotificationEntry[]): FeedNotificationEntry[] {
+  const next = [...entries];
+  let ordinaryEntries = next.filter((entry) => entry.category !== "room_invite").length;
+  for (let index = next.length - 1; index >= 0 && ordinaryEntries > MAX_NOTIFICATION_HISTORY; index -= 1) {
+    if (next[index].category === "room_invite") continue;
+    next.splice(index, 1);
+    ordinaryEntries -= 1;
+  }
+  return next;
+}
+
+function normalizePersistedFeedEntry(value: unknown): FeedNotificationEntry | null {
+  if (!isRecord(value)) return null;
+  const candidate = value as unknown as Partial<FeedNotificationEntry>;
+  const normalized = normalizeEvent({
+    category: candidate.category as NotificationCategory,
+    key: candidate.key ?? "",
+    actor: candidate.actor,
+    room: candidate.room,
+    action: candidate.action,
+  });
+  const createdAt = candidate.createdAt;
+  const occurrences = candidate.occurrences;
+  if (!normalized
+    || typeof createdAt !== "number"
+    || !Number.isFinite(createdAt)
+    || typeof occurrences !== "number"
+    || !Number.isInteger(occurrences)
+    || occurrences < 1
+    || typeof candidate.read !== "boolean") return null;
+  return {
+    id: eventId(normalized),
+    ...normalized,
+    createdAt: Math.floor(createdAt),
+    occurrences,
+    read: candidate.read,
+  };
+}
+
+function normalizeEvent(value: CordnNotificationEvent): CordnNotificationEvent | null {
+  if (!NOTIFICATION_CATEGORIES.has(value.category)) return null;
+  const key = normalizeKey(value.key);
+  if (!key) return null;
+  const actor = normalizeLabel(value.actor);
+  const room = normalizeLabel(value.room);
+  const action = value.action === "waiting" || value.action === "joined" ? value.action : undefined;
+  return { category: value.category, key, ...(actor ? { actor } : {}), ...(room ? { room } : {}), ...(action ? { action } : {}) };
+}
+
+function toPersistedFeedEntry(entry: FeedNotificationEntry): FeedNotificationEntry {
+  return { ...entry };
+}
+
+function eventId(event: CordnNotificationEvent): string {
+  return `${event.category}:${event.key}`;
+}
+
+function normalizeKey(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const key = value.trim();
+  return key.length > 0 && key.length <= MAX_SAFE_KEY_LENGTH ? key : null;
+}
+
+function normalizeLabel(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const label = value.trim().slice(0, MAX_SAFE_LABEL_LENGTH);
+  return label || undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function summarize(events: CordnNotificationEvent[]): NotificationCopy {
@@ -219,7 +461,7 @@ function summarizeOne(event: CordnNotificationEvent): NotificationCopy {
   if (event.category === "user_online") return { title: `${actor} is online`, body: "Available on Cordn." };
   if (event.category === "new_message") return { title: room ? `New message in #${room}` : "New message", body: `From ${actor}.` };
   if (event.category === "room_invite") return { title: "New room invite", body: room ? `${actor} invited you to ${room}.` : `From ${actor}.` };
-  if (event.action === "joined") return { title: room ? `Guest joined #${room}` : "A guest joined", body: "Admitted automatically." };
+  if (event.action === "joined") return { title: room ? `Guest admitted to #${room}` : "A guest was admitted", body: "Welcome delivered; connection may still be in progress." };
   return { title: "Guest waiting to join", body: room ? `Review #${room}.` : "Open Cordn to review access." };
 }
 

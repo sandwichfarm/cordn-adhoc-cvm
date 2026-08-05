@@ -16,7 +16,22 @@ export interface WelcomeQueueRecord {
   welcome: Welcome;
   createdAt: number;
   readAt: number | null;
-  afterCursor?: number;
+  /** Cursor of the Commit already incorporated by the Welcome. */
+  joinAfterCursor?: number;
+}
+
+export interface ConsumedWelcomeRef {
+  keyPackageReference: string;
+  createdAt: number;
+}
+
+export interface ConsumedJoinRequestRef {
+  requesterStablePubkey: string;
+  createdAt: number;
+}
+
+export interface ConsumedJoinRequestWithGroupRef extends ConsumedJoinRequestRef {
+  groupId: string;
 }
 
 export interface JoinRequestRecord {
@@ -54,7 +69,7 @@ export interface StoreWelcomeInput {
   targetStablePubkey: string;
   keyPackageReference: string;
   welcome: Welcome;
-  afterCursor?: number;
+  joinAfterCursor?: number;
 }
 
 export interface StoreJoinRequestInput {
@@ -67,6 +82,8 @@ export interface StoreJoinRequestInput {
 export interface PostGroupMessageInput {
   ephemeralSenderPubkey: string;
   opaqueMessage: Uint8Array;
+  /** Canonical outer routing id. The coordinator must not inspect msg_64. */
+  groupId: string;
 }
 
 export interface FetchGroupMessagesInput {
@@ -85,4 +102,5 @@ export type SubscribeManyGroupMessagesInput = FetchManyGroupMessagesInput;
 
 export interface FetchManyPendingJoinRequestsInput {
   groups: { groupId: string }[];
+  consumed?: ConsumedJoinRequestWithGroupRef[];
 }

@@ -500,13 +500,17 @@ export class CoordinatorAdapter {
   }
 
   fetchPendingWelcomes(
-    _input: z.infer<typeof fetchPendingWelcomesInputSchema>,
+    input: z.infer<typeof fetchPendingWelcomesInputSchema>,
     extra: ToolExtra,
   ) {
+    const clientPubkey = requireClientPubkey(extra);
     const records = this.coordinator.fetchPendingWelcomes(
-      requireClientPubkey(extra),
+      clientPubkey,
+      input.consumed?.map((entry) => ({
+        keyPackageReference: entry.kp_ref,
+        createdAt: entry.at,
+      })),
     );
-
     return {
       content: [],
       structuredContent: {
@@ -514,7 +518,7 @@ export class CoordinatorAdapter {
           kp_ref: record.keyPackageReference,
           welcome_64: encodeWelcomeBase64(record.welcome),
           at: record.createdAt,
-          ...(record.afterCursor ? { after: record.afterCursor } : {}),
+          ...(record.joinAfterCursor ? { after: record.joinAfterCursor } : {}),
         })),
       },
     };
@@ -526,7 +530,7 @@ export class CoordinatorAdapter {
       targetStablePubkey: input.target_pk,
       keyPackageReference: input.kp_ref,
       welcome: decodeWelcomeBase64(input.welcome_64),
-      afterCursor: input.after,
+      joinAfterCursor: input.after,
     });
 
     this.recordOperation("storeWelcome");
@@ -539,7 +543,7 @@ export class CoordinatorAdapter {
     };
   }
 
-  storeJoinRequest(
+  async storeJoinRequest(
     input: z.infer<typeof storeJoinRequestInputSchema>,
     extra: ToolExtra,
   ) {
@@ -560,7 +564,7 @@ export class CoordinatorAdapter {
       keyPackageRef: input.kp_ref,
       inviteToken: input.invite_token,
     });
-
+    await this.coordinator.waitForJoinRequestNotifications(record);
     this.recordOperation("storeJoinRequest");
 
     return {
@@ -598,6 +602,11 @@ export class CoordinatorAdapter {
     // no extra available here; enforced in registration wrapper
     const records = this.coordinator.fetchManyPendingJoinRequests({
       groups: input.groups.map((group) => ({ groupId: group.gid })),
+      consumed: input.consumed?.map((entry) => ({
+        groupId: entry.gid,
+        requesterStablePubkey: entry.pk,
+        createdAt: entry.at,
+      })),
     });
 
     this.recordOperation("fetchManyPendingJoinRequests");
@@ -626,6 +635,7 @@ export class CoordinatorAdapter {
       const record = this.coordinator.postGroupMessage({
         ephemeralSenderPubkey: clientPubkey,
         opaqueMessage: decodeOpaqueMessageBase64(input.msg_64),
+        groupId: input.gid,
       });
 
       this.recordOperation("postGroupMessage");

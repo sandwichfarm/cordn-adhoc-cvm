@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NostrSigner } from "@contextvm/sdk/core";
-import { ChatRoomSession, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadRememberedHostRoom, loadRoom, reconcileRoomHostIdentity, rememberActiveHostRoom, removeStoredRoom, ROOMS_CHANGED_EVENT, saveRoom, type StoredRoom } from "../../src/chat/room-store";
+import { anonymousMembershipImpact, ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, forgetLastOpenRoom, forgetRememberedHostRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRememberedHostRoom, loadRoom, markRoomRead, reconcileRoomHostIdentity, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, requireRoomSigner, retireAnonymousMemberships, roomIdentityKey, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../../src/chat/room-store";
+import { BrowserNostrSigner } from "../../src/crypto/browser-nostr-signer";
+import { bytesToHex } from "nostr-tools/utils";
 
 function storedRoom(input: Partial<StoredRoom> & Pick<StoredRoom, "id" | "title" | "coordinatorPubkey" | "isHost">): StoredRoom {
   return {
@@ -72,6 +74,81 @@ describe("room navigation persistence", () => {
     expect(listRooms()).toHaveLength(1);
     expect(listRooms()[0]).toMatchObject({ id: "saved-room", updatedAt: expect.any(Number) });
     window.removeEventListener(ROOMS_CHANGED_EVENT, listener);
+  });
+
+  it.each([
+    undefined,
+    null,
+    { version: 2, baselineEstablished: true, lastReadCursor: 0, unreadCount: 1 },
+    { version: 1, baselineEstablished: "yes", lastReadCursor: 0, unreadCount: 1 },
+    { version: 1, baselineEstablished: true, lastReadCursor: -1, unreadCount: 1 },
+    { version: 1, baselineEstablished: true, lastReadCursor: 1.5, unreadCount: 1 },
+    { version: 1, baselineEstablished: true, lastReadCursor: Number.POSITIVE_INFINITY, unreadCount: 1 },
+    { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: Number.MAX_SAFE_INTEGER + 1 },
+  ])("normalizes malformed optional read state without hiding the cached room", (readState) => {
+    const room = storedRoom({ id: "read-state", title: "Read state", coordinatorPubkey: "a".repeat(64), isHost: false });
+    localStorage.setItem(currentRoomKey(room), JSON.stringify({ ...room, readState }));
+
+    const loaded = loadRoom(room.id, room.coordinatorPubkey);
+
+    expect(loaded).toMatchObject({ id: room.id, title: room.title, messages: [] });
+    expect(roomUnreadCount(loaded!)).toBe(0);
+  });
+
+  it("keeps unread state isolated by the full room identity and clears only its target", () => {
+    const first = storedRoom({
+      id: "shared-id",
+      title: "First",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 4, unreadCount: 2 },
+    });
+    const second = storedRoom({
+      id: "shared-id",
+      title: "Second",
+      coordinatorPubkey: "b".repeat(64),
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 7, unreadCount: 3 },
+    });
+    saveRoom(first);
+    saveRoom(second);
+
+    markRoomRead(roomTargetFor(first));
+
+    expect(roomUnreadCount(loadRoom(first.id, first.coordinatorPubkey)!)).toBe(0);
+    expect(roomUnreadCount(loadRoom(second.id, second.coordinatorPubkey)!)).toBe(3);
+    expect(coordinatorUnreadTotal(listRooms(), first.coordinatorPubkey)).toBe(0);
+    expect(coordinatorUnreadTotal([second, first], second.coordinatorPubkey)).toBe(3);
+  });
+
+  it("uses exact safe counts and a saturating, order-independent coordinator total", () => {
+    const coordinatorPubkey = "a".repeat(64);
+    const first = storedRoom({
+      id: "first",
+      title: "First",
+      coordinatorPubkey,
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: Number.MAX_SAFE_INTEGER - 1 },
+    });
+    const second = storedRoom({
+      id: "second",
+      title: "Second",
+      coordinatorPubkey,
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: 99 },
+    });
+    const otherCoordinator = storedRoom({
+      id: "same-id",
+      title: "Elsewhere",
+      coordinatorPubkey: "b".repeat(64),
+      isHost: false,
+      readState: { version: 1, baselineEstablished: true, lastReadCursor: 0, unreadCount: 1 },
+    });
+
+    expect(roomUnreadCount(first)).toBe(Number.MAX_SAFE_INTEGER - 1);
+    expect(coordinatorUnreadTotal([first, second, otherCoordinator], coordinatorPubkey)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(coordinatorUnreadTotal([otherCoordinator, second, first], coordinatorPubkey)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(coordinatorUnreadTotal([first, second, otherCoordinator], otherCoordinator.coordinatorPubkey)).toBe(1);
   });
 
   it("retains explicit host identity in stored rooms", () => {
@@ -186,6 +263,23 @@ describe("room navigation persistence", () => {
     expect(loaded).not.toHaveProperty("host");
   });
 
+  it("ignores malformed optional coordinator-key metadata without hiding a room", () => {
+    const room = storedRoom({
+      id: "malformed-key-mode",
+      title: "Malformed key mode",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+    });
+    localStorage.setItem(currentRoomKey(room), JSON.stringify({
+      ...room,
+      coordinatorKeyMode: "occasionally",
+    }));
+
+    const loaded = loadRoom(room.id, room.coordinatorPubkey);
+    expect(loaded).toMatchObject({ id: room.id });
+    expect(loaded).not.toHaveProperty("coordinatorKeyMode");
+  });
+
   it("keeps identical room ids isolated by coordinator", () => {
     const first = storedRoom({
       id: "shared-group-id",
@@ -207,6 +301,15 @@ describe("room navigation persistence", () => {
     expect(loadRoom(first.id, first.coordinatorPubkey)?.title).toBe(first.title);
     expect(loadRoom(second.id, second.coordinatorPubkey)?.title).toBe(second.title);
     expect(loadRoom(first.id)).toBeNull();
+  });
+
+  it("freezes composite row targets so same-id rooms cannot be conflated", () => {
+    const first = storedRoom({ id: "same", title: "First", coordinatorPubkey: "a".repeat(64), isHost: true });
+    const second = storedRoom({ id: "same", title: "Second", coordinatorPubkey: "b".repeat(64), isHost: false });
+
+    expect(roomTargetFor(first)).toEqual({ coordinatorPubkey: first.coordinatorPubkey, roomId: first.id });
+    expect(roomTargetFor(first)).not.toEqual(roomTargetFor(second));
+    expect(Object.isFrozen(roomTargetFor(first))).toBe(true);
   });
 
   it("removes only the exact coordinator room and emits a removal change", () => {
@@ -370,6 +473,20 @@ describe("room navigation persistence", () => {
     expect(loadRememberedHostRoom(coordinatorPubkey)).toBeNull();
   });
 
+  it("restores only a validated composite last-open record", () => {
+    const coordinatorPubkey = "a".repeat(64);
+    const room = storedRoom({ id: "last-open", title: "Last open", coordinatorPubkey, isHost: false });
+    saveRoom(room);
+    rememberLastOpenRoom(room);
+
+    expect(loadLastOpenRoom(coordinatorPubkey)).toMatchObject({ id: room.id, coordinatorPubkey });
+    expect(localStorage.getItem(`cordn-adhoc-active-host-room:${coordinatorPubkey}`)).toContain('"version":1');
+    localStorage.setItem(`cordn-adhoc-active-host-room:${coordinatorPubkey}`, JSON.stringify({ version: 1, coordinatorPubkey: "b".repeat(64), roomId: room.id }));
+    expect(loadLastOpenRoom(coordinatorPubkey)).toBeNull();
+    expect(localStorage.getItem(`cordn-adhoc-active-host-room:${coordinatorPubkey}`)).toBeNull();
+    forgetLastOpenRoom(coordinatorPubkey);
+  });
+
   it("forgets a remembered room that is missing or belongs to another coordinator", () => {
     const coordinatorPubkey = "a".repeat(64);
     const otherRoom = storedRoom({
@@ -383,6 +500,154 @@ describe("room navigation persistence", () => {
 
     expect(loadRememberedHostRoom(coordinatorPubkey)).toBeNull();
     expect(localStorage.getItem(`cordn-adhoc-active-host-room:${coordinatorPubkey}`)).toBeNull();
+  });
+});
+
+describe("room signer authority", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("uses the supplied durable signer when creating an anonymous hosted room", async () => {
+    const signer = new BrowserNostrSigner(new Uint8Array(32).fill(7));
+    const stablePubkey = await signer.getPublicKey();
+
+    const room = await createHostedRoom({
+      title: "Durable host room",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: ["wss://relay.example"],
+      signer,
+      identityOwner: "anonymous",
+    });
+
+    expect(room.stablePubkey).toBe(stablePubkey);
+    expect(room.anonymousSecretKey).toBeUndefined();
+  });
+
+  it("rejects a mismatched signer without changing readable cached room state", async () => {
+    const durableSigner = new BrowserNostrSigner(new Uint8Array(32).fill(8));
+    const staleSigner = new BrowserNostrSigner(new Uint8Array(32).fill(9));
+    const room = storedRoom({
+      id: "signer-mismatch",
+      title: "Cached room",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      stablePubkey: await durableSigner.getPublicKey(),
+      messages: [{
+        type: "message",
+        id: "cached-message",
+        sender: "f".repeat(64),
+        name: "Host",
+        content: "Still readable",
+        createdAt: 1,
+      }],
+    });
+
+    await expect(requireRoomSigner(room, staleSigner)).rejects.toThrow("This signer does not match the identity that joined this room");
+    expect(room.messages).toHaveLength(1);
+    expect(room.messages[0]?.content).toBe("Still readable");
+  });
+});
+
+describe("composite room authority retirement", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("uses the coordinator plus room id as the only room identity", () => {
+    const left = storedRoom({ id: "shared", title: "Left", coordinatorPubkey: "a".repeat(64), isHost: false });
+    const right = storedRoom({ id: "shared", title: "Right", coordinatorPubkey: "b".repeat(64), isHost: false });
+
+    expect(roomIdentityKey(left.coordinatorPubkey, left.id)).not.toBe(roomIdentityKey(right.coordinatorPubkey, right.id));
+    expect(sameRoomIdentity(left, right)).toBe(false);
+  });
+
+  it("retires only matching anonymous memberships and can restore the exact cached authority", async () => {
+    const secret = new Uint8Array(32).fill(12);
+    const signer = new BrowserNostrSigner(secret);
+    const stablePubkey = await signer.getPublicKey();
+    const matching = storedRoom({
+      id: "shared-room",
+      title: "Retired cache",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      stablePubkey,
+      identityOwner: "anonymous",
+      anonymousSecretKey: bytesToHex(secret),
+      stateBase64: "private-state",
+      keyPackage: { reference: "private-ref", publicBase64: "public", privateBase64: "private" },
+      pending: [{ id: "queued", opaqueBase64: "secret-pending" }],
+      inviteToken: "invite-authority",
+      messages: [{ type: "message", id: "cached", sender: "f".repeat(64), name: "Host", content: "Keep this", createdAt: 1 }],
+    });
+    const other = storedRoom({
+      id: matching.id,
+      title: "Other coordinator",
+      coordinatorPubkey: "b".repeat(64),
+      isHost: false,
+      stablePubkey: "2".repeat(64),
+    });
+    saveRoom(matching);
+    saveRoom(other);
+    const listener = vi.fn();
+    window.addEventListener(ROOMS_CHANGED_EVENT, listener);
+
+    expect(await anonymousMembershipImpact(stablePubkey)).toEqual({ count: 1 });
+    const journal = await retireAnonymousMemberships(stablePubkey);
+    const retired = loadRoom(matching.id, matching.coordinatorPubkey);
+
+    expect(journal.count).toBe(1);
+    expect(retired).toMatchObject({ membershipStatus: "retired", messages: matching.messages, pending: [] });
+    expect(retired?.anonymousSecretKey).toBeUndefined();
+    expect(retired?.stateBase64).toBe("");
+    expect(retired?.keyPackage.privateBase64).toBe("");
+    expect(retired?.inviteToken).toBeUndefined();
+    expect(loadRoom(other.id, other.coordinatorPubkey)?.title).toBe(other.title);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {
+        action: "membership-retired",
+        affectedCompositeIdentities: [roomIdentityKey(matching.coordinatorPubkey, matching.id)],
+      },
+    }));
+
+    journal.rollback();
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {
+        action: "membership-rollback",
+        affectedCompositeIdentities: [roomIdentityKey(matching.coordinatorPubkey, matching.id)],
+      },
+    }));
+    expect(loadRoom(matching.id, matching.coordinatorPubkey)).toMatchObject({
+      anonymousSecretKey: matching.anonymousSecretKey,
+      stateBase64: matching.stateBase64,
+      keyPackage: matching.keyPackage,
+      pending: matching.pending,
+      inviteToken: matching.inviteToken,
+      messages: matching.messages,
+    });
+    window.removeEventListener(ROOMS_CHANGED_EVENT, listener);
+  });
+
+  it("does not retire external room authority that shares the anonymous public key", async () => {
+    const signer = new BrowserNostrSigner(new Uint8Array(32).fill(13));
+    const stablePubkey = await signer.getPublicKey();
+    const external = storedRoom({
+      id: "external-shared-key",
+      title: "External authority",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      stablePubkey,
+      identityOwner: "external",
+      stateBase64: "external-private-state",
+      keyPackage: { reference: "external-ref", publicBase64: "public", privateBase64: "private" },
+      inviteToken: "external-invite",
+    });
+    saveRoom(external);
+
+    const journal = await retireAnonymousMemberships(stablePubkey);
+
+    expect(journal.count).toBe(0);
+    expect(loadRoom(external.id, external.coordinatorPubkey)).toMatchObject({
+      stateBase64: "external-private-state",
+      keyPackage: external.keyPackage,
+      inviteToken: "external-invite",
+    });
   });
 });
 

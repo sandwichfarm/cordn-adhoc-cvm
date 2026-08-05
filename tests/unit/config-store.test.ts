@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { ConfigStore } from "../../src/config/config.svelte";
+import { ConfigStore, normalizeCoordinatorName } from "../../src/config/config.svelte";
 import { DEFAULT_MAX_USERS } from "../../src/config/config-validator";
+
+const DEFAULT_PUBLIC_RELAYS = [
+  "wss://relay2.contextvm.org",
+  "wss://bucket.coracle.social",
+  "wss://nos.lol",
+];
 
 describe("ConfigStore runtime limits", () => {
   beforeEach(() => {
@@ -9,13 +15,18 @@ describe("ConfigStore runtime limits", () => {
     vi.restoreAllMocks();
   });
 
-  test("defaults announcement off and exposes coordinator options", () => {
+  test("defaults announcement off and exposes incomplete setup coordinator options", () => {
     const store = new ConfigStore();
 
     expect(store.autostart).toBe(false);
+    expect(store.setupState).toBe("incomplete");
+    expect(store.isSetupComplete).toBe(false);
+    expect(store.inviteRelayUrls).toEqual(DEFAULT_PUBLIC_RELAYS);
+    expect(store.enabledRelayUrls).toEqual([...DEFAULT_PUBLIC_RELAYS, "ws://localhost:4870"]);
     expect(store.coordinatorOptions).toEqual({
       announce: false,
       maxUsers: DEFAULT_MAX_USERS,
+      coordinatorName: "My coordinator",
     });
 
     store.setAnnouncement(true);
@@ -41,14 +52,88 @@ describe("ConfigStore runtime limits", () => {
     expect(store.presenceState).toBe("invisible");
   });
 
-  test("persists coordinator and anonymous user names without requiring a runtime restart", () => {
+  test("persists presence without changing runtime configuration", () => {
     const store = new ConfigStore();
-    store.setCoordinatorName("Madeira node");
+    const initialRuntimeRevision = store.runtimeRevision;
+    const initialOptions = store.coordinatorOptions;
+
+    store.setPresenceState("online");
+
+    expect(store.presenceState).toBe("online");
+    expect(store.runtimeRevision).toBe(initialRuntimeRevision);
+    expect(store.coordinatorOptions).toEqual(initialOptions);
+    expect(new ConfigStore().presenceState).toBe("online");
+  });
+
+  test("normalizes coordinator names by Unicode code points and rejects empty values", () => {
+    expect(normalizeCoordinatorName("  Madeira node  ")).toBe("Madeira node");
+    expect(normalizeCoordinatorName("   \n\t ")).toBeNull();
+    expect(normalizeCoordinatorName(42)).toBeNull();
+    expect(normalizeCoordinatorName("😀".repeat(49))).toBe("😀".repeat(48));
+  });
+
+  test("completes setup atomically and persists the normalized coordinator name", () => {
+    const store = new ConfigStore();
+
+    expect(store.completeSetup("  Madeira node  ")).toBe(true);
+    expect(store.isSetupComplete).toBe(true);
+    expect(store.coordinatorName).toBe("Madeira node");
+    expect(JSON.parse(localStorage.getItem("cordn:v1:config") ?? "{}")).toMatchObject({
+      coordinatorName: "Madeira node",
+      setupCompleted: true,
+    });
+
+    const reloaded = new ConfigStore();
+    expect(reloaded.setupState).toBe("complete");
+    expect(reloaded.coordinatorOptions.coordinatorName).toBe("Madeira node");
+  });
+
+  test.each([
+    ["meaningful legacy name", "  Existing coordinator  ", "complete", "Existing coordinator"],
+    ["untouched default", "My coordinator", "incomplete", "My coordinator"],
+    ["blank", "", "incomplete", "My coordinator"],
+    ["whitespace-only", "  \n\t ", "incomplete", "My coordinator"],
+    ["malformed", 42, "incomplete", "My coordinator"],
+    ["overlong meaningful name", "é".repeat(49), "complete", "é".repeat(48)],
+  ])("migrates %s legacy setup records exactly once", (_classification, coordinatorName, setupState, expectedName) => {
+    localStorage.setItem(
+      "cordn:v1:config",
+      JSON.stringify({
+        version: 1,
+        relays: [],
+        announce: false,
+        maxUsers: DEFAULT_MAX_USERS,
+        autostart: false,
+        coordinatorName,
+      }),
+    );
+
+    const migrated = new ConfigStore();
+
+    expect(migrated.setupState).toBe(setupState);
+    expect(migrated.coordinatorName).toBe(expectedName);
+    expect(JSON.parse(localStorage.getItem("cordn:v1:config") ?? "{}").setupCompleted === true).toBe(
+      setupState === "complete",
+    );
+
+    const reloaded = new ConfigStore();
+    expect(reloaded.setupState).toBe(setupState);
+  });
+
+  test("persists validated coordinator names and marks running setup renames for restart", () => {
+    const store = new ConfigStore();
+    expect(store.completeSetup("First coordinator")).toBe(true);
+    const initialOptions = store.coordinatorOptions;
+    expect(store.setCoordinatorName("  Madeira node  ")).toBe(true);
     store.setUserName("River");
     store.setHostBadgeLabel("guide");
     store.setHostBadgeEmoji("🦉");
 
-    expect(store.runtimeRevision).toBe(0);
+    expect(initialOptions.coordinatorName).toBe("First coordinator");
+    expect(store.runtimeRevision).toBe(1);
+    expect(store.coordinatorOptions.coordinatorName).toBe("Madeira node");
+    expect(store.setCoordinatorName("  ")).toBe(false);
+    expect(store.coordinatorName).toBe("Madeira node");
     const reloaded = new ConfigStore();
     expect(reloaded.coordinatorName).toBe("Madeira node");
     expect(reloaded.userName).toBe("River");
@@ -56,17 +141,19 @@ describe("ConfigStore runtime limits", () => {
     expect(reloaded.hostBadgeEmoji).toBe("🦉");
 
     store.setAnnouncement(true);
-    expect(store.runtimeRevision).toBe(1);
+    expect(store.runtimeRevision).toBe(2);
   });
 
   test("always includes the local WebSocket relay in the active pool", () => {
     const store = new ConfigStore();
-    store.removeRelay(store.relays[0].id);
+    for (const relay of [...store.relays]) store.removeRelay(relay.id);
 
     expect(store.enabledRelayUrls).toEqual(["ws://localhost:4870"]);
+    expect(store.inviteRelayUrls).toEqual([]);
 
     store.addRelay("wss://relay.example");
     expect(store.enabledRelayUrls).toEqual(["wss://relay.example", "ws://localhost:4870"]);
+    expect(store.inviteRelayUrls).toEqual(["wss://relay.example"]);
   });
 
   test("validates key-package quota without subscription telemetry coupling", () => {
@@ -91,7 +178,7 @@ describe("ConfigStore runtime limits", () => {
 
   test("persists relay and runtime configuration across store instances", () => {
     const first = new ConfigStore();
-    first.removeRelay(first.relays[0].id);
+    for (const relay of [...first.relays]) first.removeRelay(relay.id);
     expect(first.addRelay("wss://relay.example")).toBe(true);
     first.toggleRelay(first.relays[0].id);
     first.setAnnouncement(true);
@@ -131,6 +218,57 @@ describe("ConfigStore runtime limits", () => {
     expect(store.maxUsers).toBe(DEFAULT_MAX_USERS);
   });
 
+  test("migrates the legacy Cordn relay that third-party secure clients cannot reach", () => {
+    localStorage.setItem(
+      "cordn:v1:config",
+      JSON.stringify({
+        version: 1,
+        relays: [{ url: "wss://relay.contextvm.org", enabled: true }],
+        announce: false,
+        maxUsers: DEFAULT_MAX_USERS,
+        autostart: false,
+      }),
+    );
+
+    const store = new ConfigStore();
+
+    expect(store.inviteRelayUrls).toEqual(DEFAULT_PUBLIC_RELAYS);
+    expect(JSON.parse(localStorage.getItem("cordn:v1:config") ?? "{}").relays).toEqual([
+      { url: "wss://relay2.contextvm.org", enabled: true },
+      { url: "wss://bucket.coracle.social", enabled: true },
+      { url: "wss://nos.lol", enabled: true },
+    ]);
+  });
+
+  test("adds missing public defaults to an existing default relay set once", () => {
+    localStorage.setItem(
+      "cordn:v1:config",
+      JSON.stringify({
+        version: 1,
+        relays: [
+          { url: "wss://relay2.contextvm.org", enabled: true },
+          { url: "wss://nos.lol", enabled: true },
+        ],
+        announce: false,
+        maxUsers: DEFAULT_MAX_USERS,
+        autostart: false,
+      }),
+    );
+
+    const migrated = new ConfigStore();
+    expect(migrated.inviteRelayUrls).toEqual(DEFAULT_PUBLIC_RELAYS);
+
+    const coracleRelay = migrated.relays.find((relay) => relay.url === "wss://bucket.coracle.social");
+    if (!coracleRelay) throw new Error("Expected Coracle relay after migration");
+    migrated.removeRelay(coracleRelay.id);
+
+    const reloaded = new ConfigStore();
+    expect(reloaded.inviteRelayUrls).toEqual([
+      "wss://relay2.contextvm.org",
+      "wss://nos.lol",
+    ]);
+  });
+
   test("reset clears persisted config and restores defaults", () => {
     const store = new ConfigStore();
     store.removeRelay(store.relays[0].id);
@@ -140,7 +278,8 @@ describe("ConfigStore runtime limits", () => {
     store.resetToDefaults();
     const reloaded = new ConfigStore();
 
-    expect(reloaded.relays.map((relay) => relay.url)).toEqual(["wss://relay.contextvm.org"]);
+    expect(reloaded.relays.map((relay) => relay.url)).toEqual(DEFAULT_PUBLIC_RELAYS);
     expect(reloaded.announce).toBe(false);
+    expect(reloaded.isSetupComplete).toBe(false);
   });
 });

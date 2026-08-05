@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { ResourceMonitor } from "../../src/coordinator/resource-monitor.svelte";
+import { normalizeLocalMessageRate, ResourceMonitor } from "../../src/coordinator/resource-monitor.svelte";
 import type { RunningTransport } from "../../src/lib/transport";
 
 type Handler = () => void;
@@ -71,11 +71,22 @@ describe("ResourceMonitor", () => {
     expect(monitor.subscriptionCount).toBe(1);
     expect(monitor.groupSubscriptionLegCount).toBe(1);
     expect(monitor.messageRate).toBe(2);
+    expect(monitor.messageRateMinimum).toBe(0);
+    expect(monitor.messageRateMaximum).toBe(1);
+    expect(monitor.messageRateIntensity).toBe(1);
     expect(monitor.memoryBytes).toBe(42 * 1_048_576);
 
     vi.advanceTimersByTime(31_000);
 
     expect(monitor.messageRate).toBe(1);
+  });
+
+  test("normalizes message rates against the recent local range", () => {
+    expect(normalizeLocalMessageRate(0, 0, 12)).toBe(0);
+    expect(normalizeLocalMessageRate(4, 4, 4)).toBe(0.5);
+    expect(normalizeLocalMessageRate(4, 2, 10)).toBe(0.25);
+    expect(normalizeLocalMessageRate(12, 2, 10)).toBe(1);
+    expect(normalizeLocalMessageRate(1, 2, 10)).toBe(0);
   });
 
   test("resets state and unbinds listeners on stop", () => {
@@ -93,6 +104,9 @@ describe("ResourceMonitor", () => {
     expect(monitor.subscriptionCount).toBe(0);
     expect(monitor.groupSubscriptionLegCount).toBe(0);
     expect(monitor.messageRate).toBe(0);
+    expect(monitor.messageRateMinimum).toBe(0);
+    expect(monitor.messageRateMaximum).toBe(0);
+    expect(monitor.messageRateIntensity).toBe(0);
     expect(monitor.memoryBytes).toBeNull();
     expect(source.listenerCount("subscribed")).toBe(0);
     expect(source.listenerCount("request")).toBe(0);

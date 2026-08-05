@@ -3,53 +3,51 @@
   import { generate } from "lean-qr";
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import type { NostrSigner } from "@contextvm/sdk/core";
-  import type { ConfigStore } from "../config/config.svelte";
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
-  import { generateSecretKey } from "nostr-tools";
-  import { bytesToHex } from "nostr-tools/utils";
   import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
-  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, reconcileRoomHostIdentity, removeStoredRoom, saveRoom, signerForStoredRoom, type StoredRoom } from "../chat/room-store";
-  import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
+  import type { ChatPaneContext } from "../chat/chat-pane-context";
+  import { createSameShellChatHref } from "../chat/room-navigation";
+  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import { userProfileStore } from "../identity/user-profile.svelte";
-  import InviteInbox from "./InviteInbox.svelte";
   import MessageAuthor from "./MessageAuthor.svelte";
-  import NotificationCenter from "./NotificationCenter.svelte";
-  import PresenceControl from "./PresenceControl.svelte";
+  import MessageReactions from "./MessageReactions.svelte";
+  import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
-  import UserProfile from "./UserProfile.svelte";
   import WorkspaceNav from "./WorkspaceNav.svelte";
 
   interface Props {
     currentUrl: string;
     homeCoordinatorPubkey?: string;
     homeCoordinatorName?: string;
-    anonymousPubkey?: string;
-    anonymousName?: string;
-    onAnonymousNameChange?: (name: string) => void;
     coordinatorStatus?: string;
-    config: ConfigStore;
     coordinator: CoordinatorStore;
     coordinatorPubkey: string;
-    relayUrls: string[];
     onNavigate: (href: string) => void;
+    identityReady?: boolean;
+    embedded?: boolean;
+    onContextChange?: (context: ChatPaneContext | null) => void;
+    onRoomStored?: (room: StoredRoom) => void;
   }
 
-  const emojiShortcuts = ["👍", "❤️", "😂", "🎉", "👋", "✨"];
+  interface RoomRemovalTarget {
+    room: StoredRoom;
+    mode: "delete" | "leave";
+  }
 
   let {
     currentUrl,
     homeCoordinatorPubkey,
     homeCoordinatorName = "My coordinator",
-    anonymousPubkey = "",
-    anonymousName = "",
-    onAnonymousNameChange,
     coordinatorStatus = "idle",
-    config,
     coordinator,
     coordinatorPubkey,
-    relayUrls,
     onNavigate,
+    identityReady = false,
+    embedded = false,
+    onContextChange,
+    onRoomStored,
   }: Props = $props();
   let invite = $state<ChatInvite | null>(null);
   let room = $state<StoredRoom | null>(null);
@@ -73,15 +71,15 @@
   let audioContext: AudioContext | null = null;
   let knownMessageIds = new Set<string>();
   let unsubscribeSession: (() => void) | null = null;
+  let unregisterAnonymousSession: (() => void) | null = null;
   let pendingRemoteSigner: ReturnType<typeof userProfileStore.createNip46Request>["signer"] | null = null;
   let disposed = false;
   let followLatest = true;
-  let roomRemovalTarget = $state<StoredRoom | null>(null);
-  let mobileActionsOpen = $state(false);
-  let emojiOpen = $state(false);
-  let mobileActionsButton: HTMLButtonElement | undefined = $state();
-  let mobileActionsClose: HTMLButtonElement | undefined = $state();
-  let mobileActionsPanel: HTMLDivElement | undefined = $state();
+  let roomRemovalTarget = $state<RoomRemovalTarget | null>(null);
+  let reactionPickerMessageId = $state<string | null>(null);
+  let reactionError = $state("");
+  let routeInitialized = false;
+  let routeInitializing = $state(true);
   const roomDeletedByHost = $derived(connection === "offline" && connectionDetail?.toLowerCase().includes("room deleted by host") === true);
   const displayedConnection = $derived(room ? (roomDeletedByHost ? "deleted" : connection) : null);
   const activeRoomHost = $derived(room
@@ -90,6 +88,29 @@
       ? hostIdentityForInvite(invite)
       : null
   );
+  const activeRoomRemovalMode = $derived(room ? removalModeFor(room) : null);
+
+  $effect(() => {
+    if (!identityReady || routeInitialized) return;
+    routeInitialized = true;
+    void initializeRoute();
+  });
+
+  $effect(() => {
+    const activeRoom = room;
+    const activeHost = activeRoomHost;
+    const activeConnection = displayedConnection;
+    const removalMode = activeRoomRemovalMode;
+    onContextChange?.({
+      room: activeRoom,
+      host: activeHost,
+      connection: activeConnection,
+      soundsEnabled,
+      removalMode,
+      toggleSounds: activeRoom ? toggleSounds : undefined,
+      requestRemoval: activeRoom ? () => requestRoomRemoval(activeRoom) : undefined,
+    });
+  });
 
   function hostIdentityForInvite(nextInvite: ChatInvite): RoomHostIdentity {
     const host = nextInvite.host ?? { name: "Unknown host", pubkey: "" };
@@ -97,19 +118,31 @@
     return { ...host, avatar: undefined };
   }
 
-  function mergeFreshInviteHost(stored: StoredRoom, nextInvite: ChatInvite): StoredRoom {
-    if (!nextInvite.host) return stored;
-    const currentHost = hostIdentityForRoom(stored);
-    const nextHost = stored.joinRequestSent
-      ? nextInvite.host
-      : reconcileRoomHostIdentity(nextInvite.host, currentHost.pubkey || null);
-    // Once admitted, ignore an invite that claims a different creator instead
-    // of replacing already verified presentation with untrusted metadata.
-    if (!stored.joinRequestSent && nextHost.name === "Unknown host" && currentHost.name !== "Unknown host") return stored;
-    if (stored.host?.name === nextHost.name
-      && stored.host.pubkey === nextHost.pubkey
-      && stored.host.avatar === nextHost.avatar) return stored;
-    const refreshed = { ...stored, host: nextHost };
+  function mergeFreshInviteMetadata(stored: StoredRoom, nextInvite: ChatInvite): StoredRoom {
+    let nextHost = stored.host;
+    if (nextInvite.host) {
+      const currentHost = hostIdentityForRoom(stored);
+      const candidateHost = stored.joinRequestSent
+        ? nextInvite.host
+        : reconcileRoomHostIdentity(nextInvite.host, currentHost.pubkey || null);
+      // Once admitted, ignore an invite that claims a different creator instead
+      // of replacing already verified presentation with untrusted metadata.
+      if (!stored.joinRequestSent && candidateHost.name === "Unknown host" && currentHost.name !== "Unknown host") {
+        nextHost = stored.host;
+      } else {
+        nextHost = candidateHost;
+      }
+    }
+    const nextCoordinatorKeyMode = nextInvite.coordinatorKeyMode ?? stored.coordinatorKeyMode;
+    if (stored.host?.name === nextHost?.name
+      && stored.host?.pubkey === nextHost?.pubkey
+      && stored.host?.avatar === nextHost?.avatar
+      && stored.coordinatorKeyMode === nextCoordinatorKeyMode) return stored;
+    const refreshed = {
+      ...stored,
+      host: nextHost,
+      coordinatorKeyMode: nextCoordinatorKeyMode,
+    };
     saveRoom(refreshed);
     return refreshed;
   }
@@ -119,11 +152,12 @@
       const wasConnected = connection === "connected";
       connection = session.status.connection;
       connectionDetail = session.status.detail;
-      const nextRoom = { ...session.room, messages: [...session.room.messages], pending: [...session.room.pending] };
+      const nextRoom = { ...session.room, messages: [...session.room.messages], pending: [...session.room.pending], reactions: [...(session.room.reactions ?? [])] };
       const appendedMessage = nextRoom.messages.some((message) => !knownMessageIds.has(message.id));
       const receivedMessage = nextRoom.messages.some((message) => !knownMessageIds.has(message.id) && message.sender !== nextRoom.stablePubkey);
       knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
       room = nextRoom;
+      acknowledgeVisibleRoom();
       if (receivedMessage && wasConnected) playIncomingTone();
       if (appendedMessage && followLatest) {
         void tick().then(() => {
@@ -134,19 +168,59 @@
     revision += 1;
   }
 
-  function attach(nextRoom: StoredRoom, signer: NostrSigner) {
+  function acknowledgeVisibleRoom(): void {
+    const activeRoom = room;
+    if (!activeRoom || document.visibilityState !== "visible") return;
+    const routedInvite = parseInviteUrl(currentUrl);
+    if (routedInvite && (routedInvite.groupId !== activeRoom.id || routedInvite.coordinatorPubkey !== activeRoom.coordinatorPubkey)) return;
+    if (connection !== "connected" && connection !== "cached" && connection !== "offline") return;
+    if (roomUnreadCount(activeRoom) === 0) return;
+    if (session && sameRoomIdentity(session.room, activeRoom)) session.markRead();
+    else markRoomRead(roomTargetFor(activeRoom));
+  }
+
+  async function attach(nextRoom: StoredRoom, signer: NostrSigner) {
+    if (disposed) return;
+    await requireRoomSigner(nextRoom, signer);
     if (disposed) return;
     unsubscribeSession?.();
+    unregisterAnonymousSession?.();
+    unregisterAnonymousSession = null;
     session?.stop();
     knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
     followLatest = true;
     room = nextRoom;
     session = new ChatRoomSession(nextRoom, signer);
+    const attachedSession = session;
     connection = session.status.connection;
     connectionDetail = session.status.detail;
     unsubscribeSession = session.subscribe(update);
+    if (userProfileStore.method === "anonymous" && userProfileStore.activeSigner === signer) {
+      const stablePubkey = await signer.getPublicKey();
+      unregisterAnonymousSession = userProfileStore.registerAnonymousSession({
+        stablePubkey,
+        retire: () => {
+          if (session !== attachedSession) return;
+          unsubscribeSession?.();
+          unsubscribeSession = null;
+          attachedSession.discard();
+          session = null;
+          connection = "cached";
+          connectionDetail = "Local identity was retired";
+          update();
+        },
+        restore: async () => {
+          const restored = loadRoom(nextRoom.id, nextRoom.coordinatorPubkey);
+          const activeSigner = userProfileStore.activeSigner;
+          if (!restored || userProfileStore.method !== "anonymous" || !activeSigner) return;
+          await requireRoomSigner(restored, activeSigner);
+          if (!disposed) await attach(restored, activeSigner);
+        },
+      });
+    }
     void session.start();
     update();
+    onRoomStored?.(nextRoom);
     void tick().then(() => {
       if (messageList) messageList.scrollTop = messageList.scrollHeight;
     });
@@ -179,8 +253,30 @@
   function addEmoji(emoji: string) {
     if (!canSendMessages()) return;
     composer += emoji;
-    emojiOpen = false;
     composerInput?.focus();
+  }
+
+  async function setReaction(targetMessageId: string, emoji: ChatEmojiShortcut, active: boolean): Promise<void> {
+    if (!session) return;
+    reactionError = "";
+    try {
+      await session.setReaction(targetMessageId, emoji, active);
+      reactionPickerMessageId = null;
+      await tick();
+      document.getElementById(`guest-add-reaction-${targetMessageId}`)?.focus();
+    } catch (cause) {
+      reactionError = cause instanceof Error ? cause.message : "Could not update reaction";
+    }
+  }
+
+  async function toggleReaction(targetMessageId: string, emoji: ChatEmojiShortcut): Promise<void> {
+    if (!session) return;
+    reactionError = "";
+    try {
+      await session.toggleReaction(targetMessageId, emoji);
+    } catch (cause) {
+      reactionError = cause instanceof Error ? cause.message : "Could not update reaction";
+    }
   }
 
   function connectionLabel(status: "cached" | "connecting" | "connected" | "offline" | "deleted"): string {
@@ -191,52 +287,15 @@
     return "Room connecting";
   }
 
-  async function toggleMobileActions(): Promise<void> {
-    mobileActionsOpen = !mobileActionsOpen;
-    emojiOpen = false;
-    if (mobileActionsOpen) {
-      await tick();
-      mobileActionsClose?.focus();
-    }
-  }
-
-  function closeMobileActions(returnFocus = false): void {
-    mobileActionsOpen = false;
-    if (returnFocus) void tick().then(() => mobileActionsButton?.focus());
-  }
-
   function handleWindowKeydown(event: KeyboardEvent): void {
-    if (event.key === "Escape") {
-      if (mobileActionsOpen) {
-        event.preventDefault();
-        closeMobileActions(true);
-      } else {
-        emojiOpen = false;
-      }
-      return;
-    }
-    if (event.key !== "Tab" || !mobileActionsOpen || !mobileActionsPanel) return;
-    const focusable = Array.from(mobileActionsPanel.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
-    )).filter((element) => element.offsetParent !== null);
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  function handleWindowResize(): void {
-    if (window.innerWidth > 900) mobileActionsOpen = false;
+    if (event.key !== "Escape" || !reactionPickerMessageId) return;
+    event.preventDefault();
+    const targetMessageId = reactionPickerMessageId;
+    reactionPickerMessageId = null;
+    void tick().then(() => document.getElementById(`guest-add-reaction-${targetMessageId}`)?.focus());
   }
 
   function navigate(href: string): void {
-    closeMobileActions();
     onNavigate(href);
   }
 
@@ -249,6 +308,14 @@
     return session?.status.connection === "connected" && room?.joinRequestSent !== true;
   }
 
+  function describeJoinFailure(cause: unknown): string {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    if (/\b-32001\b|request timed out|\btimeout\b/i.test(detail)) {
+      return "Couldn’t reach this coordinator through the invite’s relay paths. Make sure the host is online, then try again.";
+    }
+    return detail || "Unable to join this chat";
+  }
+
   async function toggleSounds() {
     if (soundsEnabled) {
       soundsEnabled = false;
@@ -257,53 +324,133 @@
     await enableSounds();
   }
 
-  async function removeCurrentRoom(): Promise<void> {
-    const target = roomRemovalTarget;
-    if (!target) return;
-    if (target.isHost) {
-      if (!coordinatorPubkey || target.coordinatorPubkey !== coordinatorPubkey) {
-        throw new Error("Open the coordinator that hosts this room before deleting it");
-      }
-      await coordinator.deleteHostedRoom(target.id);
+  function isCurrentCoordinatorHost(target: StoredRoom): boolean {
+    const localCoordinatorPubkey = coordinatorPubkey.trim().toLowerCase();
+    return target.isHost
+      && localCoordinatorPubkey.length > 0
+      && target.coordinatorPubkey.trim().toLowerCase() === localCoordinatorPubkey;
+  }
+
+  function removalModeFor(target: StoredRoom): "delete" | "leave" {
+    return isCurrentCoordinatorHost(target) ? "delete" : "leave";
+  }
+
+  function removalCoordinatorLabel(target: Pick<StoredRoom, "coordinatorPubkey">): string {
+    if (target.coordinatorPubkey === homeCoordinatorPubkey || target.coordinatorPubkey === coordinatorPubkey) {
+      return homeCoordinatorName || "My coordinator";
     }
-    unsubscribeSession?.();
-    unsubscribeSession = null;
-    session?.discard();
-    session = null;
-    removeStoredRoom(target);
-    room = null;
-    navigate(target.isHost ? "/" : "/chats");
+    return `Coordinator ${target.coordinatorPubkey.slice(0, 6)}…${target.coordinatorPubkey.slice(-4)}`;
+  }
+
+  function requestRoomRemoval(target: StoredRoom): void {
+    roomRemovalTarget = { room: target, mode: removalModeFor(target) };
+  }
+
+  async function removeCurrentRoom(): Promise<boolean> {
+    const removal = roomRemovalTarget;
+    if (!removal) return false;
+    const { room: target, mode } = removal;
+    try {
+      const latest = loadRoom(target.id, target.coordinatorPubkey);
+      if (!latest || !sameRoomIdentity(latest, target) || removalModeFor(latest) !== mode) return false;
+      if (mode === "delete") {
+        if (!isCurrentCoordinatorHost(latest)) return false;
+        await coordinator.deleteHostedRoom({
+          id: latest.id,
+          coordinatorPubkey: latest.coordinatorPubkey,
+        });
+      }
+      unsubscribeSession?.();
+      unsubscribeSession = null;
+      unregisterAnonymousSession?.();
+      unregisterAnonymousSession = null;
+      session?.discard();
+      session = null;
+      removeStoredRoom(latest);
+      room = null;
+      navigate(mode === "delete" ? "/" : "/chats");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function initializeRoute(): Promise<void> {
+    invite = parseInviteUrl(currentUrl);
+    if (!invite) {
+      routeInitializing = false;
+      return;
+    }
+
+    const loaded = loadRoom(invite.groupId, invite.coordinatorPubkey);
+    const stored = loaded ? mergeFreshInviteMetadata(loaded, invite) : null;
+    if (stored) {
+      room = stored;
+      const activeSigner = userProfileStore.activeSigner;
+      if (activeSigner) await resumeActiveSigner(stored, activeSigner);
+      routeInitializing = false;
+      return;
+    }
+
+    if (!userProfileStore.hasIdentity) {
+      routeInitializing = false;
+      return;
+    }
+
+    name = userProfileStore.displayName;
+    const activeSigner = userProfileStore.activeSigner;
+    if (activeSigner) await join(activeSigner);
+    routeInitializing = false;
+  }
+
+  async function retryEstablishedIdentity(): Promise<void> {
+    if (!invite || !userProfileStore.hasIdentity || joining || signerConnecting) return;
+    routeInitializing = true;
+    error = "";
+    name = userProfileStore.displayName;
+    const activeSigner = userProfileStore.activeSigner;
+    if (activeSigner) await join(activeSigner);
+    routeInitializing = false;
   }
 
   onMount(() => {
     disposed = false;
-    invite = parseInviteUrl(currentUrl);
-    if (!invite) return;
-    const loaded = loadRoom(invite.groupId, invite.coordinatorPubkey);
-    const stored = loaded ? mergeFreshInviteHost(loaded, invite) : null;
-    const signer = stored ? signerForStoredRoom(stored) : null;
-    if (stored && signer) attach(stored, signer);
-    else if (stored) {
-      room = stored;
-      const activeSigner = userProfileStore.activeSigner;
-      if (activeSigner) void resumeActiveSigner(stored, activeSigner);
-    }
-    else if (new URL(currentUrl).searchParams.get("autojoin") === "1") {
-      name = userProfileStore.displayName;
-      const activeSigner = userProfileStore.activeSigner;
-      if (activeSigner) void join(activeSigner);
-      else void joinAnonymous();
-    }
+    const handleRoomsChanged = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail as { action?: string; roomId?: string; coordinatorPubkey?: string } : undefined;
+      if (detail?.action !== "removed" || !room || detail.roomId !== room.id || detail.coordinatorPubkey !== room.coordinatorPubkey) return;
+      unsubscribeSession?.();
+      unsubscribeSession = null;
+      unregisterAnonymousSession?.();
+      unregisterAnonymousSession = null;
+      session?.discard();
+      session = null;
+      room = null;
+      connection = "cached";
+      connectionDetail = undefined;
+      onContextChange?.(null);
+      navigate("/");
+    };
+    window.addEventListener(ROOMS_CHANGED_EVENT, handleRoomsChanged);
+    const acknowledgeOnVisibility = () => acknowledgeVisibleRoom();
+    document.addEventListener("visibilitychange", acknowledgeOnVisibility);
+    acknowledgeVisibleRoom();
+    return () => {
+      window.removeEventListener(ROOMS_CHANGED_EVENT, handleRoomsChanged);
+      document.removeEventListener("visibilitychange", acknowledgeOnVisibility);
+    };
   });
   onDestroy(() => {
     disposed = true;
+    onContextChange?.(null);
     if (pendingRemoteSigner) userProfileStore.cancelNip46Request(pendingRemoteSigner);
     pendingRemoteSigner = null;
     unsubscribeSession?.();
+    unregisterAnonymousSession?.();
+    unregisterAnonymousSession = null;
     session?.stop();
   });
 
-  async function join(signer: NostrSigner, anonymousSecretKey: string | undefined = undefined) {
+  async function join(signer: NostrSigner) {
     if (!invite || disposed) return;
     joining = true;
     error = "";
@@ -312,13 +459,13 @@
         invite,
         name,
         signer,
-        anonymousSecretKey,
+        identityOwner: userProfileStore.method === "anonymous" ? "anonymous" : "external",
         avatar: userProfileStore.avatarUrl,
       });
       if (disposed) return;
-      attach(created, signer);
+      await attach(created, signer);
     } catch (cause) {
-      if (!disposed) error = cause instanceof Error ? cause.message : "Unable to join this chat";
+      if (!disposed) error = describeJoinFailure(cause);
     } finally {
       if (!disposed) joining = false;
     }
@@ -329,10 +476,9 @@
     signerConnecting = true;
     void enableSounds();
     try {
-      const secret = generateSecretKey();
-      const signer = new BrowserNostrSigner(secret);
-      userProfileStore.setAnonymous(await signer.getPublicKey(), name);
-      if (!disposed) await join(signer, bytesToHex(secret));
+      const signer = userProfileStore.activeSigner;
+      if (!signer) throw new Error("Local identity is not ready");
+      if (!disposed) await join(signer);
     } finally {
       if (!disposed) signerConnecting = false;
     }
@@ -419,43 +565,39 @@
   async function resume(signer: NostrSigner) {
     if (!room) return;
     const expectedRoom = room;
-    const signerPubkey = await signer.getPublicKey();
     if (disposed || room.id !== expectedRoom.id || room.coordinatorPubkey !== expectedRoom.coordinatorPubkey) return;
-    if (signerPubkey !== expectedRoom.stablePubkey) {
-      throw new Error("This signer does not match the identity that joined this room");
-    }
-    attach(expectedRoom, signer);
+    await requireRoomSigner(expectedRoom, signer);
+    if (disposed) return;
+    await attach(expectedRoom, signer);
   }
 
   async function resumeActiveSigner(expectedRoom: StoredRoom, signer: NostrSigner) {
     try {
-      const signerPubkey = await signer.getPublicKey();
-      if (disposed || signerPubkey !== expectedRoom.stablePubkey) return;
+      await requireRoomSigner(expectedRoom, signer);
+      if (disposed) return;
       if (room?.id !== expectedRoom.id || room.coordinatorPubkey !== expectedRoom.coordinatorPubkey) return;
-      attach(expectedRoom, signer);
+      await attach(expectedRoom, signer);
     } catch {
       // The cached room remains readable when the active signer is unavailable.
     }
   }
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} onresize={handleWindowResize} />
+<svelte:window onkeydown={handleWindowKeydown} />
 
-<main class="chat-page flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#0b0e0d] text-[#e8f5eb]" data-testid="chat-route">
-  <header class="chat-global-nav flex shrink-0 items-center justify-between gap-3 px-3 py-3 sm:px-5">
+<section class:embedded class="chat-page flex flex-col overflow-hidden bg-[#0b0e0d] text-[#e8f5eb]" data-testid="chat-route">
+  {#if !embedded}
+    <header class="chat-global-nav flex shrink-0 items-center justify-between gap-3 px-3 py-3 sm:px-5">
     <div class="chat-workspace-nav">
       <WorkspaceNav
         {currentUrl}
         {homeCoordinatorPubkey}
         {homeCoordinatorName}
         {coordinatorStatus}
+        {coordinator}
         {soundsEnabled}
         activeRoomHost={activeRoomHost ?? undefined}
         roomConnectionStatus={room ? (roomDeletedByHost ? "deleted" : connection) : undefined}
-        onToggleSounds={room ? toggleSounds : undefined}
-        roomActionKind={room?.isHost ? "delete" : "leave"}
-        roomActionLabel={room ? `${room.isHost ? "Delete" : "Leave"} room ${room.title}` : undefined}
-        onRoomAction={room ? () => roomRemovalTarget = room : undefined}
         onNavigate={navigate}
       />
     </div>
@@ -486,54 +628,35 @@
           </svg>
         </button>
       {/if}
-      <button
-        bind:this={mobileActionsButton}
-        class="mobile-actions-trigger"
-        type="button"
-        aria-label="More chat actions"
-        aria-haspopup="dialog"
-        aria-controls="mobile-chat-actions"
-        aria-expanded={mobileActionsOpen}
-        onclick={() => void toggleMobileActions()}
-      ><span aria-hidden="true">•••</span></button>
     </div>
-    {#if mobileActionsOpen}
-      <button class="mobile-actions-backdrop" type="button" aria-label="Close chat actions" onclick={() => closeMobileActions(true)}></button>
-    {/if}
-    <div
-      bind:this={mobileActionsPanel}
-      id="mobile-chat-actions"
-      class:open={mobileActionsOpen}
-      class:has-presence={coordinator.loadState === "ready"}
-      class="chat-global-actions"
-      role={mobileActionsOpen ? "dialog" : undefined}
-      aria-modal={mobileActionsOpen ? "true" : undefined}
-      aria-label={mobileActionsOpen ? "More chat actions" : undefined}
-    >
-      <div class="mobile-sheet-heading">
-        <div><strong>Chat actions</strong><span>{room ? `# ${room.title}` : "Workspace"}</span></div>
-        <button bind:this={mobileActionsClose} type="button" aria-label="Close chat actions" onclick={() => closeMobileActions(true)}>×</button>
+    </header>
+  {/if}
+  {#if !identityReady || routeInitializing}
+    <section class="identity-pending flex min-h-0 flex-1 items-center justify-center p-5" data-testid="chat-identity-pending" aria-live="polite">
+      <div>
+        <span class="pending-pulse" aria-hidden="true"></span>
+        <p>Opening {invite?.title ? `# ${invite.title}` : "room"}</p>
+        <small>{identityReady ? "Connecting with your current identity…" : "Restoring your identity…"}</small>
       </div>
-      {#if room}
-        <button class:delete={room.isHost} class="mobile-room-action" type="button" onclick={() => { closeMobileActions(); roomRemovalTarget = room; }}>
-          <span>{room.isHost ? "Delete this room" : "Leave this room"}</span><span aria-hidden="true">→</span>
-        </button>
-      {/if}
-      {#if coordinator.loadState === "ready"}
-        <div class="mobile-action-item"><span class="mobile-action-label">Presence</span><PresenceControl {config} {coordinator} {coordinatorPubkey} {relayUrls} /></div>
-      {/if}
-      <div class="mobile-action-item"><span class="mobile-action-label">Invites</span><InviteInbox onNavigate={navigate} /></div>
-      <div class="mobile-action-item"><span class="mobile-action-label">Notifications</span><NotificationCenter /></div>
-      <div class="mobile-action-item"><span class="mobile-action-label">Profile & signer</span><UserProfile {anonymousPubkey} {anonymousName} {onAnonymousNameChange} /></div>
-    </div>
-  </header>
-  {#if !invite}
+    </section>
+  {:else if !invite}
     <section class="flex min-h-0 flex-1 items-center justify-center p-5"><div class="max-w-sm border border-[#293832] bg-[#101614] p-6 text-sm text-[#a2b4a7]">This chat invite is incomplete or malformed.</div></section>
+  {:else if !room && userProfileStore.hasIdentity}
+    <section class="identity-pending flex min-h-0 flex-1 items-center justify-center p-5" data-testid="chat-join-error">
+      <div>
+        <p>Could not open # {invite.title || "room"}</p>
+        <small>{error || "The room could not be joined with your current identity."}</small>
+        <button class="secondary-button" type="button" disabled={joining || signerConnecting} onclick={() => void retryEstablishedIdentity()}>Try again</button>
+      </div>
+    </section>
   {:else if !room}
     <section class="mx-auto flex min-h-0 w-full max-w-xl flex-1 items-center overflow-y-auto p-4 sm:p-8"><div class="w-full border border-[#293832] bg-[#101614] p-5 shadow-2xl sm:p-8">
       <p class="text-xs font-semibold uppercase tracking-[0.2em] text-[#7cf59d]">Cordn private chat</p>
       <h1 class="mt-3 text-3xl font-semibold tracking-tight text-white">{invite.title || "You’re invited"}</h1>
       <p class="mt-2 leading-6 text-[#a2b4a7]">Choose a name, then join the encrypted room. This invite connects only to its host coordinator.</p>
+      {#if invite.coordinatorKeyMode === "ephemeral"}
+        <p class="invite-key-warning" data-testid="temporary-host-key-notice">This host uses a temporary coordinator key. If it changes, the saved conversation stays readable here, but reconnecting requires a new invite and the old room can be left from Room actions.</p>
+      {/if}
       <div class="invite-host" data-testid="invite-host">
         <span>Invited by</span>
         <RoomHostBadge host={activeRoomHost || hostIdentityForInvite(invite)} showRole={false} allowExternalAvatar={false} />
@@ -558,8 +681,17 @@
   {:else}
     {@const currentRoom = room}
     {@const composerEnabled = connection === "connected" && !currentRoom.joinRequestSent}
-    <section class="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col border-x border-[#1e2924] bg-[#101614]" data-revision={revision} data-testid="cached-room-view">
+    <section class="room-pane mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col border-x border-[#1e2924] bg-[#101614]" data-revision={revision} data-testid="cached-room-view">
       <h1 class="sr-only">{currentRoom.title}</h1>
+      <RoomActionsMenu
+        roomTitle={currentRoom.title}
+        coordinatorPubkey={currentRoom.coordinatorPubkey}
+        inviteUrl={createSameShellChatHref(window.location.origin, currentRoom)}
+        {soundsEnabled}
+        removalMode={activeRoomRemovalMode ?? "leave"}
+        onToggleSounds={toggleSounds}
+        onRemove={() => requestRoomRemoval(currentRoom)}
+      />
       {#if roomDeletedByHost}
         <p class="connection-banner deleted" role="status" aria-live="polite" data-testid="room-deleted-message">This room was deleted by its host. Cached messages remain on this device until you leave.</p>
       {:else if connection === "offline"}
@@ -581,16 +713,39 @@
         </div>
       {/if}
       {#if currentRoom.joinRequestSent}<div class="m-4 border border-[#2e553b] bg-[#112219] p-4 text-sm text-[#b9eac5]">Your encrypted join request is with the host. This page keeps checking for your welcome.</div>{:else}
-        <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="guest-message-list" onscroll={updateFollowLatest}>{#if currentRoom.messages.length === 0}<p class="pt-16 text-center text-sm text-[#82958a]">Say hello — messages are encrypted before they leave your device.</p>{/if}{#each currentRoom.messages as message (message.id)}<article class:mine={message.sender === currentRoom.stablePubkey} class="message"><MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} /><p>{message.content}</p></article>{/each}</div>
+        <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="guest-message-list" onscroll={updateFollowLatest}>
+          {#if currentRoom.messages.length === 0}<p class="pt-16 text-center text-sm text-[#82958a]">Say hello — messages are encrypted before they leave your device.</p>{/if}
+          {#each currentRoom.messages as message (message.id)}
+            {@const reactions = reactionSummary(currentRoom, message.id, currentRoom.stablePubkey)}
+            <article class:mine={message.sender === currentRoom.stablePubkey} class="message">
+              <MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} />
+              <p>{message.content}</p>
+              <MessageReactions
+                messageId={message.id}
+                authorName={message.name}
+                {reactions}
+                pickerOpen={reactionPickerMessageId === message.id}
+                canReact={message.sender !== currentRoom.stablePubkey}
+                disabled={!composerEnabled}
+                idPrefix="guest"
+                onTogglePicker={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}
+                onClosePicker={() => {
+                  if (reactionPickerMessageId === message.id) reactionPickerMessageId = null;
+                }}
+                onToggleReaction={(emoji) => toggleReaction(message.id, emoji)}
+                onSetReaction={(emoji) => setReaction(message.id, emoji, true)}
+              />
+            </article>
+          {/each}
+        </div>
         <form class="chat-composer shrink-0 border-t border-[#293832] bg-[#101614] p-3 sm:p-4" data-testid="chat-composer" onsubmit={(event) => { event.preventDefault(); void send(); }}>
-          <div id="chat-emoji-shortcuts" class:open={emojiOpen} class="emoji-shortcuts">{#each emojiShortcuts as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div>
+          <div id="chat-emoji-shortcuts" class="emoji-shortcuts" aria-label="Emoji shortcuts">{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div>
           <div class="composer-row">
-            <button class="emoji-toggle" type="button" aria-label="Add emoji" aria-controls="chat-emoji-shortcuts" aria-expanded={emojiOpen} disabled={!composerEnabled} onclick={() => emojiOpen = !emojiOpen}>☺</button>
             <input bind:this={composerInput} bind:value={composer} class="guest-input min-w-0 flex-1" aria-describedby="chat-composer-status" disabled={!composerEnabled} placeholder={roomDeletedByHost ? "Room deleted by host" : connection === "offline" ? "Room offline" : connection === "cached" ? "Reconnect your signer" : connection === "connecting" ? "Connecting…" : "Message"} />
             <button class="primary-button px-4 sm:px-5" disabled={!composerEnabled || !composer.trim()}>Send</button>
           </div>
           <p id="chat-composer-status" class:unavailable={!composerEnabled} class="composer-status" aria-live="polite" data-testid="chat-composer-status">{roomDeletedByHost ? "This room is closed — cached messages are read-only." : connection === "offline" ? "This room is offline — cached messages are read-only." : connection === "cached" ? "Reconnect your signer to sync this room and send messages." : connection === "connecting" ? "Connecting this room…" : "Connected. Messages are end-to-end encrypted."}</p>
-          {#if composerError}<p class="mt-2 text-center text-xs text-[#ffaaa3]">{composerError}</p>{/if}
+          {#if composerError || reactionError}<p class="mt-2 text-center text-xs text-[#ffaaa3]" role="status">{composerError || reactionError}</p>{/if}
         </form>
       {/if}
     </section>
@@ -598,28 +753,38 @@
 
   {#if roomRemovalTarget}
     <RoomRemovalDialog
-      mode={roomRemovalTarget.isHost ? "delete" : "leave"}
-      roomTitle={roomRemovalTarget.title}
-      messageCount={roomRemovalTarget.messages.length}
-      pendingInviteCount={roomRemovalTarget.isHost ? session?.pendingJoinRequests.length ?? 0 : 0}
-      joinRequestPending={!roomRemovalTarget.isHost && roomRemovalTarget.joinRequestSent === true}
+      mode={roomRemovalTarget.mode}
+      roomTitle={roomRemovalTarget.room.title}
+      hostLabel={hostIdentityForRoom(roomRemovalTarget.room).name}
+      coordinatorLabel={removalCoordinatorLabel(roomRemovalTarget.room)}
+      messageCount={roomRemovalTarget.room.messages.length}
+      pendingInviteCount={roomRemovalTarget.mode === "delete" ? session?.pendingJoinRequests.length ?? 0 : 0}
+      joinRequestPending={roomRemovalTarget.mode === "leave" && roomRemovalTarget.room.joinRequestSent === true}
       onConfirm={removeCurrentRoom}
       onClose={() => roomRemovalTarget = null}
     />
   {/if}
-</main>
+</section>
 
 <style>
+  .chat-page { width: 100%; height: 100dvh; max-height: 100dvh; }
+  .chat-page.embedded { position: static; inset: auto; width: 100%; min-width: 0; height: 100%; max-width: none; max-height: 100%; background: #101614; }
+  .chat-page.embedded > [data-testid="cached-room-view"] { width: 100%; min-width: 0; max-width: none; margin-inline: 0; border-inline: 0; }
+  .identity-pending > div { display: grid; max-width: 28rem; justify-items: center; gap: .65rem; text-align: center; }
+  .identity-pending p { color: #dfffe7; font-size: .82rem; font-weight: 650; }
+  .identity-pending small { color: #82958a; font-size: .66rem; line-height: 1.55; }
+  .identity-pending .secondary-button { margin-top: .35rem; }
+  .pending-pulse { width: .55rem; height: .55rem; border-radius: 999px; background: #d9d68e; box-shadow: 0 0 0 0 rgb(217 214 142 / .28); animation: pending-pulse 1.5s ease-out infinite; }
+  @keyframes pending-pulse { 65%, 100% { box-shadow: 0 0 0 .65rem rgb(217 214 142 / 0); } }
   .chat-global-nav { min-width: 0; border-bottom: 1px solid #21352a; background: rgb(10 16 12 / .96); }
   .chat-workspace-nav { min-width: 0; flex: 1 1 auto; }
-  .chat-global-actions { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; gap: .5rem; }
-  .mobile-primary-actions, .mobile-sheet-heading, .mobile-room-action, .mobile-actions-backdrop, .mobile-action-label { display: none; }
-  .mobile-action-item { display: contents; }
+  .mobile-primary-actions { display: none; }
   .guest-input { width: 100%; border: 1px solid #34433b; background: #0b0e0d; padding: .75rem .9rem; color: #f3fff6; outline: none; }
   .guest-input:focus { border-color: #7cf59d; box-shadow: 0 0 0 2px rgb(124 245 157 / .12); }
   .guest-input:disabled { cursor: not-allowed; border-color: #26322c; color: #64766b; opacity: .72; }
   .invite-host { display: flex; min-width: 0; align-items: center; gap: .7rem; margin-top: .9rem; color: #718277; }
   .invite-host > span { flex: 0 0 auto; font-size: .55rem; font-weight: 720; letter-spacing: .12em; text-transform: uppercase; }
+  .invite-key-warning { margin-top: .85rem; border-left: 2px solid #d9d68e; background: #17180f; padding: .65rem .75rem; color: #c2c398; font-size: .7rem; line-height: 1.55; }
   .choice { border: 1px solid #34433b; padding: .7rem .8rem; font-size: .875rem; color: #b9cbbf; background: #0b0e0d; }
   .choice.active, .choice:hover { border-color: #7cf59d; background: #112219; color: #dfffe7; }
   .primary-button { border: 1px solid #7cf59d; background: #7cf59d; padding: .75rem 1rem; color: #0a120d; font-weight: 650; transition: .15s ease; }
@@ -643,16 +808,16 @@
   .chat-composer { position: relative; }
   .composer-row, .emoji-shortcuts { display: flex; gap: .5rem; }
   .emoji-shortcuts { margin-bottom: .5rem; gap: .25rem; overflow-x: auto; padding-bottom: .25rem; }
-  .emoji-toggle { display: none; }
   .emoji-button { flex: 0 0 auto; border: 1px solid #293832; background: #0b0e0d; padding: .2rem .4rem; font-size: .9rem; line-height: 1; }
   .emoji-button:hover { border-color: #7cf59d; background: #112219; }
   .emoji-button:disabled { cursor: not-allowed; opacity: .28; }
-  .message { max-width: min(78%, 38rem); border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem; color: #e4f2e7; }
+  .message { position: relative; max-width: min(78%, 38rem); margin-bottom: 1rem; border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem 1rem; color: #e4f2e7; }
   .message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
   .message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
-
+  .room-pane { position: relative; }
   @media (max-width: 900px) {
     .chat-page { position: fixed; inset: 0; width: 100%; height: 100dvh; max-height: 100dvh; overscroll-behavior: none; }
+    .chat-page.embedded { position: static; inset: auto; height: 100%; max-height: 100%; }
     .chat-global-nav { position: relative; z-index: 60; display: flex; min-height: 3.25rem; align-items: center; gap: .35rem; padding: max(.35rem, env(safe-area-inset-top)) .45rem .35rem; }
     .chat-workspace-nav { min-width: 0; overflow: visible; }
     .chat-workspace-nav, .chat-workspace-nav :global(.workspace-nav) { width: 100%; }
@@ -671,44 +836,12 @@
     .mobile-connection.deleted > span { border-radius: 1px; background: #dc6f66; box-shadow: none; }
     .mobile-connection.cached > span { background: #718277; box-shadow: none; }
     .mobile-connection.connecting > span { background: #e4e78d; animation: mobile-connection-pulse 1.4s ease-in-out infinite; }
-    .mobile-sound-toggle, .mobile-actions-trigger { display: grid; place-items: center; border: 1px solid transparent; color: #718277; }
-    .mobile-sound-toggle:hover, .mobile-sound-toggle:focus-visible, .mobile-actions-trigger:hover, .mobile-actions-trigger:focus-visible, .mobile-actions-trigger[aria-expanded="true"] { border-color: #34483a; background: #111a14; color: #dfffe7; outline: none; }
+    .mobile-sound-toggle { display: grid; place-items: center; border: 1px solid transparent; color: #718277; }
+    .mobile-sound-toggle:hover, .mobile-sound-toggle:focus-visible { border-color: #34483a; background: #111a14; color: #dfffe7; outline: none; }
     .mobile-sound-toggle.enabled { color: #9bcfa7; }
     .mobile-sound-toggle svg { width: 1rem; height: 1rem; overflow: visible; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
     .mobile-sound-toggle svg path:first-child { fill: currentColor; stroke: none; }
-    .mobile-actions-trigger { color: #9aada1; font-size: .7rem; font-weight: 800; letter-spacing: .05em; }
-    .mobile-actions-backdrop { position: fixed; z-index: 89; inset: 0; display: block; border: 0; background: rgb(0 0 0 / .56); cursor: default; backdrop-filter: blur(2px); }
-    .chat-global-actions { position: fixed; z-index: 90; top: calc(max(.35rem, env(safe-area-inset-top)) + 2.9rem); right: 0; bottom: 0; display: none; width: min(22rem, 100vw); max-height: calc(100dvh - 3.25rem); align-content: start; align-items: stretch; gap: .35rem; overflow-y: auto; border-left: 1px solid #496451; background: rgb(7 12 9 / .99); padding: .65rem .65rem max(.65rem, env(safe-area-inset-bottom)); box-shadow: -18px 24px 64px rgb(0 0 0 / .62); overscroll-behavior: contain; }
-    .chat-global-actions.open { display: grid; }
-    .mobile-sheet-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #293832; padding: .25rem .2rem .7rem; }
-    .mobile-sheet-heading strong, .mobile-sheet-heading span { display: block; }
-    .mobile-sheet-heading strong { color: #effff2; font-size: .78rem; }
-    .mobile-sheet-heading span { max-width: 15rem; overflow: hidden; margin-top: .2rem; color: #718277; font-size: .58rem; text-overflow: ellipsis; white-space: nowrap; }
-    .mobile-sheet-heading button { display: grid; width: 2rem; height: 2rem; place-items: center; color: #91a59a; font-size: 1.1rem; }
-    .mobile-sheet-heading button:hover, .mobile-sheet-heading button:focus-visible { background: #162019; color: #effff2; outline: none; }
-    .mobile-room-action { display: flex; align-items: center; justify-content: space-between; border: 1px solid #58443b; background: #17110e; padding: .75rem; color: #efb18a; font-size: .68rem; }
-    .mobile-room-action.delete { border-color: #593735; color: #ffaaa3; }
-    .mobile-room-action:hover, .mobile-room-action:focus-visible { border-color: currentColor; outline: none; }
-    .mobile-action-item { display: flex; min-height: 3.25rem; align-items: center; justify-content: space-between; gap: .75rem; border: 1px solid #202d25; background: #0b110d; padding: .3rem .4rem .3rem .75rem; }
-    .mobile-action-label { display: block; color: #b9cbbf; font-size: .66rem; }
-    .mobile-action-item > :global(*) { min-width: 0; flex: 0 0 auto; }
-    .mobile-action-item :global(.presence-trigger), .mobile-action-item :global(.notification-trigger), .mobile-action-item :global(.user-trigger) { width: auto; max-width: 13rem; border-color: transparent; }
-    .mobile-action-item :global(.notification-trigger > span:nth-child(2)), .mobile-action-item :global(.user-copy) { display: block !important; }
-    .mobile-action-item :global(.user-trigger) { grid-template-columns: auto minmax(0, 1fr) auto; }
-    .mobile-action-item :global(.user-chevron) { display: block; }
     .chat-workspace-nav :global(.room-switcher) { top: calc(max(.35rem, env(safe-area-inset-top)) + 2.9rem); max-height: calc(100dvh - 3.5rem); }
-    .chat-global-actions :global(.presence-menu),
-    .chat-global-actions :global(.inbox-menu),
-    .chat-global-actions :global(.notification-menu),
-    .chat-global-actions :global(.user-menu) {
-      position: fixed;
-      top: calc(max(.35rem, env(safe-area-inset-top)) + 2.9rem);
-      right: .5rem;
-      left: .5rem;
-      width: auto;
-      max-height: calc(100dvh - 3.75rem);
-      overflow-y: auto;
-    }
     .connection-banner { padding: .45rem .65rem; font-size: .62rem; }
     .reconnect-panel { max-height: min(10rem, 28dvh); gap: .45rem; overflow-y: auto; padding: .55rem .65rem; overscroll-behavior: contain; }
     .reconnect-panel span { margin-top: .15rem; font-size: .58rem; line-height: 1.35; }
@@ -725,11 +858,6 @@
     .composer-row { gap: .35rem; }
     .composer-row .guest-input { padding: .58rem .65rem; }
     .composer-row .primary-button { padding: .58rem .72rem; }
-    .emoji-toggle { display: grid; width: 2.35rem; flex: 0 0 auto; place-items: center; border: 1px solid #34433b; background: #0b0e0d; color: #b9cbbf; font-size: 1rem; }
-    .emoji-toggle:hover, .emoji-toggle:focus-visible, .emoji-toggle[aria-expanded="true"] { border-color: #7cf59d; background: #112219; outline: none; }
-    .emoji-toggle:disabled { cursor: not-allowed; opacity: .35; }
-    .emoji-shortcuts { position: absolute; z-index: 3; bottom: calc(100% + .35rem); left: .55rem; display: none; width: max-content; max-width: calc(100% - 1.1rem); margin: 0; overflow-x: auto; border: 1px solid #496451; background: #090e0b; padding: .45rem; box-shadow: 0 12px 32px rgb(0 0 0 / .52); }
-    .emoji-shortcuts.open { display: flex; }
     .emoji-button { min-width: 2rem; min-height: 2rem; padding: .3rem .45rem; }
     .composer-status { margin-top: .35rem; font-size: .58rem; }
     .composer-status:not(.unavailable) { display: none; }
@@ -750,9 +878,7 @@
     .chat-global-nav { min-height: 2.75rem; padding-top: max(.2rem, env(safe-area-inset-top)); padding-bottom: .2rem; }
     .chat-workspace-nav :global(.brand-copy span), .chat-workspace-nav :global(.context-copy > span) { display: none; }
     .chat-workspace-nav :global(.browse-button), .mobile-primary-actions > * { height: 2.15rem; }
-    .chat-global-actions, .chat-workspace-nav :global(.room-switcher),
-    .chat-global-actions :global(.presence-menu), .chat-global-actions :global(.inbox-menu),
-    .chat-global-actions :global(.notification-menu), .chat-global-actions :global(.user-menu) { top: calc(max(.2rem, env(safe-area-inset-top)) + 2.55rem); max-height: calc(100dvh - 2.8rem); }
+    .chat-workspace-nav :global(.room-switcher) { top: calc(max(.2rem, env(safe-area-inset-top)) + 2.55rem); max-height: calc(100dvh - 2.8rem); }
     .reconnect-panel { max-height: min(7rem, 24dvh); }
     [data-testid="guest-message-list"] { min-block-size: 4.5rem; padding-block: .5rem; }
     .chat-composer { padding-block: .35rem; }

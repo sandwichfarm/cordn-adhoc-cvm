@@ -15,6 +15,7 @@ const DEFAULT_NOSTR_PROBE_MS = 1_500;
 const HEARTBEAT_RENEW_MS = 5_000;
 const HEARTBEAT_FRESH_SECONDS = 12;
 const HEARTBEAT_EXPIRATION_SECONDS = 20;
+const latestHeartbeatCreatedAtByPubkey: Record<string, number> = {};
 
 export interface DebugSink {
   (level: "info" | "warn" | "error", message: string, details?: string): void;
@@ -144,11 +145,19 @@ export class SimplePoolNostrInstanceNetwork implements NostrInstanceNetwork {
     }
 
     const pool = new SimplePool({ enablePing: false, enableReconnect: false });
-    const publish = (status: "running" | "stopped"): void => {
+    const publish = async (status: "running" | "stopped"): Promise<void> => {
       const secretKey = input.getSecretKeyBytes();
+      let event: NostrEvent;
       try {
-        const nowSeconds = Math.floor(Date.now() / 1000);
-        const event = finalizeEvent(
+        // Kind 30382 is parameterized-replaceable. Guarantee that a stop sent
+        // in the same wall-clock second as the last running heartbeat wins the
+        // relay's replacement ordering instead of leaving a false online state.
+        const nowSeconds = Math.max(
+          Math.floor(Date.now() / 1000),
+          (latestHeartbeatCreatedAtByPubkey[input.publicKeyHex] ?? 0) + 1,
+        );
+        latestHeartbeatCreatedAtByPubkey[input.publicKeyHex] = nowSeconds;
+        event = finalizeEvent(
           {
             kind: INSTANCE_HEARTBEAT_KIND,
             created_at: nowSeconds,
@@ -162,31 +171,32 @@ export class SimplePoolNostrInstanceNetwork implements NostrInstanceNetwork {
           },
           secretKey,
         );
-
-        void Promise.allSettled(pool.publish(input.relayUrls, event)).then((results) => {
-          const published = results.filter((result) => result.status === "fulfilled").length;
-          debug?.("info", `nostr instance ${status} heartbeat published`, `${published}/${input.relayUrls.length} relays`);
-          if (status === "stopped") {
-            pool.destroy();
-          }
-        });
       } catch (error) {
         debug?.("warn", "nostr instance heartbeat failed", errorMessage(error));
-        if (status === "stopped") {
-          pool.destroy();
-        }
+        if (status === "stopped") pool.destroy();
+        return;
       } finally {
         secretKey.fill(0);
       }
+
+      try {
+        const results = await Promise.allSettled(pool.publish(input.relayUrls, event));
+        const published = results.filter((result) => result.status === "fulfilled").length;
+        debug?.("info", `nostr instance ${status} heartbeat published`, `${published}/${input.relayUrls.length} relays`);
+      } catch (error) {
+        debug?.("warn", "nostr instance heartbeat publish failed", errorMessage(error));
+      } finally {
+        if (status === "stopped") pool.destroy();
+      }
     };
 
-    publish("running");
-    const timer = setInterval(() => publish("running"), HEARTBEAT_RENEW_MS);
+    void publish("running");
+    const timer = setInterval(() => void publish("running"), HEARTBEAT_RENEW_MS);
 
     return {
-      release: () => {
+      release: async () => {
         clearInterval(timer);
-        publish("stopped");
+        await publish("stopped");
       },
     };
   }
@@ -462,6 +472,16 @@ function leaseStorageKey(publicKeyHex: string): string {
 
 function stoppedTokenStorageKey(publicKeyHex: string): string {
   return `${STOPPED_TOKEN_KEY_PREFIX}${publicKeyHex}`;
+}
+
+/** Forget browser-only instance bookkeeping after its coordinator identity is destroyed. */
+export function clearCoordinatorInstanceRecords(publicKeyHex: string): void {
+  try {
+    localStorage.removeItem(leaseStorageKey(publicKeyHex));
+    localStorage.removeItem(stoppedTokenStorageKey(publicKeyHex));
+  } catch {
+    // Destruction still succeeds when browser storage is unavailable.
+  }
 }
 
 function readLease(storage: Storage, key: string): StoredLease | null {

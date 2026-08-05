@@ -12,13 +12,25 @@ type BrowserPerformance = Performance & {
   };
 };
 
+const RATE_SAMPLE_LIMIT = 24;
+
+export function normalizeLocalMessageRate(rate: number, minimum: number, maximum: number): number {
+  if (rate <= 0) return 0;
+  if (maximum <= minimum) return 0.5;
+  return Math.min(1, Math.max(0, (rate - minimum) / (maximum - minimum)));
+}
+
 export class ResourceMonitor {
   subscriptionCount = $state(0);
   groupSubscriptionLegCount = $state(0);
   messageRate = $state(0);
+  messageRateMinimum = $state(0);
+  messageRateMaximum = $state(0);
+  messageRateIntensity = $state(0);
   memoryBytes = $state<number | null>(null);
 
   private messageTimes: number[] = [];
+  private rateSamples: number[] = [];
   private rateTimer: ReturnType<typeof setInterval> | null = null;
   private cleanupHandlers: Array<() => void> = [];
 
@@ -41,8 +53,10 @@ export class ResourceMonitor {
     }
     this.readMemory();
     this.updateRate();
+    this.sampleRate();
     this.rateTimer = setInterval(() => {
       this.updateRate();
+      this.sampleRate();
       this.readMemory();
     }, 5_000);
   }
@@ -57,9 +71,13 @@ export class ResourceMonitor {
     }
 
     this.messageTimes = [];
+    this.rateSamples = [];
     this.subscriptionCount = 0;
     this.groupSubscriptionLegCount = 0;
     this.messageRate = 0;
+    this.messageRateMinimum = 0;
+    this.messageRateMaximum = 0;
+    this.messageRateIntensity = 0;
     this.memoryBytes = null;
   }
 
@@ -102,6 +120,25 @@ export class ResourceMonitor {
     const cutoff = Date.now() - 60_000;
     this.messageTimes = this.messageTimes.filter((time) => time > cutoff);
     this.messageRate = this.messageTimes.length;
+    this.updateRateIntensity();
+  }
+
+  private sampleRate(): void {
+    this.rateSamples.push(this.messageRate);
+    if (this.rateSamples.length > RATE_SAMPLE_LIMIT) {
+      this.rateSamples.splice(0, this.rateSamples.length - RATE_SAMPLE_LIMIT);
+    }
+    this.messageRateMinimum = Math.min(...this.rateSamples);
+    this.messageRateMaximum = Math.max(...this.rateSamples);
+    this.updateRateIntensity();
+  }
+
+  private updateRateIntensity(): void {
+    this.messageRateIntensity = normalizeLocalMessageRate(
+      this.messageRate,
+      this.messageRateMinimum,
+      this.messageRateMaximum,
+    );
   }
 
   private readMemory(): void {

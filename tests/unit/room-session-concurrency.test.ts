@@ -11,6 +11,7 @@ const protocolMocks = vi.hoisted(() => ({
   encodeState: vi.fn((state: unknown) => String(state)),
   encryptMessage: vi.fn(),
   groupCreatorPubkey: vi.fn(),
+  hasValidChatEnvelopeAuth: vi.fn(() => true),
   groupId: vi.fn(),
   joinWelcome: vi.fn(),
   sanitizeChatEnvelopeHostBadge: vi.fn((envelope: unknown) => envelope),
@@ -24,6 +25,8 @@ const coordinatorMocks = vi.hoisted(() => ({
   fetchMessages: vi.fn(),
   fetchWelcomes: vi.fn(),
   postGroupMessage: vi.fn(),
+  publishKeyPackage: vi.fn(),
+  storeJoinRequest: vi.fn(),
   storeWelcome: vi.fn(),
 }));
 
@@ -37,6 +40,8 @@ vi.mock("../../src/chat/coordinator-client", () => ({
     fetchMessages = coordinatorMocks.fetchMessages;
     fetchWelcomes = coordinatorMocks.fetchWelcomes;
     postGroupMessage = coordinatorMocks.postGroupMessage;
+    publishKeyPackage = coordinatorMocks.publishKeyPackage;
+    storeJoinRequest = coordinatorMocks.storeJoinRequest;
     storeWelcome = coordinatorMocks.storeWelcome;
   },
 }));
@@ -45,7 +50,7 @@ vi.mock("../../src/notifications/notification-center.svelte", () => ({
   notificationCenter: { enqueue: vi.fn() },
 }));
 
-import { ChatRoomSession, loadRoom, removeStoredRoom, saveRoom } from "../../src/chat/room-store";
+import { ChatRoomSession, loadRoom, removeStoredRoom, roomUnreadCount, saveRoom } from "../../src/chat/room-store";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -110,7 +115,28 @@ describe("ChatRoomSession concurrency", () => {
     coordinatorMocks.fetchJoinRequests.mockResolvedValue([]);
     coordinatorMocks.fetchWelcomes.mockResolvedValue([]);
     coordinatorMocks.postGroupMessage.mockResolvedValue({ cursor: 1, gid: "room-id", at: 1 });
+    coordinatorMocks.publishKeyPackage.mockResolvedValue(undefined);
+    coordinatorMocks.storeJoinRequest.mockResolvedValue(undefined);
     coordinatorMocks.close.mockResolvedValue(undefined);
+  });
+
+  it("rejects reactions targeting the current participant's own message", async () => {
+    const room = storedRoom();
+    room.messages = [{
+      type: "message",
+      id: "own-message",
+      sender: room.stablePubkey,
+      name: room.name,
+      content: "Mine",
+      createdAt: 1,
+    }];
+    const session = connectedSession(room);
+
+    await expect(session.setReaction("own-message", "👍", true))
+      .rejects.toThrow("You cannot react to your own message");
+    expect(protocolMocks.signChatEnvelope).not.toHaveBeenCalled();
+    expect(protocolMocks.encryptMessage).not.toHaveBeenCalled();
+    expect(coordinatorMocks.postGroupMessage).not.toHaveBeenCalled();
   });
 
   it("serializes concurrent sends so each encryption advances from the previous MLS state", async () => {
@@ -226,6 +252,89 @@ describe("ChatRoomSession concurrency", () => {
     expect(loadRoom(room.id, room.coordinatorPubkey)).toBeNull();
   });
 
+  it("keeps a recoverable startup failure in connecting state without publishing offline", async () => {
+    coordinatorMocks.fetchMessages.mockRejectedValueOnce(new Error("relay timeout"));
+    const offline = vi.fn();
+    window.addEventListener("cordn:server-offline", offline);
+    const session = connectedSession();
+
+    await expect(session.recover(new AbortController().signal)).rejects.toThrow("Hosted room recovery failed");
+
+    expect(session.status.connection).toBe("connecting");
+    expect(offline).not.toHaveBeenCalled();
+    window.removeEventListener("cordn:server-offline", offline);
+  });
+
+  it("keeps polling after a recovered hosted room enters steady state", async () => {
+    vi.useFakeTimers();
+    try {
+      const room = storedRoom();
+      room.isHost = true;
+      const session = connectedSession(room);
+
+      await session.recover(new AbortController().signal);
+      expect(coordinatorMocks.fetchJoinRequests).toHaveBeenCalledTimes(1);
+
+      session.activateSteadyState();
+      await vi.advanceTimersByTimeAsync(4_000);
+
+      expect(coordinatorMocks.fetchJoinRequests).toHaveBeenCalledTimes(2);
+      session.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not persist or publish a late aborted recovery", async () => {
+    const activePull = deferred<Array<{ cursor: number; msg_64: string }>>();
+    coordinatorMocks.fetchMessages.mockImplementationOnce(() => activePull.promise);
+    const room = storedRoom();
+    saveRoom(room);
+    const session = connectedSession(room);
+    const controller = new AbortController();
+    const updates = vi.fn();
+    session.subscribe(updates);
+
+    const recovering = session.recover(controller.signal);
+    await vi.waitFor(() => expect(coordinatorMocks.fetchMessages).toHaveBeenCalledOnce());
+    controller.abort();
+    removeStoredRoom(room);
+    activePull.resolve([]);
+    await expect(recovering).rejects.toThrow();
+
+    expect(loadRoom(room.id, room.coordinatorPubkey)).toBeNull();
+    expect(updates).not.toHaveBeenCalled();
+  });
+
+  it("establishes a hydration baseline, then counts each unique remote message once", async () => {
+    const remote = (id: string, sender = "b".repeat(64)) => ({
+      type: "message" as const,
+      id,
+      sender,
+      name: "Remote",
+      content: id,
+      createdAt: 1,
+      auth: { id: `${id}-auth`, sig: "signature" },
+    });
+    const room = storedRoom();
+    protocolMocks.decryptMessage
+      .mockResolvedValueOnce({ state: "hydrated", envelope: remote("cached") })
+      .mockResolvedValueOnce({ state: "next", envelope: remote("new") })
+      .mockResolvedValueOnce({ state: "replay", envelope: remote("new") });
+    coordinatorMocks.fetchMessages
+      .mockResolvedValueOnce([{ cursor: 1, msg_64: "cached" }])
+      .mockResolvedValueOnce([{ cursor: 2, msg_64: "new" }])
+      .mockResolvedValueOnce([{ cursor: 3, msg_64: "replay" }]);
+    const session = connectedSession(room);
+
+    await session.sync();
+    expect(roomUnreadCount(session.room)).toBe(0);
+    await session.sync();
+    expect(roomUnreadCount(session.room)).toBe(1);
+    await session.sync();
+    expect(roomUnreadCount(session.room)).toBe(1);
+  });
+
   it.each([
     {
       scenario: "matching invite host",
@@ -245,6 +354,7 @@ describe("ChatRoomSession concurrency", () => {
   ])("reconciles $scenario with the MLS creator after admission", async ({ inviteHost, expected }) => {
     const room = storedRoom();
     room.joinRequestSent = true;
+    room.keyPackage.lastResort = true;
     room.host = inviteHost;
     coordinatorMocks.fetchWelcomes.mockResolvedValue([{
       kp_ref: room.keyPackage.reference,

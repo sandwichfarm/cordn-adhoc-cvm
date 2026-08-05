@@ -12,5 +12,6 @@ export function createSameShellChatHref(shellOrigin: string, room: StoredRoom | 
     title: room.title,
     coordinatorOrigin: room.coordinatorOrigin,
     host: hostIdentityForRoom(room),
+    coordinatorKeyMode: room.coordinatorKeyMode,
   });
 }
