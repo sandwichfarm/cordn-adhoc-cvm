@@ -427,11 +427,13 @@ test("real targeted message and room invite cross production transport", async (
   const nonTarget = await nonTargetContext.newPage();
   try {
     await Promise.all([installEstablishedInstallation(target), installEstablishedInstallation(nonTarget)]);
-    await Promise.all([target.goto(sourceInvite!), nonTarget.goto(sourceInvite!)]);
-    await Promise.all([
-      expect(target.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 }),
-      expect(nonTarget.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 }),
-    ]);
+    // Admit sequentially: the coordinator's real join/admission queue is part
+    // of the behavior under test and concurrent initial joins are needlessly
+    // timing-sensitive in a one-worker browser trace.
+    await target.goto(sourceInvite!);
+    await expect(target.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
+    await nonTarget.goto(sourceInvite!);
+    await expect(nonTarget.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
 
     await host.getByPlaceholder("Message as host").fill("Host author for a structured mention");
     await host.getByRole("button", { name: "Send" }).click();
@@ -456,7 +458,9 @@ test("real targeted message and room invite cross production transport", async (
     expect(mention.recipientPubkeys).toEqual([hostIdentity.stablePubkey]);
     expect(mention.auth).toBeTruthy();
 
-    await host.getByRole("button", { name: "Create room", exact: true }).click();
+    // An active channel exposes the new-room flow through the live sidebar
+    // control (the visible label is "Create group" in the compact rail).
+    await host.getByRole("button", { name: "Create group", exact: true }).click();
     const createTarget = host.getByTestId("create-room-dialog");
     await createTarget.getByPlaceholder("Friday plans").fill(targetRoomTitle);
     await createTarget.getByRole("button", { name: "Create room", exact: true }).click();
@@ -474,8 +478,16 @@ test("real targeted message and room invite cross production transport", async (
     await chooser.getByRole("button", { name: new RegExp(targetRoomTitle) }).click();
     await expect(chooser).toBeHidden({ timeout: 20_000 });
 
-    const deliveredInvite = await waitForStoredMessage(target, sourceTitle, (message) => message.recipientPubkeys?.length === 1 && message.recipientPubkeys[0] !== undefined && message.content?.includes(targetRoomTitle) === true);
-    expect(deliveredInvite.recipientPubkeys).toEqual([(await roomIdentity(target, sourceTitle)).stablePubkey]);
+    const targetSourceIdentity = await roomIdentity(target, sourceTitle);
+    const appOrigin = new URL(host.url()).origin;
+    const deliveredInvite = await waitForStoredMessage(
+      target,
+      sourceTitle,
+      (message) => message.recipientPubkeys?.length === 1
+        && message.recipientPubkeys[0] === targetSourceIdentity.stablePubkey
+        && message.content?.startsWith(appOrigin) === true,
+    );
+    expect(deliveredInvite.recipientPubkeys).toEqual([targetSourceIdentity.stablePubkey]);
     expect(deliveredInvite.auth).toBeTruthy();
     const deliveredUrl = new URL(deliveredInvite.content ?? "", host.url());
     expect(deliveredUrl.pathname).toContain(targetIdentity.id);
