@@ -10,6 +10,7 @@ This repository uses Get Shit Done (GSD) as the default software delivery lifecy
 - Use Svelte 5 runes, strict TypeScript, browser-safe APIs, and the project's existing component/state patterns. Do not introduce Node-only runtime dependencies.
 - Keep private keys, invite secrets, and decrypted message material out of logs, errors, snapshots, fixtures, and commits.
 - Use `apply_patch` for intentional file edits and focused commands for generated formatting or test output.
+- Follow [`GIT-PROCEDURES.md`](GIT-PROCEDURES.md) for branch creation, commit cadence, remote synchronization, upstream escalation, issue publication, pushing, and pull requests. A completed task is not delivered while its commits exist only in the local checkout unless the user explicitly requested local-only work.
 
 ## Required GSD Lifecycle
 
@@ -31,7 +32,7 @@ This repository uses Get Shit Done (GSD) as the default software delivery lifecy
 4. **Execute in bounded increments**
    - A GSD executor owns only the files or responsibility assigned in its plan.
    - Add or update tests with the behavior change. Prefer failing coverage before the implementation when practical.
-   - Keep commits focused and preserve traceability to the phase/requirement or review finding.
+   - Keep commits focused and preserve traceability to the phase/requirement or review finding. Commit every independently verified increment; do not accumulate an entire phase as uncommitted work.
 
 5. **Verify outcomes, not task completion**
    - Run proportional unit, browser, lint, type-check, build, and diff checks.
@@ -45,7 +46,7 @@ This repository uses Get Shit Done (GSD) as the default software delivery lifecy
 
 7. **Ship only a proven branch**
    - Before opening a PR, require a clean feature branch, passing verification, full quality gates, and no unresolved blocking audit findings.
-   - Generate the PR summary from planning and verification artifacts, push the branch, and record the PR in project state.
+   - Synchronize with the remote, push the feature branch, open or update its PR, monitor required checks, and record the PR in project state. Follow the exact procedure and blocker rules in `GIT-PROCEDURES.md`.
 
 ## Project Quality Gates
 
