@@ -11,7 +11,15 @@ export function createSameShellChatHref(shellOrigin: string, room: StoredRoom | 
     relayUrls: room.relayUrls,
     title: room.title,
     coordinatorOrigin: room.coordinatorOrigin,
+    coordinatorName: room.coordinatorName,
     host: hostIdentityForRoom(room),
     coordinatorKeyMode: room.coordinatorKeyMode,
   });
+}
+
+/** Build the existing explicit auto-join handoff without trusting a received URL as a destination. */
+export function createSameShellAutoJoinHref(shellOrigin: string, invite: ChatInvite): string {
+  const href = new URL(createSameShellChatHref(shellOrigin, invite));
+  href.searchParams.set("autojoin", "1");
+  return href.toString();
 }

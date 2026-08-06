@@ -9,7 +9,7 @@
   import type { ConfigStore } from "../config/config.svelte";
   import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
-  import { createSameShellChatHref } from "../chat/room-navigation";
+  import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { emptySidebarLedger, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
@@ -21,7 +21,9 @@
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
   import CoordinatorSettings from "./CoordinatorSettings.svelte";
   import CoordinatorRoomCard from "./CoordinatorRoomCard.svelte";
+  import ChannelPreferenceIndicators from "./ChannelPreferenceIndicators.svelte";
   import CoordinatorSetup from "./CoordinatorSetup.svelte";
+  import type { CoordinatorSetupSubmission } from "./coordinator-setup";
   import ChatRoute from "./ChatRoute.svelte";
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
   import LifecyclePanel from "./LifecyclePanel.svelte";
@@ -537,8 +539,9 @@
     const coordinatorKeyMode = coordinator.persistenceEnabled ? "persistent" : "ephemeral";
     const relayHintsChanged = nextRoom.relayUrls.length !== relayUrls.length
       || nextRoom.relayUrls.some((relayUrl, index) => relayUrl !== relayUrls[index]);
-    if (nextRoom.coordinatorKeyMode !== coordinatorKeyMode || relayHintsChanged) {
-      nextRoom = { ...nextRoom, coordinatorKeyMode, relayUrls: [...relayUrls] };
+    const coordinatorName = config.coordinatorName || "My coordinator";
+    if (nextRoom.coordinatorKeyMode !== coordinatorKeyMode || relayHintsChanged || nextRoom.coordinatorName !== coordinatorName) {
+      nextRoom = { ...nextRoom, coordinatorKeyMode, coordinatorName, relayUrls: [...relayUrls] };
       saveRoom(nextRoom);
     }
     const createdInviteUrl = createInviteUrl(window.location.origin, {
@@ -549,6 +552,7 @@
       inviteToken: nextRoom.inviteToken,
       host: hostIdentityForRoom(nextRoom),
       coordinatorKeyMode,
+      coordinatorName,
     });
     return {
       room: nextRoom,
@@ -817,6 +821,7 @@
         coordinatorPubkey,
         relayUrls,
         coordinatorOrigin: window.location.origin,
+        coordinatorName: config.coordinatorName || "My coordinator",
         autoApprove: newRoomAutoApprove,
         identity: currentHostIdentity(),
         signer: userProfileStore.activeSigner ?? (() => { throw new Error("Local identity is not ready"); })(),
@@ -1159,8 +1164,36 @@
     await coordinator.start();
   }
 
-  async function completeCoordinatorSetup(name: string): Promise<void> {
-    await coordinator.completeSetupAndPublish(name);
+  async function completeCoordinatorSetup(submission: CoordinatorSetupSubmission): Promise<string | null> {
+    const persistenceWasEnabled = coordinator.persistenceEnabled;
+    try {
+      if (submission.persistence === "persistent") {
+        const persisted = await coordinator.enablePersistence(submission.passphrase, submission.confirmPassphrase);
+        if (!persisted) return coordinator.persistenceError ?? "Could not save the coordinator identity";
+      } else if (coordinator.persistenceEnabled) {
+        await coordinator.disablePersistence();
+      }
+
+      const completed = config.completeFirstRunSetup({
+        name: submission.name,
+        relays: submission.relays,
+        announce: submission.announce,
+        autostart: submission.autostart,
+      });
+      if (!completed) {
+        if (submission.persistence === "persistent" && !persistenceWasEnabled) await coordinator.disablePersistence();
+        return config.setupError ?? config.relayError ?? "Could not save coordinator setup";
+      }
+
+      await coordinator.retryCoordinatorProfilePublication();
+      if (submission.autostart) {
+        autostartAttempted = true;
+        await coordinator.start();
+      }
+      return null;
+    } catch {
+      return "Could not finish coordinator setup. Try again.";
+    }
   }
 
   async function send() {
@@ -1564,11 +1597,10 @@
                       <button class="channel-row-primary" type="button" aria-label={`Open room ${entry.room.title}, hosted by ${hostIdentityForRoom(entry.room).name}`} disabled={localRailUnavailable} onclick={() => selectRoom(entry)}>
                         <span class="channel-active-mark" aria-hidden="true"></span>
                         <span class="channel-hash" aria-hidden="true">#</span>
-                        <span class="truncate" title={entry.room.title}>{entry.room.title}</span>
-                        {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta"><RoomHostBadge host={hostIdentityForRoom(entry.room)} compact /></span>{/if}
+                        <span class="channel-name-with-preferences"><span class="truncate" title={entry.room.title}>{entry.room.title}</span>{#if localRailActionable}<ChannelPreferenceIndicators roomKey={roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)} />{/if}</span>
+                        {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta channel-owner-avatar"><RoomHostBadge host={hostIdentityForRoom(entry.room)} compact avatarOnly /></span>{/if}
                       </button>
                       {#if localRailActionable}
-                        {#if !channelPreferences.isDefault(roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                         {#if roomUnreadCount(entry.room) > 0}<span class="unread-badge rail-ready-control rail-ready-room-meta" data-room-key={roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)} data-testid={`room-unread-${roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)}`} title={`${roomUnreadCount(entry.room)} unread messages`} aria-label={`${roomUnreadCount(entry.room)} unread messages`}>{displayUnreadCount(roomUnreadCount(entry.room))}</span>{/if}
                         <div class="rail-ready-control rail-ready-room-actions"><RoomActionsMenu sidebar roomTitle={entry.room.title} roomId={entry.room.id} coordinatorPubkey={entry.room.coordinatorPubkey} inviteUrl={entry.inviteUrl} removalMode="delete" onRemove={(origin) => requestSidebarRoomRemoval(entry.room, origin)} /></div>
                       {/if}
@@ -1579,11 +1611,10 @@
                     <button class="channel-row-primary" type="button" aria-label={`Open joined room ${joinedRoom.title}, hosted by ${hostIdentityForRoom(joinedRoom).name}`} disabled={localRailUnavailable} onclick={() => openStoredRoomFromRail(joinedRoom)}>
                       <span class="channel-active-mark" aria-hidden="true"></span>
                       <span class="channel-hash" aria-hidden="true">#</span>
-                      <span class="truncate">{joinedRoom.title}</span>
-                      {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta"><RoomHostBadge host={hostIdentityForRoom(joinedRoom)} compact /></span>{/if}
+                      <span class="channel-name-with-preferences"><span class="truncate">{joinedRoom.title}</span>{#if localRailActionable}<ChannelPreferenceIndicators roomKey={roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)} />{/if}</span>
+                      {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta channel-owner-avatar"><RoomHostBadge host={hostIdentityForRoom(joinedRoom)} compact avatarOnly /></span>{/if}
                     </button>
                     {#if localRailActionable}
-                      {#if !channelPreferences.isDefault(roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                       {#if roomUnreadCount(joinedRoom) > 0}<span class="unread-badge rail-ready-control rail-ready-room-meta" data-room-key={roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)} data-testid={`room-unread-${roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)}`} title={`${roomUnreadCount(joinedRoom)} unread messages`} aria-label={`${roomUnreadCount(joinedRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(joinedRoom))}</span>{/if}
                       <div class="rail-ready-control rail-ready-room-actions"><RoomActionsMenu sidebar roomTitle={joinedRoom.title} roomId={joinedRoom.id} coordinatorPubkey={joinedRoom.coordinatorPubkey} inviteUrl={remoteRoomHref(joinedRoom)} removalMode="leave" onRemove={(origin) => requestSidebarRoomRemoval(joinedRoom, origin)} /></div>
                     {/if}
@@ -1605,10 +1636,9 @@
                       >
                         <span class="channel-active-mark" aria-hidden="true"></span>
                         <span class="channel-hash" aria-hidden="true">#</span>
-                        <span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>
-                        <RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact />
+                        <span class="channel-name-with-preferences"><span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>{#if localRailActionable}<ChannelPreferenceIndicators roomKey={roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)} />{/if}</span>
+                        {#if localRailActionable}<span class="channel-owner-avatar"><RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact avatarOnly /></span>{/if}
                       </button>
-                      {#if !channelPreferences.isDefault(roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                       {#if roomUnreadCount(remoteRoom) > 0}<span class="unread-badge" data-room-key={roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)} data-testid={`room-unread-${roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)}`} title={`${roomUnreadCount(remoteRoom)} unread messages`} aria-label={`${roomUnreadCount(remoteRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(remoteRoom))}</span>{/if}
                       <RoomActionsMenu sidebar roomTitle={remoteRoom.title} roomId={remoteRoom.id} coordinatorPubkey={remoteRoom.coordinatorPubkey} inviteUrl={remoteRoomHref(remoteRoom)} removalMode="leave" onRemove={(origin) => requestSidebarRoomRemoval(remoteRoom, origin)} />
                       </div>
@@ -1620,7 +1650,7 @@
                     <span class="channel-active-mark" aria-hidden="true"></span>
                     <span class="channel-hash" aria-hidden="true">#</span>
                     <span class="truncate">{activeIntentInvite.title || "Invited room"}</span>
-                    <RoomHostBadge host={activeIntentHost ?? { name: "Unknown host", pubkey: "" }} compact />
+                    {#if localRailActionable}<span class="channel-owner-avatar"><RoomHostBadge host={activeIntentHost ?? { name: "Unknown host", pubkey: "" }} compact avatarOnly /></span>{/if}
                   </button>
                 </div>
               {/if}
@@ -1741,7 +1771,11 @@
           <PassphrasePrompt embedded {coordinator} />
         {:else if setupRequired}
           <div class="startup-stage coordinator-setup-stage">
-            <CoordinatorSetup {setupState} onComplete={completeCoordinatorSetup} />
+            <CoordinatorSetup
+              {setupState}
+              initialRelays={config.relays.filter((relay) => relay.enabled).map((relay) => relay.url)}
+              onComplete={completeCoordinatorSetup}
+            />
           </div>
         {:else if embeddedChatActive}
           {#key currentUrl}
@@ -1786,6 +1820,7 @@
                   }}
                   onToggleReaction={toggleReaction}
                   onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+                  onJoinInvite={(sharedInvite) => navigateFromRail(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
                 />
               {/each}
             </div>
@@ -2146,7 +2181,6 @@
   .global-sound-toggle svg path + path { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
   .global-sound-toggle:hover { background: #101713; color: #bdebc8; transform: translateY(-1px); }
   .global-sound-toggle.enabled { color: #7cf59d; }
-  .channel-preference-indicator { flex: 0 0 auto; color: #7cf59d; font-size: .45rem; }
   .host-utilities { display: flex; min-width: 0; align-items: stretch; gap: .12rem; }
   .command-cluster { display: flex; min-width: 0; align-items: stretch; gap: .08rem; }
   .command-cluster-label { display: none; align-items: center; padding: 0 .42rem; color: #617268; font-size: .46rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
@@ -2246,7 +2280,7 @@
   .sidebar-personal-tools :global(.notification-feed-trigger), .sidebar-personal-tools :global(.notification-trigger) { height: 2.75rem; border: 0; background: transparent; }
   .sidebar-personal-tools :global(.notification-feed-trigger) { width: 2.75rem; border-inline: 1px solid #202d25; }
   .sidebar-personal-tools :global(.notification-trigger) { justify-content: flex-start; padding-inline: .65rem; }
-  .sidebar-account :global(.user-menu) { top: auto; right: auto; bottom: calc(100% + .5rem); left: 0; box-sizing: border-box; width: 100%; max-height: min(38rem, calc(100dvh - 5rem)); overflow-y: auto; overscroll-behavior: contain; }
+  .sidebar-account :global(.user-menu) { top: auto; right: auto; bottom: calc(100% + .5rem); left: 0; box-sizing: border-box; width: min(22rem, calc(100vw - 1rem)); max-height: min(38rem, calc(100dvh - 5rem)); overflow-y: auto; overscroll-behavior: contain; }
   .sidebar-account :global(.presence-menu), .sidebar-account :global(.notification-feed-panel), .sidebar-account :global(.notification-menu) { top: auto; bottom: calc(100% + .5rem); }
   .channel-empty { display: flex; width: 100%; align-items: center; justify-content: space-between; border: 1px dashed #293832; padding: .65rem .7rem; color: #82958a; text-align: left; font-size: .68rem; }
   .channel-empty:hover { border-color: #7cf59d; color: #dfffe7; }
@@ -2259,12 +2293,16 @@
   .channel-row { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; border: 1px solid transparent; color: #91a59a; text-align: left; font-size: .72rem; }
   .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; border: 1px solid #3b5943; border-radius: 2px; background: #102216; color: #bfeac8; font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; }
   .channel-row-primary { display: grid; min-width: 0; grid-template-columns: .15rem auto minmax(0, 1fr) auto; align-items: center; gap: .55rem; padding: .55rem .2rem; color: inherit; text-align: left; }
+  .channel-name-with-preferences { display: flex; min-width: 0; align-items: center; gap: .35rem; }
+  .channel-name-with-preferences .truncate { min-width: 0; flex: 0 1 auto; }
+  .channel-owner-avatar { display: inline-grid; opacity: 0; transition: opacity .15s ease; }
+  .channel-row:hover .channel-owner-avatar, .channel-row:focus-within .channel-owner-avatar { opacity: .72; }
   .channel-row.unavailable { grid-template-columns: minmax(0, 1fr); color: #728378; }
   .channel-row.unavailable .channel-row-primary { cursor: default; grid-template-columns: .15rem auto minmax(0, 1fr); }
   .channel-row.unavailable.busy .channel-row-primary { cursor: progress; }
   .channel-row.unavailable .channel-row-primary:disabled { opacity: .72; }
-  .channel-row.unavailable:hover .channel-row-primary, .channel-row.unavailable:focus-within .channel-row-primary { background: transparent; color: #728378; }
-  .channel-row:hover .channel-row-primary, .channel-row:focus-within .channel-row-primary { background: #111a14; color: #dfffe7; }
+  .channel-row:hover, .channel-row:focus-within { background: #111a14; color: #dfffe7; }
+  .channel-row.unavailable:hover, .channel-row.unavailable:focus-within { background: transparent; color: #728378; }
   .channel-row.active { background: #17241b; color: #effff2; }
   .channel-active-mark { align-self: stretch; border-radius: 0 2px 2px 0; background: transparent; }
   .channel-row.active .channel-active-mark { background: #7cf59d; box-shadow: 0 0 10px rgb(124 245 157 / .25); }

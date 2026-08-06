@@ -39,6 +39,18 @@ This phase adds a first-start identity choice and coordinator naming gate, then 
 - **D-18:** Before editing any already-modified target file, execution must inspect the targeted diff and preserve compatible existing work; incompatible overlap is an explicit escalation point. Executors must never reset or check out another contributor's work.
 - **D-19:** The persisted coordinator name is canonical across all coordinator-facing discovery surfaces: coordinator-key kind-0 metadata, the ContextVM kind-11316 announcement `name` tag, and MCP initialize `serverInfo.name`. Invitees must resolve that value as the coordinator label; these surfaces must never fall back to the operator profile name.
 
+### First-start preferences
+
+- **D-20:** After coordinator naming and before the existing start experience, show a setup-path decision. The recommended path is visually primary and explains that it saves the coordinator securely on this device and starts it automatically.
+- **D-21:** The recommended path requires passphrase and confirmation fields, enables encrypted coordinator persistence, retains the configured default relays, leaves public announcements off, enables autostart, completes setup, and starts immediately.
+- **D-22:** `Advanced setup` is the escape hatch. It presents exactly one decision surface at a time in this order: persistence, relays, announcement, autostart. Back navigation preserves the in-progress draft.
+- **D-23:** Advanced persistence defaults to `Persistent`; choosing it requires the same confirmed passphrase before the wizard may finish. `Ephemeral` stores no coordinator secret beyond the current browser session.
+- **D-24:** The relay step begins with the product's current default relay set enabled and supports editing, removing, and adding `wss://` relay URLs. At least one enabled valid relay is required.
+- **D-25:** Announcement defaults to `No` because it is a public-discovery choice. Autostart defaults to `Yes`, matching the recommended path.
+- **D-26:** Name and preference changes remain a local draft until final completion. A failed persistence write or invalid wizard field does not mark setup complete or start the coordinator.
+- **D-27:** Completed setup is not shown again on ordinary reload. The existing destructive reset clears its completion marker, encrypted persistence, and preferences so the full first-run flow appears again.
+- **D-28:** If final autostart is enabled, completion starts the coordinator in the same session. If disabled, completion reveals the existing guided manual-start state.
+
 ## Required Evidence
 
 - Unit tests: validation, persistence/migration, setup completion, metadata merging, coordinator-key signature, relay targeting.

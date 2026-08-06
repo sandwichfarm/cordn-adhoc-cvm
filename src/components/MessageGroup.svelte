@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ChatEmojiShortcut } from "../chat/protocol";
+  import { parseInviteMessage, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
   import type { ReactionSummary, StoredMessage } from "../chat/room-store";
   import { createPubkeyAvatar } from "../identity/user-profile.svelte";
   import MessageReactions from "./MessageReactions.svelte";
@@ -16,6 +17,7 @@
     onClosePicker: (messageId: string) => void;
     onToggleReaction: (messageId: string, emoji: ChatEmojiShortcut) => void | Promise<void>;
     onSetReaction: (messageId: string, emoji: ChatEmojiShortcut) => void | Promise<void>;
+    onJoinInvite: (invite: ChatInvite) => void;
   }
 
   let {
@@ -29,6 +31,7 @@
     onClosePicker,
     onToggleReaction,
     onSetReaction,
+    onJoinInvite,
   }: Props = $props();
 
   const first = $derived(messages[0]);
@@ -38,6 +41,22 @@
 
   function useFallback(event: Event): void {
     (event.currentTarget as HTMLImageElement).src = fallbackAvatar;
+  }
+
+  function useInviteFallback(event: Event, pubkey: string): void {
+    (event.currentTarget as HTMLImageElement).src = createPubkeyAvatar(pubkey);
+  }
+
+  function inviteHost(invite: ChatInvite): RoomHostIdentity {
+    return invite.host ?? {
+      name: "Unknown host",
+      pubkey: invite.coordinatorPubkey,
+    };
+  }
+
+  function inviteCoordinatorName(invite: ChatInvite): string {
+    return invite.coordinatorName?.trim()
+      || `Coordinator ${invite.coordinatorPubkey.slice(0, 6)}…${invite.coordinatorPubkey.slice(-4)}`;
   }
 </script>
 
@@ -65,8 +84,28 @@
       <div class="streak-messages">
         {#each messages as message (message.id)}
           {@const reactions = reactionsFor(message.id)}
+          {@const sharedInvite = parseInviteMessage(message.content)}
           <article class:host class={`message-bubble ${idPrefix === "host" ? "host-message" : "message"}`} data-testid="message-bubble" data-message-id={message.id}>
-            <p>{message.content}</p>
+            {#if sharedInvite}
+              {@const sharedHost = inviteHost(sharedInvite)}
+              {@const groupName = sharedInvite.title || "Chat"}
+              {@const coordinatorName = inviteCoordinatorName(sharedInvite)}
+              <button
+                class="shared-invite-action"
+                type="button"
+                aria-label={`Join ${groupName} on ${coordinatorName} by ${sharedHost.name}`}
+                onclick={() => onJoinInvite(sharedInvite)}
+              >
+                <span class="shared-invite-copy">Join <strong>{groupName}</strong> on <strong>{coordinatorName}</strong></span>
+                <span class="shared-invite-host">
+                  <span>by</span>
+                  <img src={sharedHost.avatar || createPubkeyAvatar(sharedHost.pubkey)} alt="" onerror={(event) => useInviteFallback(event, sharedHost.pubkey)} />
+                  <span>{sharedHost.name}</span>
+                </span>
+              </button>
+            {:else}
+              <p>{message.content}</p>
+            {/if}
             <MessageTimestamp createdAt={message.createdAt} pending={message.pending} />
             <MessageReactions
               messageId={message.id}
@@ -108,11 +147,18 @@
   .message-streak.host:not(.mine) .message-bubble { background: #18291d; box-shadow: inset 2px 0 rgb(124 245 157 / .12); }
   .mine .message-bubble.host { background: #162019; box-shadow: none; }
   .message-bubble p { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .shared-invite-action { display: flex; width: 100%; min-height: 3.25rem; align-items: center; justify-content: space-between; gap: .8rem; border: 1px solid rgb(124 245 157 / .2); background: #101a13; padding: .65rem .7rem; color: #cfe8d5; text-align: left; transition: border-color .15s ease, background .15s ease, color .15s ease; }
+  .shared-invite-action:hover, .shared-invite-action:focus-visible { border-color: #7cf59d; outline: none; background: #14241a; color: #effff2; }
+  .shared-invite-copy { min-width: 0; line-height: 1.45; }
+  .shared-invite-copy strong { color: #b9fac8; font-weight: 700; }
+  .shared-invite-host { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .3rem; color: #8fa397; font-size: .58rem; }
+  .shared-invite-host img { width: 1.35rem; height: 1.35rem; border: 1px solid rgb(124 245 157 / .2); background: #0b0e0d; object-fit: cover; }
   .message-bubble :global(.message-timestamp) { min-height: .65rem; margin-top: .18rem; }
   .mine .message-bubble :global(.message-reactions) { right: .75rem; left: auto; }
   .mine .message-bubble :global(.reaction-picker) { right: 0; left: auto; }
   @media (max-width: 520px) {
     .message-streak { max-width: 88%; gap: .45rem; }
     .message-bubble { padding-inline: .65rem; }
+    .shared-invite-action { align-items: flex-start; flex-direction: column; gap: .45rem; }
   }
 </style>

@@ -206,7 +206,7 @@
             onblur={() => coordinatorNameTouched = true}
           />
         </label>
-        <p id="coordinator-name-helper" class="coordinator-name-helper">This name is published as this coordinator’s public profile. Your personal operator profile remains separate.</p>
+        <p id="coordinator-name-helper" class="coordinator-name-helper">This public coordinator name is separate from your operator profile.</p>
         {#if coordinatorNameInvalid}<p id="coordinator-name-error" class="field-error" data-testid="coordinator-name-error" role="alert">Enter a coordinator name to continue.</p>{/if}
         <div class="coordinator-name-actions" data-testid="coordinator-name-publication" data-publication-state={coordinator.profilePublicationState}>
           <button

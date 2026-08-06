@@ -14,6 +14,8 @@ status: approved
 - Host streaks retain the existing compact badge and receive a modest green border/background distinction; host identity is never conveyed by color alone.
 - Per-message metadata is 9–10px, low contrast, and remains visible. Pending copy appears beside the timestamp.
 - Reaction controls continue overlapping each individual bubble border.
+- A message whose complete trimmed content is a valid Cordn invite replaces the raw capability URL with one full-width action: `Join {group} on {coordinator} by {host avatar} {host}`. The group and coordinator form the primary label; the host avatar/name remain visible supporting identity. Invalid or partial URLs stay ordinary message text.
+- Activating the invite action rebuilds a current-origin canonical invite and enters the existing auto-join flow. The raw capability is never copied into a DOM attribute, tooltip, log, or persisted presentation record.
 
 ## Responsive Contract
 
@@ -28,4 +30,4 @@ status: approved
 3. Host badge and host styling survive grouping.
 4. Adaptive timestamp labels and scheduling match D-05.
 5. Desktop and compact layouts keep avatars outside bubbles and inside the viewport.
-
+6. Valid invite-only messages render the named join action in both host and guest logs, malformed text does not, and activation navigates through the canonical same-shell auto-join path.

@@ -112,6 +112,7 @@ export interface StoredRoom {
   title: string;
   coordinatorPubkey: string;
   coordinatorOrigin?: string;
+  coordinatorName?: string;
   relayUrls: string[];
   name: string;
   avatar?: string;
@@ -865,7 +866,7 @@ export class ChatRoomSession {
   }
 }
 
-export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; signer: NostrSigner; identityOwner: RoomIdentityOwner; coordinatorOrigin?: string; autoApprove?: boolean; identity?: RoomIdentity; coordinatorKeyMode?: CoordinatorKeyMode }): Promise<StoredRoom> {
+export async function createHostedRoom(input: { title: string; coordinatorPubkey: string; relayUrls: string[]; signer: NostrSigner; identityOwner: RoomIdentityOwner; coordinatorOrigin?: string; coordinatorName?: string; autoApprove?: boolean; identity?: RoomIdentity; coordinatorKeyMode?: CoordinatorKeyMode }): Promise<StoredRoom> {
   const stablePubkey = await input.signer.getPublicKey();
   const key = await createKeyPackage(stablePubkey);
   const title = input.title.trim() || "Untitled chat";
@@ -881,6 +882,7 @@ export async function createHostedRoom(input: { title: string; coordinatorPubkey
     title,
     coordinatorPubkey: input.coordinatorPubkey,
     coordinatorOrigin: input.coordinatorOrigin ?? window.location.origin,
+    coordinatorName: input.coordinatorName?.trim() || undefined,
     relayUrls: input.relayUrls,
     name,
     avatar,
@@ -920,6 +922,7 @@ export async function createJoiningRoom(input: { invite: ChatInvite; name: strin
     title: input.invite.title || "Chat",
     coordinatorPubkey: input.invite.coordinatorPubkey,
     coordinatorOrigin: input.invite.coordinatorOrigin ?? window.location.origin,
+    coordinatorName: input.invite.coordinatorName,
     relayUrls: input.invite.relayUrls,
     name: input.name.trim() || "Anonymous",
     avatar: input.avatar,

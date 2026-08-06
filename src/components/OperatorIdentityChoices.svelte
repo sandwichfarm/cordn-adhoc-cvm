@@ -92,8 +92,8 @@
 </script>
 
 <div class="operator-identity-choices" aria-label="Connect a Nostr identity">
-  <button bind:this={firstAction} class="identity-choice" data-testid={testId("nip07")} type="button" disabled={busy} onclick={() => void connectNip07()}>
-    <span>NIP-07 browser signer</span>
+  <button bind:this={firstAction} class="identity-choice" data-testid={testId("nip07")} type="button" disabled={busy} aria-busy={busy} onclick={() => void connectNip07()}>
+    <span>{busy ? "Connecting…" : "NIP-07 browser signer"}</span>
     <small>{userProfileStore.nip07Available ? "extension detected" : "requires an extension"}</small>
   </button>
   {#if remoteUri}
@@ -109,8 +109,8 @@
       </div>
     </div>
   {:else}
-    <button class="identity-choice remote-choice" data-testid={testId("nip46")} type="button" disabled={busy} onclick={() => void connectNip46Qr()}>
-      <span>NIP-46 remote signer</span>
+    <button class="identity-choice remote-choice" data-testid={testId("nip46")} type="button" disabled={busy} aria-busy={busy} onclick={() => void connectNip46Qr()}>
+      <span>{busy ? "Connecting…" : "NIP-46 remote signer"}</span>
       <small>show QR code</small>
     </button>
   {/if}
@@ -125,24 +125,25 @@
 </div>
 
 <style>
-  .operator-identity-choices { display: grid; gap: 12px; }
-  .identity-choice { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: .75rem; border: 1px solid #293832; padding: .65rem .7rem; color: #c6d7cb; text-align: left; font-size: 12px; }
-  .identity-choice:hover, .identity-choice:focus-visible { border-color: #7cf59d; background: #111a14; outline: 2px solid #7cf59d; outline-offset: 2px; }
+  .operator-identity-choices { display: grid; gap: 16px; }
+  .identity-choice { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #293832; padding: 8px 16px; color: #c6d7cb; text-align: left; font-size: 12px; }
+  .identity-choice:hover { border-color: #496451; background: #111a14; }
+  .identity-choice:focus-visible { border-color: #7cf59d; background: #111a14; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .identity-choice small { color: #687a6f; font-size: 10px; }
   .remote-choice { border-color: #36533f; background: #0d1711; }
-  .remote-connect { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); align-items: center; gap: .8rem; border: 1px solid #477e57; background: #0d1711; padding: .7rem; }
+  .remote-connect { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); align-items: center; gap: 16px; border: 1px solid #477e57; background: #0d1711; padding: 16px; }
   .remote-qr { display: block; border: 4px solid #dfffe7; background: #dfffe7; }
   .remote-qr img { display: block; width: 100%; }
-  .remote-copy { display: grid; gap: .45rem; min-width: 0; }
+  .remote-copy { display: grid; gap: 8px; min-width: 0; }
   .remote-copy strong { color: #e7ffed; font-size: 12px; }
   .remote-copy p { color: #82958a; font-size: 12px; line-height: 1.5; }
   .remote-copy a, .remote-copy button { width: fit-content; min-height: 44px; color: #7cf59d; font-size: 12px; text-align: left; }
   .bunker-fallback { color: #718277; font-size: 12px; }
   .bunker-fallback summary { width: fit-content; cursor: pointer; }
   .bunker-fallback[open] summary { margin-bottom: .5rem; color: #91a59a; }
-  .bunker-connect { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem; }
+  .bunker-connect { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .bunker-connect input { min-width: 0; min-height: 44px; border: 1px solid #34433b; background: #070b08; padding: 12px; color: #effff2; font: inherit; }
-  .bunker-connect button { min-height: 44px; border: 1px solid #3f5a47; padding: .55rem .65rem; color: #bde7c7; font-size: 12px; }
+  .bunker-connect button { min-height: 44px; border: 1px solid #3f5a47; padding: 8px 16px; color: #bde7c7; font-size: 12px; }
   .connection-error { color: #ffaaa3; font-size: 12px; line-height: 1.5; }
   button:disabled { cursor: not-allowed; opacity: .4; }
   @media (max-width: 520px) { .remote-connect { grid-template-columns: 1fr; } .remote-qr { width: min(12rem, 100%); } }

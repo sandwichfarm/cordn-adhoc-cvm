@@ -53,6 +53,7 @@
 - [x] **REACT-02**: Reactions are aggregated by emoji across all participants, show total counts, and let the current participant toggle their own reaction on messages authored by other participants without duplicating counts; participants cannot react to their own messages.
 - [x] **CHAT-01**: Consecutive messages from the same sender are rendered as one sender group with the avatar and display name shown once and individual message bubbles beneath it.
 - [x] **CHAT-02**: Every message keeps its timestamp and relevant metadata visible in a smaller, lower-contrast treatment without repeating sender chrome.
+- [x] **CHAT-04**: A valid Cordn invite shared as a chat message renders as a contextual join action naming the group, coordinator, and host, and activates the canonical current-shell join flow without exposing malformed text as an action.
 
 ### Delivery Process & Verification
 
@@ -66,6 +67,9 @@
 - [ ] **SETUP-02**: After choosing identity, the operator must provide a non-empty normalized coordinator name; an authenticated profile name is used as an editable prefill when available and anonymous setup provides a sensible editable default.
 - [ ] **SETUP-03**: Setup completion and coordinator name persist across ordinary restarts, while existing installations with a meaningful configured name migrate without unnecessary onboarding.
 - [ ] **SETUP-04**: The operator can edit the coordinator name later through settings and a changed name is republished without replacing either the operator identity or coordinator transport identity.
+- [x] **SETUP-05**: After naming a coordinator on first run, the operator is offered a recommended setup that requires a confirmed encryption passphrase, persists the coordinator identity on this device, enables autostart, and starts the coordinator without requiring a settings-panel detour.
+- [x] **SETUP-06**: An advanced first-run wizard presents one decision at a time in this order: persistent (default) or ephemeral identity, editable relay defaults with add/remove support, announcement yes/no, and autostart yes/no.
+- [x] **SETUP-07**: First-run setup choices are committed only when the wizard finishes, survive reload, are skipped after completion, and are shown again after a coordinator reset.
 - [ ] **PROFILE-01**: CAHMLS publishes the selected coordinator name in the coordinator-key-signed kind-0 profile and the ContextVM kind-11316 announcement `name` tag through configured shareable relays, and exposes that same name through MCP initialize so invitees see it as the coordinator name instead of an `npub` fallback.
 - [ ] **PROFILE-02**: Coordinator profile updates preserve existing metadata where possible, surface actionable retry state on publication failure, and never corrupt or prevent an otherwise valid coordinator runtime.
 
@@ -137,6 +141,7 @@
 | REACT-02 | Phase 19 | Complete |
 | CHAT-01 | Phase 19 | Complete |
 | CHAT-02 | Phase 19 | Complete |
+| CHAT-04 | Phase 19 | Complete |
 | DOC-01 | Phase 20 | Pending |
 | TEST-01 | Phase 20 | Pending |
 | INTEROP-01 | Phase 20 | Pending |
@@ -144,6 +149,9 @@
 | SETUP-02 | Phase 21 | Pending |
 | SETUP-03 | Phase 21 | Pending |
 | SETUP-04 | Phase 21 | Pending |
+| SETUP-05 | Phase 21 | Complete |
+| SETUP-06 | Phase 21 | Complete |
+| SETUP-07 | Phase 21 | Complete |
 | PROFILE-01 | Phase 21 | Pending |
 | PROFILE-02 | Phase 21 | Pending |
 | SIDE-01 | Phase 22 | Complete |

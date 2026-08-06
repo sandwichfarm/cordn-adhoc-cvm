@@ -114,7 +114,7 @@ Never show raw invite URLs, room secrets, decrypted envelope data, relay URLs, s
 
 - The persisted global sound control occupies the far-right edge of the workspace command bar and exposes its state through `aria-pressed`, an explicit accessible name, and a restrained active color.
 - Each room-actions overlay contains independent labelled selects for sound (`Use global`, `Always on`, `Muted`) and message notifications (`All`, `Only follows`, `Only mutuals`, `Mute all`). Channel sound overrides take precedence over the global setting.
-- A small accent dot appears beside any channel whose sound or notification choice differs from the defaults. Its accessible label is `Custom sound or notification settings`; color is not the only programmatic signal.
+- After the coordinator starts, low-contrast speaker and bell indicators appear directly after the channel name when the corresponding preference differs from its default. Muted sound and muted notifications use a simple diagonal strike; enabled/restricted overrides retain the unstruck icon and a specific accessible label. Channel rows reveal a smaller host avatar at the opposite edge only on row hover or keyboard focus, with the host name retained in the row's accessible name and avatar tooltip. Neither preference indicators nor owner avatars appear before startup.
 - The local coordinator card's create action is a large `+` aligned to the right edge. Its visible `Group` label is removed while `Create group` remains its accessible name and title. Hover and keyboard focus rotate and enlarge the glyph without changing layout.
 - These controls use existing flat surfaces, square geometry, viewport-overlay containment, and persistence patterns. They add no new popover owner or visual system.
 
