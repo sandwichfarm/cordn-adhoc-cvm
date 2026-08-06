@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 7
+open_count: 8
 waived_count: 0
 fixed_count: 0
-total_count: 7
-last_updated: 2026-08-06T19:04:57.470Z
+total_count: 8
+last_updated: 2026-08-06T22:13:03.599Z
 ---
 
 # Broken Windows Ledger
@@ -22,6 +22,7 @@ last_updated: 2026-08-06T19:04:57.470Z
 | 5 | 21 | deviation | tests/e2e/nip07-session-restoration.spec.ts |  | Profile browser suites require a completed-setup fixture after Phase 21 hides UserProfile on incomplete fresh installs. | open |  | 2026-08-05T11:23:07.105Z |  |
 | 6 | 24 | unrun-verify | tests/e2e/workspace-lifecycle.spec.ts |  | Full pnpm test:e2e could not complete because the shared mock relay port 8765 was occupied and the clean retry left a Playwright worker running; rerun at Phase 24 close-out. | open |  | 2026-08-06T18:47:59.271Z |  |
 | 7 | 24 | unrun-verify | tests/e2e |  | Complete pnpm test:e2e left a worker running; focused Phase 24 browser coverage passed. | open |  | 2026-08-06T19:04:57.470Z |  |
+| 8 | 24 | deviation | src/components/MessageGroup.svelte |  | Removed raw participant and room identifiers from affected DOM IDs while preserving focus restoration. | open |  | 2026-08-06T22:13:03.599Z |  |
 
 ````json
 [
@@ -107,6 +108,18 @@ last_updated: 2026-08-06T19:04:57.470Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-06T19:04:57.470Z",
+    "resolved_at": null
+  },
+  {
+    "id": 8,
+    "kind": "deviation",
+    "phase": "24",
+    "file": "src/components/MessageGroup.svelte",
+    "line": null,
+    "description": "Removed raw participant and room identifiers from affected DOM IDs while preserving focus restoration.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-06T22:13:03.599Z",
     "resolved_at": null
   }
 ]
