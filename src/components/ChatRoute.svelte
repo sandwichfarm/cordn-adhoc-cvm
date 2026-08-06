@@ -9,7 +9,7 @@
   import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
-  import { groupMessageStreaks } from "../chat/message-presentation";
+  import { projectMessageStreaks } from "../chat/message-presentation";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import { channelPreferences } from "../notifications/channel-preferences.svelte";
   import MessageGroup from "./MessageGroup.svelte";
@@ -726,7 +726,7 @@
       {#if currentRoom.joinRequestSent}<div class="m-4 border border-[#2e553b] bg-[#112219] p-4 text-sm text-[#b9eac5]">Your encrypted join request is with the host. This page keeps checking for your welcome.</div>{:else}
         <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="guest-message-list" onscroll={updateFollowLatest}>
           {#if currentRoom.messages.length === 0}<p class="pt-16 text-center text-sm text-[#82958a]">Say hello — messages are encrypted before they leave your device.</p>{/if}
-          {#each groupMessageStreaks(currentRoom.messages) as streak (`${streak.sender}:${streak.messages[0].id}`)}
+          {#each projectMessageStreaks(currentRoom.messages, currentRoom.stablePubkey) as streak (`${streak.sender}:${streak.messages[0].id}`)}
             <MessageGroup
               messages={streak.messages}
               viewerPubkey={currentRoom.stablePubkey}

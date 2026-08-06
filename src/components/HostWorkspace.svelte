@@ -13,7 +13,7 @@
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { emptySidebarLedger, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
-  import { groupMessageStreaks } from "../chat/message-presentation";
+  import { projectMessageStreaks } from "../chat/message-presentation";
   import {
     type ChatCoordinatorClientFactory,
     type RemoteJoinRequest,
@@ -1806,7 +1806,7 @@
             />
             <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">
               {#if room.messages.length === 0}<div class="flex h-full items-center justify-center"><p class="max-w-sm text-center text-sm leading-6 text-[#82958a]">Your room is ready. Invite someone from the left to begin.</p></div>{/if}
-              {#each groupMessageStreaks(room.messages) as streak (`${streak.sender}:${streak.messages[0].id}`)}
+              {#each projectMessageStreaks(room.messages, room.stablePubkey) as streak (`${streak.sender}:${streak.messages[0].id}`)}
                 <MessageGroup
                   messages={streak.messages}
                   viewerPubkey={room.stablePubkey}

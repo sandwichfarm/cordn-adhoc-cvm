@@ -1,4 +1,6 @@
 import type { StoredMessage } from "./room-store";
+import { parseInviteMessage } from "./invite";
+import { normalizeRecipientPubkeys } from "./protocol";
 
 export interface MessageStreak {
   sender: string;
@@ -6,8 +8,27 @@ export interface MessageStreak {
 }
 
 export function groupMessageStreaks(messages: readonly StoredMessage[]): MessageStreak[] {
+  return groupConsecutiveMessages(uniqueRenderableMessages(messages));
+}
+
+/**
+ * Select a viewer's complete renderable message sequence before any layout is
+ * formed. Targeting is a local invite UX rule: ordinary messages are always
+ * visible, while valid tagged invites disappear for non-recipients.
+ */
+export function projectMessageStreaks(messages: readonly StoredMessage[], viewerPubkey: string): MessageStreak[] {
+  const viewer = normalizeRecipientPubkeys([viewerPubkey])[0];
+  const visible = uniqueRenderableMessages(messages).filter((message) => {
+    if (!parseInviteMessage(message.content)) return true;
+    const recipients = normalizeRecipientPubkeys(message.recipientPubkeys);
+    return recipients.length === 0 || (viewer !== undefined && recipients.includes(viewer));
+  });
+  return groupConsecutiveMessages(visible);
+}
+
+function groupConsecutiveMessages(messages: readonly StoredMessage[]): MessageStreak[] {
   const streaks: MessageStreak[] = [];
-  for (const message of uniqueRenderableMessages(messages)) {
+  for (const message of messages) {
     const current = streaks.at(-1);
     if (current?.sender === message.sender) current.messages.push(message);
     else streaks.push({ sender: message.sender, messages: [message] });

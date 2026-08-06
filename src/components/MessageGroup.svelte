@@ -149,8 +149,8 @@
   .message-streak.host:not(.mine) .message-bubble { background: #18291d; box-shadow: inset 2px 0 rgb(124 245 157 / .12); }
   .mine .message-bubble.host { background: #162019; box-shadow: none; }
   .message-bubble p { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .message-bubble.mentioned { box-shadow: inset 2px 0 #7cf59d; }
-  .mentioned-you { display: block; margin: -.05rem 0 .3rem; color: #b9fac8; font-size: .58rem; font-weight: 760; letter-spacing: .08em; line-height: 1.2; text-transform: uppercase; }
+  .message-bubble.mentioned { box-shadow: inset 2px 0 #f1f58f; }
+  .mentioned-you { display: block; margin: -.05rem 0 .3rem; color: #f1f58f; font-size: .58rem; font-weight: 760; letter-spacing: .08em; line-height: 1.2; text-transform: uppercase; }
   .shared-invite-action { display: flex; width: 100%; min-height: 3.25rem; align-items: center; justify-content: space-between; gap: .8rem; border: 1px solid rgb(124 245 157 / .2); background: #101a13; padding: .65rem .7rem; color: #cfe8d5; text-align: left; transition: border-color .15s ease, background .15s ease, color .15s ease; }
   .shared-invite-action:hover, .shared-invite-action:focus-visible { border-color: #7cf59d; outline: none; background: #14241a; color: #effff2; }
   .shared-invite-copy { min-width: 0; line-height: 1.45; }
