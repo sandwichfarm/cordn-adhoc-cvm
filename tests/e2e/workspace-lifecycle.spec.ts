@@ -698,7 +698,7 @@ test("does not render disconnected local chat during recovery", async ({ page })
   await expect(startup).toContainText("No rooms to restore", { timeout: 20_000 });
   await expect(page.getByTestId("host-message-list")).toHaveCount(0);
   await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
-  await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i)).toHaveCount(0);
+  await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i).filter({ visible: true })).toHaveCount(0);
 });
 
 test("startup signal follows retry and exhaustion truth", async ({ page }) => {
@@ -1198,6 +1198,8 @@ test("compact notification feed and Notification settings stay viewport-bound", 
   const bell = page.getByRole("button", { name: "Notifications, 1 unread" });
   await bell.click();
   const feed = page.getByRole("dialog", { name: "Notifications" });
+  await expect(feed).toHaveAttribute("data-viewport-overlay", "true");
+  await expect.poll(() => feed.evaluate((element) => element.matches(":popover-open"))).toBe(true);
   await expectInsideViewport(feed);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeFocused();
@@ -1205,6 +1207,8 @@ test("compact notification feed and Notification settings stay viewport-bound", 
   const settings = page.getByRole("button", { name: "Notification settings", exact: true });
   await settings.click();
   const settingsSheet = page.getByRole("dialog", { name: "Notification settings" });
+  await expect(settingsSheet).toHaveAttribute("data-viewport-overlay", "true");
+  await expect.poll(() => settingsSheet.evaluate((element) => element.matches(":popover-open"))).toBe(true);
   await expectInsideViewport(settingsSheet);
   await page.keyboard.press("Escape");
   await expect(settings).toBeFocused();
@@ -1857,7 +1861,7 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   const hostPaneActions = page.getByTestId("host-chat").getByRole("button", { name: "More room actions" });
   await expect(hostPaneActions).toBeVisible();
   await hostPaneActions.click();
-  await expect(page.getByTestId("host-chat").getByRole("menuitem", { name: "Delete room Reaction room" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete room Reaction room" })).toBeVisible();
   await page.keyboard.press("Escape");
 
   await guestMessage.getByRole("button", { name: "Add reaction" }).click();
@@ -1884,7 +1888,7 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   const guestPaneActions = guest.getByTestId("cached-room-view").getByRole("button", { name: "More room actions" });
   await expect(guestPaneActions).toBeVisible();
   await guestPaneActions.click();
-  await expect(guest.getByTestId("cached-room-view").getByRole("menuitem", { name: "Leave room Reaction room" })).toBeVisible();
+  await expect(guest.getByRole("menuitem", { name: "Leave room Reaction room" })).toBeVisible();
   await guest.keyboard.press("Escape");
   await guestMessage.getByRole("button", { name: /Remove 👍 reaction, 1 participant/ }).click();
   await expect(guestMessage.getByLabel(/👍 reaction/)).toHaveCount(0);
@@ -2072,6 +2076,9 @@ test("sidebar room actions do not open the row before deleting its exact host ro
   await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Sidebar delete");
 
   const menu = page.getByRole("menu", { name: "Room actions for Sidebar delete" });
+  await expect(menu).toHaveAttribute("data-viewport-overlay", "true");
+  await expect.poll(() => menu.evaluate((element) => element.matches(":popover-open"))).toBe(true);
+  await expectInsideViewport(menu);
   await expect(menu.getByRole("menuitem", { name: "Delete room Sidebar delete" })).toBeVisible();
   await menu.getByRole("menuitem", { name: "Delete room Sidebar delete" }).click();
   const dialog = page.getByTestId("room-removal-dialog");

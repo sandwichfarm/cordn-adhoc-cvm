@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
   import { notificationCenter, type NotificationCategory } from "../notifications/notification-center.svelte";
+  import { viewportOverlay } from "../lib/viewport-overlay";
 
   const categoryOptions: Array<{ id: NotificationCategory; title: string; detail: string }> = [
     { id: "user_online", title: "People coming online", detail: "Enabled by default" },
@@ -95,7 +96,7 @@
 
   {#if open}
     <button class="notification-backdrop" type="button" aria-label="Close notification settings" onclick={close}></button>
-    <div bind:this={dialog} class="notification-menu" role="dialog" aria-modal="true" aria-labelledby="notification-title" tabindex="-1" onkeydown={handleKeydown}>
+    <div bind:this={dialog} use:viewportOverlay={{ anchor: trigger, preferredSide: "above", align: "end", compactSheetBelow: 900 }} class="notification-menu" role="dialog" aria-modal="true" aria-labelledby="notification-title" tabindex="-1" onkeydown={handleKeydown}>
       <header>
         <div>
           <p>Preferences</p>

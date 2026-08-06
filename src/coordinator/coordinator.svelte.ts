@@ -515,6 +515,13 @@ export class CoordinatorStore {
           onNostrPublish: ({ phase, summary }) => {
             this.addDebugLog("info", phase === "attempt" ? "publishing nostr response event" : "nostr response event accepted", summary);
           },
+          onRelayPublish: ({ relayUrl, eventId, eventKind, operation, attempt, elapsedMs, outcome }) => {
+            this.addDebugLog(
+              outcome === "failed" || outcome === "aborted" ? "warn" : "info",
+              `relay publish ${outcome}`,
+              `${operation} relay=${relayUrl} event=${abbreviateHex(eventId)} kind=${eventKind} attempt=${attempt} elapsed=${elapsedMs}ms`,
+            );
+          },
           onOutboundMessage: ({ type, summary, error }) => {
             this.addDebugLog(
               error ? "warn" : "info",

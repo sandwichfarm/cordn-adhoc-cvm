@@ -3,6 +3,7 @@
   import type { ConfigStore, PresenceState } from "../config/config.svelte";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import { nostrSocialStore } from "../invites/nostr-social.svelte";
+  import { viewportOverlay } from "../lib/viewport-overlay";
 
   interface Props {
     config: ConfigStore;
@@ -95,7 +96,7 @@
 
   {#if open}
     <button class="presence-scrim" type="button" aria-label="Close presence menu" onclick={() => close()}></button>
-    <div class="presence-menu" role="dialog" aria-label="Presence">
+    <div use:viewportOverlay={{ anchor: trigger, preferredSide: "above", align: "start", compactSheetBelow: 900 }} class="presence-menu" role="dialog" aria-label="Presence">
       <p class="presence-heading">Presence</p>
       <div class="presence-options" role="radiogroup" aria-label="Presence">
         {#each options as state, index (state)}

@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import { SvelteDate } from "svelte/reactivity";
   import { nostrSocialStore } from "../invites/nostr-social.svelte";
   import {
     notificationCenter,
     type FeedNotificationEntry,
   } from "../notifications/notification-center.svelte";
+  import { viewportOverlay } from "../lib/viewport-overlay";
 
   interface Props {
     onNavigate: (href: string) => void;
@@ -22,7 +23,6 @@
   let dialog: HTMLDivElement | undefined = $state();
   let closeButton: HTMLButtonElement | undefined = $state();
   let keepButton: HTMLButtonElement | undefined = $state();
-  let panelStyle = $state("");
 
   const unreadLabel = $derived(notificationCenter.unreadCount > 99 ? "99+" : String(notificationCenter.unreadCount));
   const bellName = $derived(notificationCenter.unreadCount > 0
@@ -38,7 +38,6 @@
     const markedUnread = notificationCenter.feed.filter((entry) => !entry.read).length;
     notificationCenter.markVisibleRead(renderedIds);
     void tick().then(() => {
-      positionPanel();
       closeButton?.focus();
     });
     if (markedUnread > 0) actionError = `${markedUnread} ${markedUnread === 1 ? "notification" : "notifications"} marked read.`;
@@ -51,7 +50,6 @@
       return;
     }
     open = false;
-    panelStyle = "";
     actionError = "";
     void tick().then(() => trigger?.focus());
   }
@@ -132,37 +130,6 @@
     }
   }
 
-  function positionPanel(): void {
-    if (!open || !trigger || !dialog) return;
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      panelStyle = "";
-      return;
-    }
-
-    const gutter = 8;
-    const gap = 7;
-    const triggerRect = trigger.getBoundingClientRect();
-    const width = Math.min(416, window.innerWidth - gutter * 2);
-    const left = Math.min(
-      Math.max(gutter, triggerRect.right - width),
-      window.innerWidth - width - gutter,
-    );
-    const spaceAbove = triggerRect.top - gap - gutter;
-    const spaceBelow = window.innerHeight - triggerRect.bottom - gap - gutter;
-    if (spaceAbove >= spaceBelow) {
-      const bottom = window.innerHeight - triggerRect.top + gap;
-      panelStyle = `left: ${left}px; bottom: ${bottom}px; width: ${width}px; max-height: ${Math.max(0, spaceAbove)}px;`;
-    } else {
-      const top = triggerRect.bottom + gap;
-      panelStyle = `left: ${left}px; top: ${top}px; width: ${width}px; max-height: ${Math.max(0, spaceBelow)}px;`;
-    }
-  }
-
-  onMount(() => {
-    window.addEventListener("resize", positionPanel);
-    return () => window.removeEventListener("resize", positionPanel);
-  });
-
   function groupEntries(entries: FeedNotificationEntry[]): Array<{ name: "Now" | "Today" | "Earlier"; entries: FeedNotificationEntry[] }> {
     const todayStart = new SvelteDate();
     todayStart.setHours(0, 0, 0, 0);
@@ -224,7 +191,7 @@
 
   {#if open}
     <button class="notification-feed-backdrop" type="button" aria-label="Close notifications" onclick={close}></button>
-    <div bind:this={dialog} class="notification-feed-panel" role="dialog" aria-modal="true" aria-label="Notifications" tabindex="-1" style={panelStyle} onkeydown={handleKeydown}>
+    <div bind:this={dialog} use:viewportOverlay={{ anchor: trigger, preferredSide: "above", align: "end", compactSheetBelow: 900 }} class="notification-feed-panel" role="dialog" aria-modal="true" aria-label="Notifications" tabindex="-1" onkeydown={handleKeydown}>
       <header>
         <div>
           <h2>Notifications</h2>

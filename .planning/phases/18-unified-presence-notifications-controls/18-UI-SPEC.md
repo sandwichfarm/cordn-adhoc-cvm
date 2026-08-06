@@ -169,6 +169,15 @@ The selected room content pane remains the workspace's primary visual anchor. Co
 
 ### Accessibility, overflow, and non-goals
 
+#### Sidebar overlay gap-closure supplement (2026-08-06)
+
+- All floating surfaces initiated inside the sidebar use one shared viewport-level overlay primitive backed by the browser top layer. A floating panel may retain its semantic DOM ownership but must not participate in or be clipped by the rail's layout while open.
+- The primitive owns portal placement, fixed positioning, 8px viewport gutters, trigger-relative alignment, vertical flipping when the preferred side lacks space, live repositioning on resize/scroll, and an internally scrollable maximum height.
+- Profile, presence, notification feed, notification settings, and room-actions surfaces use this contract. Full-screen destructive or setup dialogs may retain their existing top-level modal implementation when they already escape sidebar containment.
+- Compact surfaces retain the approved 8px-inset bottom-sheet presentation. Desktop surfaces remain visually anchored to their initiating control without being constrained to the sidebar width.
+- Moving a surface to the viewport layer must preserve its role/name, Escape and backdrop close, focus containment where already required, focus return, keyboard order, and scoped visual styling.
+- Regression evidence must measure each open panel against the viewport at desktop, tablet, phone, and short-height sizes and prove that no ancestor with clipping contains the rendered panel.
+
 - Every control has a specific accessible name. Do not use a glyph, colored dot, unread count, or visual cluster separation as the only label. Use `aria-live="polite"` only for state changes, not for every rendered feed row.
 - All dialogs/sheets have a programmatic title, close control, Escape/backdrop behavior unless a destructive confirmation is pending, focus containment, and focus return. The inline invitation confirmation is the only destructive confirmation in this phase.
 - Preserve visible 2px accent focus ring with at least 2px offset. Do not rely on hover to reveal the only available action; keyboard focus reaches every feed action and the separate presence selector.

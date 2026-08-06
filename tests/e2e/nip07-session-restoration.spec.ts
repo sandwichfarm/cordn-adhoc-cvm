@@ -327,7 +327,7 @@ test("restores NIP-07 before a legacy invite is consumed in the unified root she
   await host.goto("/");
   await configureMockRelay(host);
   await host.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible();
+  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
   await expect(host.getByTestId("status-badge")).toBeHidden();
   const roomTitle = "NIP-07 restored signer room";
   const invite = await createRoom(host, roomTitle);

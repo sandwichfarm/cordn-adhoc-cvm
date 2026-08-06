@@ -36,6 +36,7 @@
 - [ ] **PRES-02**: The active presence state is represented by a status dot attached to the user/avatar control and is available to keyboard and screen-reader users.
 - [x] **INVITE-01**: Incoming room invitations appear in a discoverable, actionable personal-notification surface instead of an isolated empty room-invites popover.
 - [ ] **SHELL-01**: Header controls clearly separate personal/user actions from host/coordinator lifecycle actions and avoid duplicate status or settings controls.
+- [x] **SHELL-02**: Every menu, popover, or dialog opened from the clipped sidebar renders in a viewport-level overlay layer, remains fully reachable at supported widths and short heights, and returns focus to its originating control when closed.
 
 ### Notifications
 
@@ -77,12 +78,12 @@
 
 ### Bounded Gift-Wrap Delivery
 
-- [ ] **RELAY-01**: Optional localhost publication is readiness-gated, time-bounded, and cannot block or degrade a healthy remote relay path.
-- [ ] **RELAY-02**: Every primary and optional publication has explicit retry and elapsed-time limits and is aborted when its relay handler, owning room session, or coordinator transport closes.
-- [ ] **RELAY-03**: Steady-state room polling remains single-flight so an unresolved sync or publication cannot accumulate additional ContextVM gift-wrap requests.
-- [ ] **RELAY-04**: Safe publish diagnostics identify relay URL, event ID, event kind, logical operation, attempt, elapsed time, and terminal outcome without exposing encrypted content or secrets.
-- [ ] **RELAY-05**: Bounded delivery retains transient-outage recovery, multi-relay success, reconnect behavior, and persistent/ephemeral ContextVM gift-wrap interoperability.
-- [ ] **RELAY-06**: Automated coverage proves offline-localhost containment, bounded retry lifetime, lifecycle cancellation, single-flight polling, healthy-remote isolation, and transient recovery.
+- [x] **RELAY-01**: Optional localhost publication is readiness-gated, time-bounded, and cannot block or degrade a healthy remote relay path.
+- [x] **RELAY-02**: Every primary and optional publication has explicit retry and elapsed-time limits and is aborted when its relay handler, owning room session, or coordinator transport closes.
+- [x] **RELAY-03**: Steady-state room polling remains single-flight so an unresolved sync or publication cannot accumulate additional ContextVM gift-wrap requests.
+- [x] **RELAY-04**: Safe publish diagnostics identify relay URL, event ID, event kind, logical operation, attempt, elapsed time, and terminal outcome without exposing encrypted content or secrets.
+- [x] **RELAY-05**: Bounded delivery retains transient-outage recovery, multi-relay success, reconnect behavior, and persistent/ephemeral ContextVM gift-wrap interoperability.
+- [x] **RELAY-06**: Automated coverage proves offline-localhost containment, bounded retry lifetime, lifecycle cancellation, single-flight polling, healthy-remote isolation, and transient recovery.
 
 ## Future Requirements
 
@@ -125,6 +126,7 @@
 | PRES-02 | Phase 18 | Pending |
 | INVITE-01 | Phase 18 | Complete |
 | SHELL-01 | Phase 18 | Pending |
+| SHELL-02 | Phase 18 | Complete |
 | NOTF-01 | Phase 18 | Complete |
 | NOTF-02 | Phase 18 | Complete |
 | NOTF-03 | Phase 18 | Complete |
@@ -148,17 +150,17 @@
 | SIDE-04 | Phase 22 | Complete |
 | SIDE-05 | Phase 22 | Complete |
 | SIDE-06 | Phase 22 | Complete |
-| RELAY-01 | Phase 23 | Pending |
-| RELAY-02 | Phase 23 | Pending |
-| RELAY-03 | Phase 23 | Pending |
-| RELAY-04 | Phase 23 | Pending |
-| RELAY-05 | Phase 23 | Pending |
-| RELAY-06 | Phase 23 | Pending |
+| RELAY-01 | Phase 23 | Complete |
+| RELAY-02 | Phase 23 | Complete |
+| RELAY-03 | Phase 23 | Complete |
+| RELAY-04 | Phase 23 | Complete |
+| RELAY-05 | Phase 23 | Complete |
+| RELAY-06 | Phase 23 | Complete |
 
 **Coverage:**
 
-- v1.1 requirements: 46 total
-- Mapped to phases: 46
+- v1.1 requirements: 47 total
+- Mapped to phases: 47
 - Unmapped: 0 ✓
 
 ---

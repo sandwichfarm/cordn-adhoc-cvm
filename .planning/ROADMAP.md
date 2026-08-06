@@ -19,7 +19,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [ ] **Phase 20: Delivery Contract & Regression Proof** - Document the GSD lifecycle and protect the complete v1.1 experience with automated coverage.
 - [ ] **Phase 21: First-Run Coordinator Identity & Profile** - Require deliberate operator identity and coordinator naming before first startup.
 - [x] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history. (completed 2026-08-06)
-- [ ] **Phase 23: Bounded Gift-Wrap Delivery** - Stop unavailable relays and room polling from accumulating immortal ContextVM gift-wrap publications.
+- [x] **Phase 23: Bounded Gift-Wrap Delivery** - Stop unavailable relays and room polling from accumulating immortal ContextVM gift-wrap publications.
 
 ## Phase Details
 
@@ -90,7 +90,7 @@ and closes with repeatable delivery guidance and automated proof.
 
 **Goal**: Users can find personal presence, notification, and invitation actions in one coherent surface, distinct from coordinator lifecycle controls.
 **Depends on**: Phase 16
-**Requirements**: PRES-01, PRES-02, INVITE-01, SHELL-01, NOTF-01, NOTF-02, NOTF-03, NOTF-05
+**Requirements**: PRES-01, PRES-02, INVITE-01, SHELL-01, SHELL-02, NOTF-01, NOTF-02, NOTF-03, NOTF-05
 **Success Criteria** (what must be TRUE):
 
   1. The profile dropdown lets a user select online, invisible, or offline presence, and its active accessible status dot is attached to the user/avatar control.
@@ -99,14 +99,16 @@ and closes with repeatable delivery guidance and automated proof.
   4. A separate bell opens a grouped in-app notification feed with unread state and actionable incoming room invitations.
   5. Browser-notification permission is requested only after a user action, and enabled desktop notifications follow the configured cadence without duplicate bursts.
   6. Users can clear all persisted in-app notification history without implicitly resolving live room invitations.
+  7. Sidebar-originated menus, popovers, and dialogs escape rail clipping and remain viewport-contained, scrollable, and focus-safe across supported viewport sizes.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/4 plans executed
 
 Plans:
 
 - [x] 18-01-PLAN.md — Establish the feed-first notification ledger, optional desktop projection, and safe invitation replay state.
 - [x] 18-02-PLAN.md — Deliver the separate bell feed, same-shell invitation actions, and exact Notification settings surface.
 - [ ] 18-03-PLAN.md — Move presence into the profile and finalize personal/host control ownership across breakpoints.
+- [x] 18-04-PLAN.md — Introduce one viewport overlay primitive and migrate every sidebar-originated floating surface with constrained-resolution regressions.
 
 **UI hint**: yes
 
@@ -202,8 +204,8 @@ Plans:
 
 **Plans**: 2 plans
 
-- [ ] 23-01-PLAN.md — Add bounded, cancellable relay publication with localhost readiness gating and safe diagnostics.
-- [ ] 23-02-PLAN.md — Prove single-flight polling, lifecycle cancellation, bounded retries, and upstream interoperability.
+- [x] 23-01-PLAN.md — Add bounded, cancellable relay publication with localhost readiness gating and safe diagnostics.
+- [x] 23-02-PLAN.md — Prove single-flight polling, lifecycle cancellation, bounded retries, and upstream interoperability.
 
 **UI hint**: no
 
@@ -214,9 +216,9 @@ Plans:
 | 15. Identity Continuity & Membership Integrity | 3/3 | Complete    | 2026-08-02 |
 | 16. Resilient Rooms & Recovery | 6/6 | Complete | 2026-08-02 |
 | 17. Content-Pane Startup Motion | 2/2 | Complete | 2026-08-03 |
-| 18. Unified Presence, Notifications & Controls | 2/3 | In Progress|  |
+| 18. Unified Presence, Notifications & Controls | 3/4 | In Progress|  |
 | 19. Grouped Conversations & Reactions | 1/1 | Complete | 2026-08-05 |
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
 | 21. First-Run Coordinator Identity & Profile | 0/TBD | Not started | - |
 | 22. Coordinator-Grouped Sidebar | 2/2 | Complete | 2026-08-06 |
-| 23. Bounded Gift-Wrap Delivery | 0/2 | Not started | - |
+| 23. Bounded Gift-Wrap Delivery | 2/2 | Complete | 2026-08-06 |

@@ -16,6 +16,8 @@ async function openIdentityMenu(page: Page): Promise<{ profile: Locator; trigger
 
 async function openRotationDialog(page: Page): Promise<Locator> {
   const { menu } = await openIdentityMenu(page);
+  await expect(menu).toHaveAttribute("data-viewport-overlay", "true");
+  await expect.poll(() => menu.evaluate((element) => element.matches(":popover-open"))).toBe(true);
   await menu.getByRole("button", { name: "Rotate identity…" }).click();
   const dialog = page.getByTestId("identity-rotation-dialog");
   await expect(dialog).toBeVisible();
@@ -253,6 +255,8 @@ test("profile and presence panels stay within the viewport", async ({ page }) =>
   if (await railTrigger.isVisible()) await railTrigger.click();
 
   const presence = await openPresenceMenu(page);
+  await expect(presence.menu).toHaveAttribute("data-viewport-overlay", "true");
+  await expect.poll(() => presence.menu.evaluate((element) => element.matches(":popover-open"))).toBe(true);
   const presenceBounds = await presence.menu.boundingBox();
   expect(presenceBounds).not.toBeNull();
   expect(presenceBounds!.x).toBeGreaterThanOrEqual(0);

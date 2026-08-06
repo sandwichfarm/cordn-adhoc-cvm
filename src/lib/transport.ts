@@ -7,7 +7,11 @@ import type { BrowserCoordinatorOptions } from "../config/config.svelte";
 import { createCoordinator, type Coordinator } from "../cordn/coordinator";
 import { createBrowserCoordinatorStorage } from "../cordn/coordinator/storage/browserSqliteStorage";
 import { BrowserNostrSigner } from "../crypto/browser-nostr-signer";
-import { createRequiredRelayPool, withRequiredLocalRelay } from "./relay-pool";
+import {
+  createRequiredRelayPool,
+  type RelayPublishDiagnostic,
+  withRequiredLocalRelay,
+} from "./relay-pool";
 import {
   CoordinatorAdapter,
   type AbuseProtectionOptions,
@@ -32,6 +36,7 @@ export interface TransportDiagnostics {
   onNostrEvent?: (details: { summary: string }) => void;
   onInboundMessage?: (details: { method: string; clientPubkey: string; summary: string }) => void;
   onNostrPublish?: (details: { phase: "attempt" | "accepted"; summary: string }) => void;
+  onRelayPublish?: (details: RelayPublishDiagnostic) => void;
   onOutboundMessage?: (details: { type: string; summary: string; error?: string }) => void;
   onOutboundError?: (error: Error) => void;
   onClosed?: () => void;
@@ -43,6 +48,7 @@ type LegacyBrowserCoordinatorOptions = Omit<BrowserCoordinatorOptions, "coordina
 
 interface InspectableNostrServerTransport {
   processIncomingEvent: (event: NostrEvent) => Promise<void>;
+  publishEventToRelayUrls: (event: NostrEvent, relayUrls: string[]) => Promise<void>;
   getInternalStateForTesting: () => {
     correlationStore?: {
       getEventRoute: (eventId: string) => { originalRequestId: string | number } | undefined;
@@ -130,6 +136,10 @@ export class TransportFactory {
       openStream: { enabled: true },
     });
     const inspectableTransport = transport as unknown as InspectableNostrServerTransport;
+    // The SDK's discoverability path otherwise creates a fresh relay pool with
+    // its own long retry loop. Keep metadata/announcement delivery on the same
+    // bounded, lifecycle-owned path as every other coordinator publication.
+    inspectableTransport.publishEventToRelayUrls = (event) => relayHandler.publish(event);
     const processIncomingEvent = inspectableTransport.processIncomingEvent.bind(transport);
     inspectableTransport.processIncomingEvent = async (event) => {
       diagnostics?.onNostrEvent?.({
@@ -199,7 +209,10 @@ function createInstrumentedRelayHandler(
   relayUrls: string[],
   diagnostics?: TransportDiagnostics,
 ): RelayHandler {
-  const relayPool = createRequiredRelayPool(relayUrls);
+  const relayPool = createRequiredRelayPool(relayUrls, {
+    operation: "coordinator-response",
+    onPublishDiagnostic: diagnostics?.onRelayPublish,
+  });
 
   return {
     connect: () => relayPool.connect(),
