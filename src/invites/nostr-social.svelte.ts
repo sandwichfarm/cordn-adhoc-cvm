@@ -113,6 +113,8 @@ export class NostrSocialStore {
   private contactSubscription: { close(): void } | null = null;
   private contactGeneration = 0;
   private contactStarting: Promise<void> | null = null;
+  private pendingContactEventId: string | null = null;
+  private followQueue: Promise<void> = Promise.resolve();
   private readonly createPool: () => SimplePool;
   private readonly now: () => number;
   private heartbeat: number | null = null;
@@ -215,12 +217,13 @@ export class NostrSocialStore {
     this.contactError = "";
     this.followStatus = "idle";
     this.followError = "";
+    this.pendingContactEventId = null;
     this.contactSubscription = this.contactPool.subscribeMany(
       SOCIAL_RELAYS,
       { kinds: [3], authors: [pubkey] },
       { onevent: (event) => this.considerContactEvent(event, generation) },
     );
-    const starting = this.refreshContactList(generation);
+    const starting = this.refreshContactList(generation).then(() => undefined);
     this.contactStarting = starting;
     try {
       await starting;
@@ -237,6 +240,7 @@ export class NostrSocialStore {
     this.contactPool = null;
     this.contactSigner = null;
     this.contactStarting = null;
+    this.pendingContactEventId = null;
     this.contactPubkey = "";
     this.selectedContactEvent = null;
     this.following = [];
@@ -246,37 +250,121 @@ export class NostrSocialStore {
     this.followError = "";
   }
 
-  async refreshContactList(expectedGeneration = this.contactGeneration): Promise<void> {
+  async refreshContactList(expectedGeneration = this.contactGeneration): Promise<boolean> {
     const pool = this.contactPool;
     const pubkey = this.contactPubkey;
-    if (!pool || !pubkey || expectedGeneration !== this.contactGeneration) return;
+    if (!pool || !pubkey || expectedGeneration !== this.contactGeneration) return false;
     try {
       const events = await pool.querySync(
         SOCIAL_RELAYS,
         { kinds: [3], authors: [pubkey], limit: 10 },
         { maxWait: 4_000 },
       );
-      if (expectedGeneration !== this.contactGeneration) return;
+      if (expectedGeneration !== this.contactGeneration) return false;
       for (const event of events) this.considerContactEvent(event, expectedGeneration);
       if (expectedGeneration === this.contactGeneration) {
         this.contactStatus = "ready";
         this.contactError = "";
       }
+      return true;
     } catch {
-      if (expectedGeneration !== this.contactGeneration) return;
+      if (expectedGeneration !== this.contactGeneration) return false;
       this.contactStatus = "reconnecting";
       this.contactError = "Unable to refresh contacts. Try again.";
+      return false;
     }
   }
 
   private considerContactEvent(event: NostrEvent, generation: number): boolean {
-    if (generation !== this.contactGeneration || event.kind !== 3) return false;
-    if (event.pubkey !== this.contactPubkey || event.id !== getEventHash(event) || !verifyEvent(event)) return false;
+    if (!this.isValidOwnContactEvent(event, generation)) return false;
+    if (event.id === this.pendingContactEventId) return false;
     const targets = contactTargets(event);
     if (!targets || !isNewerContactEvent(event, this.selectedContactEvent)) return false;
     this.selectedContactEvent = event;
     this.following = targets;
     return true;
+  }
+
+  async follow(targetPubkey: string): Promise<void> {
+    const target = normalizePubkey(targetPubkey);
+    if (!target) return this.failFollow();
+    const generation = this.contactGeneration;
+    const operation = this.followQueue.then(
+      () => this.publishFollow(target, generation),
+      () => this.publishFollow(target, generation),
+    );
+    this.followQueue = operation.catch(() => undefined);
+    return operation;
+  }
+
+  private async publishFollow(target: string, generation: number): Promise<void> {
+    if (generation !== this.contactGeneration) return this.failFollow(generation);
+    const signer = this.contactSigner;
+    const pool = this.contactPool;
+    const pubkey = this.contactPubkey;
+    if (!signer || !pool || !pubkey) return this.failFollow(generation);
+
+    this.followStatus = "pending";
+    this.followError = "";
+    if (!await this.refreshContactList(generation) || generation !== this.contactGeneration) return this.failFollow(generation);
+
+    const signed = await signer.signEvent(this.nextContactEvent(target));
+    if (!this.isValidOwnContactEvent(signed, generation)) return this.failFollow(generation);
+
+    this.pendingContactEventId = signed.id;
+    try {
+      await Promise.any(pool.publish(SOCIAL_RELAYS, signed));
+      if (generation !== this.contactGeneration || this.contactPool !== pool) return this.failFollow(generation);
+      this.pendingContactEventId = null;
+      this.considerContactEvent(signed, generation);
+      this.followStatus = "success";
+      this.followError = "";
+    } catch {
+      if (this.pendingContactEventId === signed.id) this.pendingContactEventId = null;
+      return this.failFollow(generation);
+    }
+  }
+
+  private nextContactEvent(target: string): { kind: number; created_at: number; tags: string[][]; content: string } {
+    const base = this.selectedContactEvent;
+    const tags: string[][] = [];
+    const seenTargets = new SvelteSet<string>();
+    for (const tag of base?.tags ?? []) {
+      if (tag[0] !== "p") {
+        tags.push([...tag]);
+        continue;
+      }
+      const existing = normalizePubkey(tag[1] ?? "");
+      if (existing && !seenTargets.has(existing)) {
+        seenTargets.add(existing);
+        tags.push([...tag]);
+      }
+    }
+    if (!seenTargets.has(target)) tags.push(["p", target]);
+    return {
+      kind: 3,
+      created_at: Math.max(Math.floor(this.now() / 1_000), (base?.created_at ?? 0) + 1),
+      tags,
+      content: base?.content ?? "",
+    };
+  }
+
+  private isValidOwnContactEvent(event: NostrEvent, generation: number): boolean {
+    return generation === this.contactGeneration
+      && event.kind === 3
+      && event.pubkey === this.contactPubkey
+      && event.id === getEventHash(event)
+      && verifyEvent(event)
+      && contactTargets(event) !== null;
+  }
+
+  private failFollow(generation = this.contactGeneration): never {
+    const message = "Unable to follow on Nostr. Try again.";
+    if (generation === this.contactGeneration) {
+      this.followStatus = "error";
+      this.followError = message;
+    }
+    throw new Error(message);
   }
 
   async setPresence(state: PresenceState, descriptor = this.descriptor): Promise<void> {

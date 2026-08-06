@@ -58,6 +58,10 @@ function contactTargets(event: NostrEvent): string[] {
   return event.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1] ?? "");
 }
 
+function publishedEvents(pool: FakeContactPool): NostrEvent[] {
+  return (pool.publish.mock.calls as unknown as Array<[readonly string[], NostrEvent]>).map(([, event]) => event);
+}
+
 describe("private Nostr presence and invites", () => {
   beforeEach(() => localStorage.clear());
 
@@ -270,7 +274,7 @@ describe("serialized kind-3 follows", () => {
     await social.startContactList(signer);
     await social.follow(targetC);
 
-    const published = pool.publish.mock.calls[0]?.[1] as NostrEvent;
+    const published = publishedEvents(pool)[0]!;
     expect(published.content).toBe("keep this exact");
     expect(published.created_at).toBe(101);
     expect(published.tags).toEqual([["t", "topic"], ["p", targetA], ["p", targetB], ["client", "exact"], ["p", targetC]]);
@@ -290,7 +294,7 @@ describe("serialized kind-3 follows", () => {
     await social.startContactList(signer);
     await Promise.all([social.follow(targetA), social.follow(targetB)]);
 
-    const published = pool.publish.mock.calls.map((call) => call[1] as NostrEvent);
+    const published = publishedEvents(pool);
     expect(published).toHaveLength(2);
     expect(contactTargets(published[0]!)).toEqual([targetA]);
     expect(contactTargets(published[1]!)).toEqual([targetA, targetB]);
@@ -311,15 +315,18 @@ describe("serialized kind-3 follows", () => {
     await social.startContactList(signer);
     const following = social.follow(target);
     await vi.waitFor(() => expect(pool.publish).toHaveBeenCalledOnce());
-    const pending = pool.publish.mock.calls[0]?.[1] as NostrEvent;
+    const pending = publishedEvents(pool)[0]!;
     pool.emit(pending);
 
     expect(social.selectedContactEvent?.id).toBe(base.id);
     expect(social.followStatus).toBe("pending");
+    const independent = signedContact(secret, 12, [["p", "b".repeat(64)]], "newer device state");
+    pool.emit(independent);
+    expect(social.selectedContactEvent?.id).toBe(independent.id);
     accepted.resolve("accepted");
     await following;
 
-    expect(social.selectedContactEvent?.id).toBe(pending.id);
+    expect(social.selectedContactEvent?.id).toBe(independent.id);
     expect(social.followStatus).toBe("success");
   });
 
@@ -355,5 +362,34 @@ describe("serialized kind-3 follows", () => {
     await expect(invalidSocial.follow(target)).rejects.toThrow("Unable to follow on Nostr. Try again.");
     expect(invalidPool.publish).not.toHaveBeenCalled();
     expect(invalidSocial.selectedContactEvent?.id).toBe(base.id);
+  });
+
+  test("does not let an accepted old-generation follow alter a replacement identity", async () => {
+    const firstSecret = generateSecretKey();
+    const secondSecret = generateSecretKey();
+    const firstSigner = createLocalNip44Signer(firstSecret);
+    const secondSigner = createLocalNip44Signer(secondSecret);
+    const accepted = deferred<string>();
+    const firstPool = new FakeContactPool();
+    const secondPool = new FakeContactPool();
+    firstPool.queries.push([], []);
+    firstPool.publications.push([accepted.promise]);
+    secondPool.queries.push([]);
+    const pools = [firstPool, secondPool];
+    const social = new NostrSocialStore({ createPool: () => pools.shift()!, now: () => 10_000 } as never);
+
+    await social.startContactList(firstSigner);
+    const following = social.follow("a".repeat(64));
+    const queuedFollowing = social.follow("b".repeat(64));
+    await vi.waitFor(() => expect(firstPool.publish).toHaveBeenCalledOnce());
+    await social.startContactList(secondSigner);
+    accepted.resolve("accepted");
+
+    await expect(following).rejects.toThrow("Unable to follow on Nostr. Try again.");
+    await expect(queuedFollowing).rejects.toThrow("Unable to follow on Nostr. Try again.");
+    expect(social.contactPubkey).toBe(getPublicKey(secondSecret));
+    expect(social.selectedContactEvent).toBeNull();
+    expect(social.followStatus).toBe("idle");
+    expect(secondPool.publish).not.toHaveBeenCalled();
   });
 });
