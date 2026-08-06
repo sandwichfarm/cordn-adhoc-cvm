@@ -27,9 +27,8 @@ coverage:
     verification:
       - kind: e2e
         ref: tests/e2e/chat-user-interactions.spec.ts#real targeted message and room invite cross production transport
-        status: unknown
-    human_judgment: true
-    rationale: Focused run was interrupted before a terminal result; rerun required.
+        status: pass
+    human_judgment: false
   - id: D2
     description: Both composer signer rollback paths
     requirement: MENTION-01
@@ -51,7 +50,7 @@ coverage:
     human_judgment: false
 duration: 47min
 completed: 2026-08-06
-status: partial
+status: complete
 ---
 
 # Phase 24 Plan 06: Automated behavior-closure Summary
@@ -67,7 +66,7 @@ status: partial
 
 ## Task Commits
 
-1. Task 1 — `c8434c7` test: targeted room transport
+1. Task 1 — `c8434c7`, `9ab33dd` test/fix: targeted room transport
 2. Task 2 — `1825c3c`, `f34989b`, `d059467` test/fix: composer rollback and host filtering
 3. Task 3 — `79bbb89`, `f34989b` test: lifecycle ownership and stale ingress
 
@@ -77,13 +76,13 @@ status: partial
 - Passed: host filtered-ignore focused Playwright test (20.6s).
 - Passed: App lifecycle replacement/stale-ingress focused Playwright test (0.8s).
 - Passed: `pnpm exec tsc --noEmit`, `pnpm build`, and normal-bundle marker scan.
-- Pending rerun: targeted transport focused Playwright test; its first run was interrupted before a terminal result.
+- Passed: targeted transport focused Playwright test (16.6s) using `CI=1 PLAYWRIGHT_PORT=4330 pnpm exec playwright test tests/e2e/chat-user-interactions.spec.ts --grep "real targeted message and room invite cross production transport" --workers=1`.
 
 ## Deviations from Plan
 
-None in implementation scope. The task-1 focused verification needs a clean rerun before this summary can be promoted to complete.
+None in implementation scope.
 
 ## Self-Check: PASSED
 
 - All three assigned implementation/test files exist.
-- Commits `c8434c7`, `1825c3c`, `79bbb89`, `f34989b`, and `d059467` exist.
+- Commits `c8434c7`, `1825c3c`, `79bbb89`, `f34989b`, `d059467`, and `9ab33dd` exist.
