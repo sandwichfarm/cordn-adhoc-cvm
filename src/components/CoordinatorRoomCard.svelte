@@ -107,7 +107,8 @@
   .coordinator-card-dot.offline, .coordinator-card-dot.unknown { background: #59675f; }
   .coordinator-card-label { min-width: 0; overflow: hidden; color: #cde4d2; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
   .coordinator-card-status { flex: 0 0 auto; color: #64766b; font-size: .48rem; text-transform: capitalize; }
-  .coordinator-create { display: grid; width: 1.8rem; height: 1.8rem; flex: 0 0 auto; margin-left: auto; cursor: pointer; place-items: center; border: 1px solid transparent; background: transparent; color: #9bf6b3; font-size: 1.15rem; font-weight: 500; line-height: 1; transition: border-color .15s ease, background .15s ease, color .15s ease, transform .15s ease; }
+  .coordinator-create { position: relative; display: grid; width: 1.8rem; height: 1.8rem; flex: 0 0 auto; margin-left: auto; cursor: pointer; place-items: center; border: 1px solid transparent; background: transparent; color: #9bf6b3; font-size: 1.15rem; font-weight: 500; line-height: 1; transition: border-color .15s ease, background .15s ease, color .15s ease, transform .15s ease; }
+  .coordinator-create::before { position: absolute; top: .2rem; bottom: .2rem; left: -.45rem; width: 1px; background: #293832; content: ""; pointer-events: none; }
   .coordinator-unread { flex: 0 0 auto; }
   .coordinator-create:hover:not(:disabled), .coordinator-create:focus-visible { border-color: #496451; outline: none; background: #142019; color: #effff2; transform: rotate(90deg) scale(1.08); }
   .coordinator-create:disabled { cursor: not-allowed; opacity: .35; }
