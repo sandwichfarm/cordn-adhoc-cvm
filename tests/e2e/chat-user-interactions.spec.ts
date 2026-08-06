@@ -357,9 +357,10 @@ test("host renders the shared participant menu and mention flow for an admitted 
   }
 });
 
-test("ignore collapses each participant streak locally and highlight stays private across reload", async ({ page }) => {
+test("participant feedback remains visible and persistent in host and guest renderers", async ({ page }) => {
   const viewer = "e".repeat(64);
   const participant = "d".repeat(64);
+
   await page.goto("/");
   await seedGuestMessages(page, viewer, [{
     id: "highlight-before-ignore",
@@ -388,21 +389,44 @@ test("ignore collapses each participant streak locally and highlight stays priva
   const trigger = firstParticipantStreak.getByRole("button", { name: "Actions for Participant" });
   await expect(trigger).toBeVisible({ timeout: 20_000 });
   await trigger.click();
-  await page.getByRole("dialog", { name: "Actions for Participant" }).getByRole("button", { name: "Highlight" }).click();
-  await page.getByRole("button", { name: "Gold" }).click();
+  const menu = page.getByRole("dialog", { name: "Actions for Participant" });
+  const highlightAction = menu.getByRole("button", { name: "Highlight: Default" });
+  await expect(highlightAction).toHaveText("Highlight: Default");
+  await highlightAction.click();
+  const defaultHighlight = menu.getByRole("button", { name: "Default" });
+  const goldHighlight = menu.getByRole("button", { name: "Gold" });
+  await expect(defaultHighlight).toHaveAttribute("aria-pressed", "true");
+  await expect(goldHighlight).toHaveAttribute("aria-pressed", "false");
+  await goldHighlight.click();
   await expect(firstParticipantStreak).toHaveClass(/highlighted/);
+  await expect(highlightAction).toHaveText("Highlight: Gold");
+  await expect(highlightAction).toBeFocused();
+  await highlightAction.click();
+  await expect(goldHighlight).toHaveAttribute("aria-pressed", "true");
+  await expect(goldHighlight).toContainText("Selected");
   await trigger.click();
-  await page.getByRole("dialog", { name: "Actions for Participant" }).getByRole("button", { name: "Ignore" }).click();
+  await menu.getByRole("button", { name: "Ignore" }).click();
   const disclosures = page.getByRole("button", { name: /Participant posted 1 message/ });
   await expect(disclosures).toHaveCount(2);
+  await expect(disclosures.nth(0)).toHaveText("Participant posted 1 message Show messages");
+  await expect(disclosures.nth(1)).toHaveText("Participant posted 1 message Show messages");
   await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "false");
   await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
   await disclosures.nth(0).click();
+  await expect(disclosures.nth(0)).toHaveText("Participant posted 1 message Hide messages");
   await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "true");
   await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByText("First local preference message")).toBeVisible();
   await page.reload();
   await openSeededGuestRoom(page);
   await expect(page.getByRole("button", { name: /Participant posted 1 message/ })).toHaveCount(2, { timeout: 20_000 });
+  await trigger.click();
+  await expect(menu.getByRole("button", { name: "Highlight: Gold" })).toBeVisible();
+  await menu.getByRole("button", { name: "Highlight: Gold" }).click();
+  await expect(goldHighlight).toHaveAttribute("aria-pressed", "true");
+  await defaultHighlight.click();
+  await expect(highlightAction).toHaveText("Highlight: Default");
+  await highlightAction.click();
+  await expect(defaultHighlight).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("body")).not.toContainText(participant);
 });
