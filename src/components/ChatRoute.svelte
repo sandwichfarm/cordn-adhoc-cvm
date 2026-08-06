@@ -6,7 +6,7 @@
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
   import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
-  import { createSameShellChatHref } from "../chat/room-navigation";
+  import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import { groupMessageStreaks } from "../chat/message-presentation";
@@ -135,14 +135,17 @@
       }
     }
     const nextCoordinatorKeyMode = nextInvite.coordinatorKeyMode ?? stored.coordinatorKeyMode;
+    const nextCoordinatorName = nextInvite.coordinatorName ?? stored.coordinatorName;
     if (stored.host?.name === nextHost?.name
       && stored.host?.pubkey === nextHost?.pubkey
       && stored.host?.avatar === nextHost?.avatar
-      && stored.coordinatorKeyMode === nextCoordinatorKeyMode) return stored;
+      && stored.coordinatorKeyMode === nextCoordinatorKeyMode
+      && stored.coordinatorName === nextCoordinatorName) return stored;
     const refreshed = {
       ...stored,
       host: nextHost,
       coordinatorKeyMode: nextCoordinatorKeyMode,
+      coordinatorName: nextCoordinatorName,
     };
     saveRoom(refreshed);
     return refreshed;
@@ -737,6 +740,7 @@
               }}
               onToggleReaction={toggleReaction}
               onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+              onJoinInvite={(sharedInvite) => navigate(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
             />
           {/each}
         </div>

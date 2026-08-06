@@ -53,6 +53,7 @@
 - [x] **REACT-02**: Reactions are aggregated by emoji across all participants, show total counts, and let the current participant toggle their own reaction on messages authored by other participants without duplicating counts; participants cannot react to their own messages.
 - [x] **CHAT-01**: Consecutive messages from the same sender are rendered as one sender group with the avatar and display name shown once and individual message bubbles beneath it.
 - [x] **CHAT-02**: Every message keeps its timestamp and relevant metadata visible in a smaller, lower-contrast treatment without repeating sender chrome.
+- [x] **CHAT-04**: A valid Cordn invite shared as a chat message renders as a contextual join action naming the group, coordinator, and host, and activates the canonical current-shell join flow without exposing malformed text as an action.
 
 ### Delivery Process & Verification
 
@@ -137,6 +138,7 @@
 | REACT-02 | Phase 19 | Complete |
 | CHAT-01 | Phase 19 | Complete |
 | CHAT-02 | Phase 19 | Complete |
+| CHAT-04 | Phase 19 | Complete |
 | DOC-01 | Phase 20 | Pending |
 | TEST-01 | Phase 20 | Pending |
 | INTEROP-01 | Phase 20 | Pending |

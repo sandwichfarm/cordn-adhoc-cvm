@@ -9,7 +9,7 @@
   import type { ConfigStore } from "../config/config.svelte";
   import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
-  import { createSameShellChatHref } from "../chat/room-navigation";
+  import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { emptySidebarLedger, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
@@ -538,8 +538,9 @@
     const coordinatorKeyMode = coordinator.persistenceEnabled ? "persistent" : "ephemeral";
     const relayHintsChanged = nextRoom.relayUrls.length !== relayUrls.length
       || nextRoom.relayUrls.some((relayUrl, index) => relayUrl !== relayUrls[index]);
-    if (nextRoom.coordinatorKeyMode !== coordinatorKeyMode || relayHintsChanged) {
-      nextRoom = { ...nextRoom, coordinatorKeyMode, relayUrls: [...relayUrls] };
+    const coordinatorName = config.coordinatorName || "My coordinator";
+    if (nextRoom.coordinatorKeyMode !== coordinatorKeyMode || relayHintsChanged || nextRoom.coordinatorName !== coordinatorName) {
+      nextRoom = { ...nextRoom, coordinatorKeyMode, coordinatorName, relayUrls: [...relayUrls] };
       saveRoom(nextRoom);
     }
     const createdInviteUrl = createInviteUrl(window.location.origin, {
@@ -550,6 +551,7 @@
       inviteToken: nextRoom.inviteToken,
       host: hostIdentityForRoom(nextRoom),
       coordinatorKeyMode,
+      coordinatorName,
     });
     return {
       room: nextRoom,
@@ -818,6 +820,7 @@
         coordinatorPubkey,
         relayUrls,
         coordinatorOrigin: window.location.origin,
+        coordinatorName: config.coordinatorName || "My coordinator",
         autoApprove: newRoomAutoApprove,
         identity: currentHostIdentity(),
         signer: userProfileStore.activeSigner ?? (() => { throw new Error("Local identity is not ready"); })(),
@@ -1784,6 +1787,7 @@
                   }}
                   onToggleReaction={toggleReaction}
                   onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+                  onJoinInvite={(sharedInvite) => navigateFromRail(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
                 />
               {/each}
             </div>

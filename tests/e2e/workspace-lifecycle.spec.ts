@@ -1946,6 +1946,21 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
       && hostBubble.height < 70);
   })).toBe(true);
   await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)).toBeLessThanOrEqual(2);
+
+  const inviteMetadata = JSON.parse(Buffer.from(new URL(inviteLink!).searchParams.get("m")!, "base64url").toString("utf8")) as { coordinatorName: string };
+  await page.getByPlaceholder("Message as host").fill(inviteLink!);
+  await page.getByPlaceholder("Message as host").press("Enter");
+  const sharedInviteAction = guest.getByRole("button", {
+    name: `Join Working room on ${inviteMetadata.coordinatorName} by Mara`,
+  });
+  await expect(sharedInviteAction).toBeVisible({ timeout: 15_000 });
+  await expect(sharedInviteAction.locator("img")).toBeVisible();
+  await expect(guest.getByText(inviteLink!, { exact: true })).toHaveCount(0);
+  await sharedInviteAction.click();
+  await expect.poll(() => guest.evaluate(() => {
+    const intent = (history.state as Record<string, unknown> | null)?.cahmlsWorkspaceIntent;
+    return typeof intent === "string" ? new URL(intent).searchParams.get("autojoin") : null;
+  })).toBe("1");
   await guestContext.close();
 });
 

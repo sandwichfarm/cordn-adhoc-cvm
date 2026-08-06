@@ -3,8 +3,10 @@ import { nip19 } from "nostr-tools";
 import {
   CORDN_DEFAULT_COORDINATOR_PUBKEY,
   createInviteUrl,
+  parseInviteMessage,
   parseInviteUrl,
 } from "../../src/chat/invite";
+import { createSameShellAutoJoinHref } from "../../src/chat/room-navigation";
 
 describe("Feature: self-contained chat invitations", () => {
   test("Scenario: the one current-origin invite link uses the canonical Cordn shape", () => {
@@ -13,6 +15,7 @@ describe("Feature: self-contained chat invitations", () => {
       coordinatorPubkey: "a".repeat(64),
       relayUrls: ["wss://one.example", "wss://two.example"],
       title: "Friday plans",
+      coordinatorName: "Madeira relay",
       inviteToken: "cahmls-only-admission-token",
     }));
 
@@ -27,7 +30,42 @@ describe("Feature: self-contained chat invitations", () => {
       groupId: "group-α",
       coordinatorPubkey: "a".repeat(64),
       title: "Friday plans",
+      coordinatorName: "Madeira relay",
     });
+  });
+
+  test("Scenario: a complete invite message becomes a canonical current-shell auto-join target", () => {
+    const shared = createInviteUrl("https://sender.example", {
+      groupId: "night-shift",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: ["wss://relay.example"],
+      title: "Night shift",
+      coordinatorName: "Madeira node",
+      inviteToken: "private-capability",
+      host: { name: "Mara", pubkey: "b".repeat(64), avatar: "https://images.example/mara.png" },
+    });
+
+    const invite = parseInviteMessage(`  ${shared}\n`);
+    expect(invite).toMatchObject({
+      groupId: "night-shift",
+      title: "Night shift",
+      coordinatorName: "Madeira node",
+      host: { name: "Mara" },
+    });
+    const destination = new URL(createSameShellAutoJoinHref("https://current.example", invite!));
+    expect(destination.origin).toBe("https://current.example");
+    expect(destination.pathname).toBe("/chat/night-shift");
+    expect(destination.searchParams.get("autojoin")).toBe("1");
+    expect(destination.searchParams.get("i")).toBe("private-capability");
+  });
+
+  test.each([
+    "See https://cordn.example/chat/group later",
+    "https://cordn.example/chat/group trailing",
+    "not-an-invite",
+    "",
+  ])("Scenario: non-invite-only message content remains plain text (%s)", (content) => {
+    expect(parseInviteMessage(content)).toBeNull();
   });
 
   test("Scenario: a public Cordn invite never advertises the browser-only local relay", () => {

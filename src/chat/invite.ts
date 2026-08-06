@@ -15,6 +15,7 @@ export interface ChatInvite {
   relayUrls: string[];
   title?: string;
   coordinatorOrigin?: string;
+  coordinatorName?: string;
   inviteToken?: string;
   host?: RoomHostIdentity;
   coordinatorKeyMode?: CoordinatorKeyMode;
@@ -24,6 +25,7 @@ interface InviteMetadata {
   /** Canonical Cordn clients require the room label under `name`. */
   name: string;
   coordinatorOrigin: string;
+  coordinatorName?: string;
   host?: RoomHostIdentity;
   coordinatorKeyMode?: CoordinatorKeyMode;
 }
@@ -36,6 +38,7 @@ export const CORDN_DEFAULT_RELAY_URLS = [
 ] as const;
 
 const HOST_NAME_MAX_LENGTH = 96;
+const COORDINATOR_NAME_MAX_LENGTH = 96;
 const HOST_AVATAR_MAX_LENGTH = 2_048;
 const NOSTR_PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
 const decoder = new TextDecoder();
@@ -110,6 +113,12 @@ function normalizeCoordinatorKeyMode(value: unknown): CoordinatorKeyMode | undef
   return value === "ephemeral" || value === "persistent" ? value : undefined;
 }
 
+function normalizeCoordinatorName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized && Array.from(normalized).length <= COORDINATOR_NAME_MAX_LENGTH ? normalized : undefined;
+}
+
 function decodeCoordinator(value: string | null): { pubkey: string; relayUrls: string[] } | null {
   const coordinator = value?.trim();
   if (!coordinator) {
@@ -175,6 +184,7 @@ export function createInviteUrl(origin: string, invite: ChatInvite): string {
   const coordinatorOrigin = requireHttpOrigin(invite.coordinatorOrigin ?? shellOrigin);
   const host = normalizeRoomHostIdentity(invite.host);
   const coordinatorKeyMode = normalizeCoordinatorKeyMode(invite.coordinatorKeyMode);
+  const coordinatorName = normalizeCoordinatorName(invite.coordinatorName);
   const coordinator = nip19.nprofileEncode({
     pubkey: invite.coordinatorPubkey,
     relays: shareableRelayUrls(invite.relayUrls),
@@ -182,6 +192,7 @@ export function createInviteUrl(origin: string, invite: ChatInvite): string {
   const meta = base64UrlEncode({
     name: invite.title?.trim() || "Chat",
     coordinatorOrigin,
+    ...(coordinatorName ? { coordinatorName } : {}),
     ...(host ? { host } : {}),
     ...(coordinatorKeyMode ? { coordinatorKeyMode } : {}),
   } satisfies InviteMetadata);
@@ -213,6 +224,7 @@ export function parseInviteUrl(value: string): ChatInvite | null {
     if (!coordinatorOrigin) return null;
     const host = normalizeRoomHostIdentity(meta.host);
     const coordinatorKeyMode = normalizeCoordinatorKeyMode(meta.coordinatorKeyMode);
+    const coordinatorName = normalizeCoordinatorName(meta.coordinatorName);
     const inviteToken = url.searchParams.get("i")?.trim() || undefined;
     const groupId = decodeURIComponent(match[1]).trim();
     if (!groupId) return null;
@@ -223,6 +235,7 @@ export function parseInviteUrl(value: string): ChatInvite | null {
       relayUrls: coordinator.relayUrls,
       title,
       coordinatorOrigin,
+      ...(coordinatorName ? { coordinatorName } : {}),
       ...(inviteToken ? { inviteToken } : {}),
       ...(host ? { host } : {}),
       ...(coordinatorKeyMode ? { coordinatorKeyMode } : {}),
@@ -230,4 +243,11 @@ export function parseInviteUrl(value: string): ChatInvite | null {
   } catch {
     return null;
   }
+}
+
+/** Recognize only messages whose complete content is one validated Cordn invite. */
+export function parseInviteMessage(value: string): ChatInvite | null {
+  const candidate = value.trim();
+  if (!candidate || /\s/.test(candidate)) return null;
+  return parseInviteUrl(candidate);
 }

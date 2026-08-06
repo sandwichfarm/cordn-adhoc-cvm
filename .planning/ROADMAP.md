@@ -119,7 +119,7 @@ Plans:
 
 **Goal**: Users can scan active conversations quickly and use compact, accurate reactions on message groups.
 **Depends on**: Phase 17
-**Requirements**: REACT-01, REACT-02, CHAT-01, CHAT-02
+**Requirements**: REACT-01, REACT-02, CHAT-01, CHAT-02, CHAT-04
 **Success Criteria** (what must be TRUE):
 
   1. Consecutive messages from one sender render as a single group with the sender avatar and name shown once above its individual bubbles.
