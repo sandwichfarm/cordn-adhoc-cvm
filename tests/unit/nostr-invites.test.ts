@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, test } from "vitest";
-import { generateSecretKey } from "nostr-tools";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { finalizeEvent, generateSecretKey, getPublicKey, type Event as NostrEvent } from "nostr-tools";
 
 import {
   createGiftWrap,
@@ -15,6 +15,48 @@ import {
   INVITATION_RESOLUTION_STORAGE_KEY,
   NotificationCenterStore,
 } from "../../src/notifications/notification-center.svelte";
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(reason?: unknown): void;
+};
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+class FakeContactPool {
+  readonly querySync = vi.fn(async () => this.queries.shift() ?? [] as NostrEvent[]);
+  readonly subscribeMany = vi.fn((_relays: readonly string[], _filters: unknown, handlers: { onevent(event: NostrEvent): void }) => {
+    this.onContactEvent = handlers.onevent;
+    return { close: this.close };
+  });
+  readonly publish = vi.fn(() => this.publications.shift() ?? [Promise.resolve("accepted")]);
+  readonly destroy = vi.fn();
+  readonly close = vi.fn();
+  queries: Array<NostrEvent[] | Promise<NostrEvent[]>> = [];
+  publications: Array<Array<Promise<string>>> = [];
+  onContactEvent: ((event: NostrEvent) => void) | undefined;
+
+  emit(event: NostrEvent): void {
+    this.onContactEvent?.(event);
+  }
+}
+
+function signedContact(secret: Uint8Array, createdAt: number, tags: string[][], content = ""): NostrEvent {
+  return finalizeEvent({ kind: 3, created_at: createdAt, tags, content }, secret);
+}
+
+function contactTargets(event: NostrEvent): string[] {
+  return event.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1] ?? "");
+}
 
 describe("private Nostr presence and invites", () => {
   beforeEach(() => localStorage.clear());
@@ -105,5 +147,92 @@ describe("private Nostr presence and invites", () => {
     });
 
     expect(social.incomingInvites).toEqual([]);
+  });
+});
+
+describe("validated kind-3 contact lists", () => {
+  beforeEach(() => localStorage.clear());
+
+  test("accepts only the deterministic newest signed own kind-3 event", async () => {
+    const ownerSecret = generateSecretKey();
+    const foreignSecret = generateSecretKey();
+    const owner = createLocalNip44Signer(ownerSecret);
+    const pool = new FakeContactPool();
+    const equalSecond = 1_700_000_000;
+    const first = signedContact(ownerSecret, equalSecond, [["p", "a".repeat(64)]], "first");
+    const second = signedContact(ownerSecret, equalSecond, [["p", "b".repeat(64)]], "second");
+    const expected = [first, second].sort((left, right) => left.id.localeCompare(right.id))[0]!;
+    const foreign = signedContact(foreignSecret, equalSecond + 10, [["p", "c".repeat(64)]]);
+    const wrongKind = finalizeEvent({ kind: 1, created_at: equalSecond + 20, tags: [], content: "wrong" }, ownerSecret);
+    const forged = { ...signedContact(ownerSecret, equalSecond + 30, [["p", "d".repeat(64)]]), id: "0".repeat(64) };
+    const malformed = signedContact(ownerSecret, equalSecond + 40, [["p", "not-a-pubkey"]]);
+    pool.queries.push([foreign, second, wrongKind, forged, malformed, first]);
+
+    const social = new NostrSocialStore({ createPool: () => pool } as never);
+    await social.startContactList(owner);
+
+    expect(social.selectedContactEvent?.id).toBe(expected.id);
+    expect(social.following).toEqual(contactTargets(expected));
+    expect(social.contactStatus).toBe("ready");
+  });
+
+  test("keeps a live newer event when an older bounded query resolves later", async () => {
+    const secret = generateSecretKey();
+    const signer = createLocalNip44Signer(secret);
+    const pool = new FakeContactPool();
+    const query = deferred<NostrEvent[]>();
+    const oldEvent = signedContact(secret, 10, [["p", "a".repeat(64)]]);
+    const liveEvent = signedContact(secret, 11, [["p", "b".repeat(64)]]);
+    pool.queries.push(query.promise);
+    const social = new NostrSocialStore({ createPool: () => pool } as never);
+
+    const started = social.startContactList(signer);
+    pool.emit(liveEvent);
+    query.resolve([oldEvent]);
+    await started;
+
+    expect(social.selectedContactEvent?.id).toBe(liveEvent.id);
+    expect(social.following).toEqual(["b".repeat(64)]);
+  });
+
+  test("closes and invalidates an old identity before its query can mutate replacement state", async () => {
+    const firstSecret = generateSecretKey();
+    const secondSecret = generateSecretKey();
+    const firstSigner = createLocalNip44Signer(firstSecret);
+    const secondSigner = createLocalNip44Signer(secondSecret);
+    const firstPool = new FakeContactPool();
+    const secondPool = new FakeContactPool();
+    const lateQuery = deferred<NostrEvent[]>();
+    firstPool.queries.push(lateQuery.promise);
+    secondPool.queries.push([]);
+    const pools = [firstPool, secondPool];
+    const social = new NostrSocialStore({ createPool: () => pools.shift()! } as never);
+
+    const firstStart = social.startContactList(firstSigner);
+    await social.startContactList(secondSigner);
+    lateQuery.resolve([signedContact(firstSecret, 100, [["p", "a".repeat(64)]])]);
+    await firstStart;
+
+    expect(firstPool.close).toHaveBeenCalledOnce();
+    expect(social.following).toEqual([]);
+    expect(social.selectedContactEvent).toBeNull();
+    expect(social.contactPubkey).toBe(getPublicKey(secondSecret));
+  });
+
+  test("derives an empty list from a successful empty query and retains validated state on refresh failure", async () => {
+    const secret = generateSecretKey();
+    const signer = createLocalNip44Signer(secret);
+    const pool = new FakeContactPool();
+    pool.queries.push([]);
+    const social = new NostrSocialStore({ createPool: () => pool } as never);
+
+    await social.startContactList(signer);
+    expect(social.following).toEqual([]);
+
+    pool.queries.push(Promise.reject(new Error("relay detail must not surface")));
+    await social.refreshContactList();
+    expect(social.following).toEqual([]);
+    expect(social.contactStatus).toBe("reconnecting");
+    expect(social.error).not.toContain("relay detail");
   });
 });
