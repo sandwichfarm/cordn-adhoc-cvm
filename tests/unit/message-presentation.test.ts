@@ -25,17 +25,18 @@ describe("message presentation", () => {
     [59_000, "59s ago", 1_000],
     [60_000, "1m ago", 60_000],
     [3_600_000, "1h ago", 3_600_000],
+    [86_400_000, "1d ago", 86_400_000],
+    [6 * 86_400_000, "6d ago", 86_400_000],
   ])("formats and schedules age %i", (age, label, delay) => {
     const now = Date.UTC(2026, 7, 5, 12);
     expect(relativeMessageTime(now - age, now)).toBe(label);
     expect(nextRelativeMessageTimeDelay(now - age, now)).toBe(delay);
   });
 
-  test("switches to a static locale date and time after one day", () => {
+  test("switches to a static locale date and time at seven days", () => {
     const now = Date.UTC(2026, 7, 5, 12);
-    const createdAt = now - 86_400_000;
+    const createdAt = now - (7 * 86_400_000);
     expect(relativeMessageTime(createdAt, now)).toBe(new Date(createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }));
     expect(nextRelativeMessageTimeDelay(createdAt, now)).toBeNull();
   });
 });
-
