@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./established-installation-fixture";
+import { expect, installEstablishedInstallation, test, type Page } from "./established-installation-fixture";
 import { getEventHash } from "nostr-tools";
 import { createInviteUrl } from "../../src/chat/invite";
 
@@ -229,6 +229,42 @@ test("participant surfaces keep invite controls contained at 320px and disable i
     return rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight;
   })).toBe(true);
   await expect(page.getByRole("button", { name: /Join Motion safe room/ })).toHaveCSS("transition-duration", "0s");
+});
+
+test("host renders the shared participant menu and mention flow for an admitted guest", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
+  await page.getByRole("button", { name: "Create room", exact: true }).click();
+  const createRoom = page.getByTestId("create-room-dialog");
+  await createRoom.getByPlaceholder("Friday plans").fill("Participant host parity");
+  await createRoom.getByRole("button", { name: "Create room", exact: true }).click();
+  await expect(createRoom).toBeHidden();
+  const inviteUrl = await page.getByTestId("invite-link").textContent();
+  expect(inviteUrl).toBeTruthy();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  try {
+    await installEstablishedInstallation(guest);
+    await guest.goto(inviteUrl!);
+    await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
+    await guest.getByPlaceholder("Message").fill("A host-visible participant message");
+    await guest.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByTestId("host-message-list").getByText("A host-visible participant message")).toBeVisible({ timeout: 20_000 });
+
+    const hostTrigger = page.getByTestId("host-message-list").getByRole("button", { name: /^Actions for / });
+    await expect(hostTrigger).toBeVisible();
+    await hostTrigger.click();
+    const menu = page.getByRole("dialog", { name: /^Actions for / });
+    await expect(menu.getByRole("button").allTextContents()).resolves.toEqual(["Mention", "Invite to room", "Follow on Nostr", "Highlight", "Ignore"]);
+    await menu.getByRole("button", { name: "Mention" }).click();
+    await expect(page.getByPlaceholder("Message as host")).toBeFocused();
+    await expect(page.getByPlaceholder("Message as host")).toHaveValue(/^@/);
+  } finally {
+    await guestContext.close();
+  }
 });
 
 test("ignore collapses each participant streak locally and highlight stays private across reload", async ({ page }) => {
