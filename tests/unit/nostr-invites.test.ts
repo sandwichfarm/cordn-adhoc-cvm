@@ -392,4 +392,30 @@ describe("serialized kind-3 follows", () => {
     expect(social.followStatus).toBe("idle");
     expect(secondPool.publish).not.toHaveBeenCalled();
   });
+
+  test("does not let a hung old-generation follow block a replacement identity", async () => {
+    const firstSecret = generateSecretKey();
+    const secondSecret = generateSecretKey();
+    const firstSigner = createLocalNip44Signer(firstSecret);
+    const secondSigner = createLocalNip44Signer(secondSecret);
+    const neverAccepted = deferred<string>();
+    const firstPool = new FakeContactPool();
+    const secondPool = new FakeContactPool();
+    firstPool.queries.push([], []);
+    firstPool.publications.push([neverAccepted.promise]);
+    secondPool.queries.push([], []);
+    const pools = [firstPool, secondPool];
+    const social = new NostrSocialStore({ createPool: () => pools.shift()!, now: () => 10_000 } as never);
+
+    await social.startContactList(firstSigner);
+    void social.follow("a".repeat(64));
+    await vi.waitFor(() => expect(firstPool.publish).toHaveBeenCalledOnce());
+
+    await social.startContactList(secondSigner);
+    await social.follow("b".repeat(64));
+
+    expect(secondPool.publish).toHaveBeenCalledOnce();
+    expect(contactTargets(publishedEvents(secondPool)[0]!)).toEqual(["b".repeat(64)]);
+    expect(social.contactPubkey).toBe(getPublicKey(secondSecret));
+  });
 });

@@ -234,6 +234,11 @@ export class NostrSocialStore {
 
   stopContactList(): void {
     this.contactGeneration += 1;
+    // Operations from an old identity must never hold up this identity's
+    // serialized follow queue. Destroying a relay pool does not settle an
+    // already-published Promise.any, so give the replacement generation its
+    // own queue immediately.
+    this.followQueue = Promise.resolve();
     this.contactSubscription?.close();
     this.contactSubscription = null;
     this.contactPool?.destroy();
