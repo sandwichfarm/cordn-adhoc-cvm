@@ -158,7 +158,7 @@
     try {
       await onInviteToRoom(first.sender, room);
       actionStatus = `Invite sent to ${participantName}.`;
-      closeSurface(false);
+      closeSurface();
     } catch {
       actionError = "Couldn’t send the invite. Check the room connection and try again.";
       invitePendingRoom = null;
@@ -318,7 +318,7 @@
       role="dialog"
       tabindex="-1"
       aria-label={`Actions for ${participantName}`}
-      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", forcePreferredSide: true, align: mine ? "end" : "start", compactSheetBelow: 520 }}
+      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520 }}
       onkeydown={handleSurfaceKeydown}
     >
       <button id={`${idPrefix}-participant-mention-${first.sender}`} type="button" onclick={() => void mentionParticipant()}>Mention</button>
@@ -347,7 +347,7 @@
       role="dialog"
       tabindex="-1"
       aria-label={`Invite ${participantName} to a room`}
-      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", forcePreferredSide: true, align: mine ? "end" : "start", compactSheetBelow: 520 }}
+      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520 }}
       onkeydown={handleSurfaceKeydown}
     >
       <h2>Invite {participantName} to a room</h2>
