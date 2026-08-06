@@ -183,11 +183,19 @@
     const dismissOnFocusInteraction = (event: FocusEvent) => {
       if (!isInsideSurface(event.target)) closeSurface(false);
     };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeSurface();
+    };
     document.addEventListener("pointerdown", dismissOnPointerInteraction, true);
     document.addEventListener("focusin", dismissOnFocusInteraction, true);
+    document.addEventListener("keydown", dismissOnEscape, true);
     return () => {
       document.removeEventListener("pointerdown", dismissOnPointerInteraction, true);
       document.removeEventListener("focusin", dismissOnFocusInteraction, true);
+      document.removeEventListener("keydown", dismissOnEscape, true);
     };
   });
 
