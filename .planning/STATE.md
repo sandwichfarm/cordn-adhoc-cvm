@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 24
 current_phase_name: chat-user-interactions
 status: executing
-stopped_at: Completed 24-01-PLAN.md
-last_updated: "2026-08-06T18:24:20.832Z"
+stopped_at: Completed 24-02-PLAN.md
+last_updated: "2026-08-06T18:32:19.004Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 24 execution started
 progress:
   total_phases: 9
   completed_phases: 7
   total_plans: 31
-  completed_plans: 26
+  completed_plans: 27
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 ## Current Position
 
 Phase: 24 (chat-user-interactions) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-08-06 — Phase 24 execution started
 Pull request: [#7 — maximize room QR codes](https://github.com/sandwichfarm/CAHMLS/pull/7) — open, CI in progress. [#6](https://github.com/sandwichfarm/CAHMLS/pull/6) merged 2026-08-06.
 
-Progress: [██████████░░░░░░░░░░] 3/6 phases ([████████░░] 84%)
+Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 87%)
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 | Phase 18 P01 | 7min | 2 tasks | 5 files |
 | Phase 18 P02 | 10min | 2 tasks | 5 files |
 | Phase 24 P01 | 18 min | 2 tasks | 9 files |
+| Phase 24 P02 | 4 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Separate the in-app notification feed from desktop permission controls; opening settings stays passive.
 - [Phase ?]: Require a live trusted invitation capability at accept time; persisted feed history remains non-redeemable.
 - [Phase ?]: [Phase 24] Recipient pubkeys are canonicalized and authenticated in kind-9 metadata; invite visibility filters only valid targeted invites before grouping.
+- [Phase ?]: Ignore preferences reuse the authoritative coordinator+room composite identity with a normalized participant suffix.
+- [Phase ?]: Highlights are global by normalized participant pubkey and persist only locked palette symbols.
 
 ### Pending Todos
 
@@ -131,6 +134,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-06T18:24:20.826Z
-Stopped at: Completed 24-01-PLAN.md
+Last session: 2026-08-06T18:32:18.996Z
+Stopped at: Completed 24-02-PLAN.md
 Resume file: None
