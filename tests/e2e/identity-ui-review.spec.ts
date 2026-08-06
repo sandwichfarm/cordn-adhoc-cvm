@@ -262,3 +262,16 @@ test("profile and presence panels stay within the viewport", async ({ page }) =>
   expect(presenceBounds!.x).toBeGreaterThanOrEqual(0);
   expect(presenceBounds!.x + presenceBounds!.width).toBeLessThanOrEqual(768);
 });
+
+test("desktop profile panel stays compact when opened from the sidebar", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await revealPersonalControls(page);
+  const { menu } = await openIdentityMenu(page);
+
+  const profileBounds = await menu.boundingBox();
+  expect(profileBounds).not.toBeNull();
+  expect(profileBounds!.width).toBeLessThanOrEqual(360);
+  expect(profileBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(profileBounds!.x + profileBounds!.width).toBeLessThanOrEqual(1440);
+});

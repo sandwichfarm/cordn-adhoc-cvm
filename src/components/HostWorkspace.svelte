@@ -2247,7 +2247,7 @@
   .sidebar-personal-tools :global(.notification-feed-trigger), .sidebar-personal-tools :global(.notification-trigger) { height: 2.75rem; border: 0; background: transparent; }
   .sidebar-personal-tools :global(.notification-feed-trigger) { width: 2.75rem; border-inline: 1px solid #202d25; }
   .sidebar-personal-tools :global(.notification-trigger) { justify-content: flex-start; padding-inline: .65rem; }
-  .sidebar-account :global(.user-menu) { top: auto; right: auto; bottom: calc(100% + .5rem); left: 0; box-sizing: border-box; width: 100%; max-height: min(38rem, calc(100dvh - 5rem)); overflow-y: auto; overscroll-behavior: contain; }
+  .sidebar-account :global(.user-menu) { top: auto; right: auto; bottom: calc(100% + .5rem); left: 0; box-sizing: border-box; width: min(22rem, calc(100vw - 1rem)); max-height: min(38rem, calc(100dvh - 5rem)); overflow-y: auto; overscroll-behavior: contain; }
   .sidebar-account :global(.presence-menu), .sidebar-account :global(.notification-feed-panel), .sidebar-account :global(.notification-menu) { top: auto; bottom: calc(100% + .5rem); }
   .channel-empty { display: flex; width: 100%; align-items: center; justify-content: space-between; border: 1px dashed #293832; padding: .65rem .7rem; color: #82958a; text-align: left; font-size: .68rem; }
   .channel-empty:hover { border-color: #7cf59d; color: #dfffe7; }
