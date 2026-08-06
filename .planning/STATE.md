@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 24
 current_phase_name: chat-user-interactions
 status: verifying
-stopped_at: Completed 24-04-PLAN.md
-last_updated: "2026-08-06T19:04:57.891Z"
+stopped_at: Completed 24-05-PLAN.md
+last_updated: "2026-08-06T22:12:55.369Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 24 execution started
 progress:
   total_phases: 9
   completed_phases: 8
-  total_plans: 31
-  completed_plans: 29
+  total_plans: 32
+  completed_plans: 30
 ---
 
 # Project State
@@ -70,6 +70,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 | Phase 24 P02 | 4 min | 2 tasks | 2 files |
 | Phase 24 P03 | 10 min | 2 tasks | 4 files |
 | Phase 24 P04 | 19 min | 2 tasks | 5 files |
+| Phase 24 P05 | 72min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Follow queue captures its originating identity generation and commits only after one relay accepts the signed replacement.
 - [Phase ?]: MessageGroup owns one non-self action menu while panes retain typed composer and room callbacks.
 - [Phase ?]: Ignored disclosure state is keyed after recipient filtering and remains private ephemeral UI state.
+- [Phase ?]: Phase 24 participant menus and choosers pass an explicit 16px gutter, preserving the global overlay default.
+- [Phase ?]: Phase 24 highlight state is rendered from the typed persisted prop with named text, aria-pressed, and a visible selected marker.
+- [Phase ?]: Phase 24 participant and room identifiers are excluded from affected DOM IDs while focus restoration remains pane-local.
 
 ### Pending Todos
 
@@ -140,6 +144,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-06T19:04:57.883Z
-Stopped at: Completed 24-04-PLAN.md
+Last session: 2026-08-06T22:12:55.361Z
+Stopped at: Completed 24-05-PLAN.md
 Resume file: None

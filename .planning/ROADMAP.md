@@ -227,9 +227,11 @@ Plans:
   4. In-room invite targeting lets a viewer select another active room and sends its current invite only as a presentation-targeted message for the chosen participant.
   5. The active identity loads and live-maintains only the newest valid self-authored kind-3 event, and follow publication safely preserves its prior contact-list data.
 
-**Plans**: 4/4 plans executed
+**Plans**: 5/5 plans executed
 
 Plans:
+
+- [x] 24-05-PLAN.md
 
 - [x] 24-01-PLAN.md — Prove signed kind-9 recipient metadata through send/decrypt and shared viewer-aware presentation.
 - [x] 24-02-PLAN.md — Add strict exact-room ignore and global highlight preference contracts with the composite-room invariant.
@@ -251,4 +253,4 @@ Plans:
 | 21. First-Run Coordinator Identity & Profile | 0/TBD | Not started | - |
 | 22. Coordinator-Grouped Sidebar | 2/2 | Complete | 2026-08-06 |
 | 23. Bounded Gift-Wrap Delivery | 2/2 | Complete | 2026-08-06 |
-| 24. Chat User Interactions | 4/4 | In Progress|  |
+| 24. Chat User Interactions | 5/5 | In Progress|  |
