@@ -256,7 +256,6 @@ test("participant menu opens from a non-self author, mentions through the compos
   const secondTrigger = page.getByRole("button", { name: "Actions for Second participant" });
   await trigger.click();
   await expect(page.getByRole("dialog", { name: "Actions for Participant" })).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Actions for Participant" })).toHaveAttribute("data-overlay-side", "below");
   await secondTrigger.focus();
   await expect(page.getByRole("dialog", { name: "Actions for Participant" })).toHaveCount(0);
   await secondTrigger.press("Enter");

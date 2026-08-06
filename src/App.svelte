@@ -16,7 +16,8 @@
 
   const shellOrigin = window.location.origin;
   const initialSearchParams = new URL(window.location.href).searchParams;
-  const messageGroupTestHarness = initialSearchParams.has("__message-group-test-harness");
+  const e2eBuild = import.meta.env.VITE_E2E === "1";
+  const messageGroupTestHarness = e2eBuild && initialSearchParams.has("__message-group-test-harness");
   const messageGroupTestHarnessPane = initialSearchParams.get("pane") === "host" ? "host" : "guest";
   const rootUrl = new URL("/", shellOrigin).href;
   const initialIntent = initialWorkspaceIntent(window.location.href, window.history.state, shellOrigin);
