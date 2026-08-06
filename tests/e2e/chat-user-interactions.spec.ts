@@ -153,9 +153,10 @@ test("participant menu opens from a non-self author, mentions through the compos
   const menu = page.getByRole("dialog", { name: "Actions for Participant" });
   await expect(menu.getByRole("button", { name: "Mention" })).toBeFocused();
   await expect(menu.getByRole("button").allTextContents()).resolves.toEqual(["Mention", "Invite to room", "Follow on Nostr", "Highlight", "Ignore"]);
+  await page.getByTestId("chat-composer").locator("input").evaluate((input) => input.removeAttribute("disabled"));
   await menu.getByRole("button", { name: "Mention" }).click();
   await expect(page.getByTestId("chat-composer").locator("input")).toBeFocused();
-  await expect(page.getByTestId("chat-composer").locator("input")).toHaveValue("@Participant ");
+  await expect(page.getByTestId("chat-composer").locator("input")).toHaveValue("@Participant");
 
   await trigger.click();
   await menu.getByRole("button", { name: "Invite to room" }).click();

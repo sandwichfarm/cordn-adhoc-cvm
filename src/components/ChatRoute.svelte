@@ -4,15 +4,15 @@
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import type { NostrSigner } from "@contextvm/sdk/core";
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
-  import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
+  import { createInviteUrl, parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
-  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, listRooms, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import { projectMessageStreaks } from "../chat/message-presentation";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import { channelPreferences } from "../notifications/channel-preferences.svelte";
-  import MessageGroup from "./MessageGroup.svelte";
+  import MessageGroup, { type ParticipantRoomChoice } from "./MessageGroup.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
@@ -58,6 +58,7 @@
   let connectionDetail = $state<string | undefined>();
   let name = $state("");
   let composer = $state("");
+  let pendingRecipientPubkeys = $state<string[]>([]);
   let composerError = $state("");
   let error = $state("");
   let joining = $state(false);
@@ -558,6 +559,7 @@
   async function send() {
     if (!session || !canSendMessages()) return;
     const next = composer;
+    const recipients = [...pendingRecipientPubkeys];
     if (!next.trim()) return;
     void enableSounds(false);
     composerError = "";
@@ -566,12 +568,68 @@
       avatar: userProfileStore.avatarUrl,
     });
     composer = "";
+    pendingRecipientPubkeys = [];
     try {
-      await session.send(next);
+      await session.send(next, { recipientPubkeys: recipients });
     } catch (cause) {
       if (!composer.trim()) composer = next;
+      if (pendingRecipientPubkeys.length === 0) pendingRecipientPubkeys = recipients;
       composerError = cause instanceof Error ? cause.message : "Unable to send this message";
     }
+  }
+
+  function mentionParticipant(pubkey: string, displayName: string): void {
+    const input = composerInput;
+    const start = input?.selectionStart ?? composer.length;
+    const end = input?.selectionEnd ?? composer.length;
+    const before = composer.slice(0, start);
+    const after = composer.slice(end);
+    const leading = before && !/\s$/.test(before) ? " " : "";
+    const trailing = after && !/^\s/.test(after) ? " " : "";
+    const token = `@${displayName}`;
+    composer = `${before}${leading}${token}${trailing}${after}`;
+    pendingRecipientPubkeys = [...new Set([...pendingRecipientPubkeys, pubkey.toLowerCase()])];
+    void tick().then(() => {
+      composerInput?.focus();
+      const cursor = before.length + leading.length + token.length + trailing.length;
+      composerInput?.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  function participantRoomChoices(): ParticipantRoomChoice[] {
+    const currentRoom = room;
+    if (!currentRoom) return [];
+    return listRooms()
+      .filter((candidate) => candidate.membershipStatus !== "retired" && !sameRoomIdentity(candidate, currentRoom))
+      .map((candidate) => ({
+        coordinatorPubkey: candidate.coordinatorPubkey,
+        roomId: candidate.id,
+        title: candidate.title,
+        coordinatorLabel: candidate.coordinatorName?.trim()
+          || `Coordinator ${candidate.coordinatorPubkey.slice(0, 6)}…${candidate.coordinatorPubkey.slice(-4)}`,
+      }));
+  }
+
+  async function inviteParticipantToRoom(participantPubkey: string, choice: ParticipantRoomChoice): Promise<void> {
+    const activeSession = session;
+    const currentRoom = room;
+    const candidate = listRooms().find((stored) => stored.membershipStatus !== "retired"
+      && stored.coordinatorPubkey === choice.coordinatorPubkey
+      && stored.id === choice.roomId);
+    if (!activeSession || !currentRoom || !candidate || sameRoomIdentity(candidate, currentRoom)) throw new Error("Room is no longer available");
+    const inviteUrl = createInviteUrl(window.location.origin, {
+      groupId: candidate.id,
+      coordinatorPubkey: candidate.coordinatorPubkey,
+      relayUrls: candidate.relayUrls,
+      title: candidate.title,
+      coordinatorOrigin: candidate.coordinatorOrigin,
+      coordinatorName: candidate.coordinatorName,
+      inviteToken: candidate.inviteToken,
+      host: hostIdentityForRoom(candidate),
+      coordinatorKeyMode: candidate.coordinatorKeyMode,
+    });
+    activeSession.setIdentity({ name: userProfileStore.displayName, avatar: userProfileStore.avatarUrl });
+    await activeSession.send(inviteUrl, { recipientPubkeys: [participantPubkey] });
   }
 
   async function resume(signer: NostrSigner) {
@@ -741,6 +799,9 @@
               onToggleReaction={toggleReaction}
               onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
               onJoinInvite={(sharedInvite) => navigate(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
+              participantRooms={participantRoomChoices()}
+              onMention={mentionParticipant}
+              onInviteToRoom={inviteParticipantToRoom}
             />
           {/each}
         </div>

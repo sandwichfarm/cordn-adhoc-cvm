@@ -27,7 +27,7 @@
   import ChatRoute from "./ChatRoute.svelte";
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
   import LifecyclePanel from "./LifecyclePanel.svelte";
-  import MessageGroup from "./MessageGroup.svelte";
+  import MessageGroup, { type ParticipantRoomChoice } from "./MessageGroup.svelte";
   import NotificationCenter from "./NotificationCenter.svelte";
   import NotificationFeed from "./NotificationFeed.svelte";
   import InviteRedeemer from "./InviteRedeemer.svelte";
@@ -89,6 +89,7 @@
   let sidebarLedger = $state<SidebarLedger>(emptySidebarLedger());
   let sidebarHistory = $state<SidebarHistoryEntry[]>([]);
   let composer = $state("");
+  let pendingRecipientPubkeys = $state<string[]>([]);
   let revision = $state(0);
   let roomConnection = $state<"connecting" | "connected" | "offline">("connecting");
   let roomConnectionDetail = $state<string | undefined>();
@@ -1026,6 +1027,59 @@
     composerInput?.focus();
   }
 
+  function mentionParticipant(pubkey: string, displayName: string): void {
+    const input = composerInput;
+    const start = input?.selectionStart ?? composer.length;
+    const end = input?.selectionEnd ?? composer.length;
+    const before = composer.slice(0, start);
+    const after = composer.slice(end);
+    const leading = before && !/\s$/.test(before) ? " " : "";
+    const trailing = after && !/^\s/.test(after) ? " " : "";
+    const token = `@${displayName}`;
+    composer = `${before}${leading}${token}${trailing}${after}`;
+    pendingRecipientPubkeys = [...new Set([...pendingRecipientPubkeys, pubkey.toLowerCase()])];
+    void tick().then(() => {
+      composerInput?.focus();
+      const cursor = before.length + leading.length + token.length + trailing.length;
+      composerInput?.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  function participantRoomChoices(): ParticipantRoomChoice[] {
+    const currentRoom = room;
+    if (!currentRoom) return [];
+    return listRooms()
+      .filter((candidate) => candidate.membershipStatus !== "retired" && !sameRoomIdentity(candidate, currentRoom))
+      .map((candidate) => ({
+        coordinatorPubkey: candidate.coordinatorPubkey,
+        roomId: candidate.id,
+        title: candidate.title,
+        coordinatorLabel: candidate.coordinatorName?.trim() || `Coordinator ${shortKey(candidate.coordinatorPubkey)}`,
+      }));
+  }
+
+  async function inviteParticipantToRoom(participantPubkey: string, choice: ParticipantRoomChoice): Promise<void> {
+    const activeSession = session;
+    const currentRoom = room;
+    const candidate = listRooms().find((stored) => stored.membershipStatus !== "retired"
+      && stored.coordinatorPubkey === choice.coordinatorPubkey
+      && stored.id === choice.roomId);
+    if (!activeSession || !currentRoom || !candidate || sameRoomIdentity(candidate, currentRoom)) throw new Error("Room is no longer available");
+    const inviteUrl = createInviteUrl(window.location.origin, {
+      groupId: candidate.id,
+      coordinatorPubkey: candidate.coordinatorPubkey,
+      relayUrls: candidate.relayUrls,
+      title: candidate.title,
+      coordinatorOrigin: candidate.coordinatorOrigin,
+      coordinatorName: candidate.coordinatorName,
+      inviteToken: candidate.inviteToken,
+      host: hostIdentityForRoom(candidate),
+      coordinatorKeyMode: candidate.coordinatorKeyMode,
+    });
+    activeSession.setIdentity(currentHostIdentity());
+    await activeSession.send(inviteUrl, { recipientPubkeys: [participantPubkey] });
+  }
+
   async function setReaction(targetMessageId: string, emoji: ChatEmojiShortcut, active: boolean): Promise<void> {
     if (!session) return;
     reactionError = "";
@@ -1199,15 +1253,18 @@
   async function send() {
     if (!session || !canSendMessages()) return;
     const message = composer;
+    const recipients = [...pendingRecipientPubkeys];
     if (!message.trim()) return;
     void enableSounds(false);
     error = "";
     session.setIdentity(currentHostIdentity());
     composer = "";
+    pendingRecipientPubkeys = [];
     try {
-      await session.send(message);
+      await session.send(message, { recipientPubkeys: recipients });
     } catch (cause) {
       if (!composer.trim()) composer = message;
+      if (pendingRecipientPubkeys.length === 0) pendingRecipientPubkeys = recipients;
       error = cause instanceof Error ? cause.message : "Unable to send this message";
     }
   }
@@ -1821,10 +1878,13 @@
                   onToggleReaction={toggleReaction}
                   onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
                   onJoinInvite={(sharedInvite) => navigateFromRail(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
+                  participantRooms={participantRoomChoices()}
+                  onMention={mentionParticipant}
+                  onInviteToRoom={inviteParticipantToRoom}
                 />
               {/each}
             </div>
-            <form class="shrink-0 border-t border-[#293832] p-3 sm:p-4" onsubmit={(event) => { event.preventDefault(); void send(); }}><div class="mb-2 flex gap-1 overflow-x-auto pb-1">{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div><div class="flex gap-2"><input bind:this={composerInput} bind:value={composer} class="host-input min-w-0 flex-1" disabled={!composerEnabled} placeholder={roomConnection === "offline" ? "Room offline" : roomConnection === "connecting" ? "Connecting…" : "Message as host"} /><button class="host-primary px-4 sm:px-5" disabled={!composerEnabled || !composer.trim()}>Send</button></div><p class:unavailable={!composerEnabled} class="host-composer-status">{roomConnection === "offline" ? "Cached messages are read-only while this room is offline." : roomConnection === "connecting" ? "Connecting this room…" : "Connected. Messages are end-to-end encrypted."}</p>{#if reactionError}<p class="reaction-error" role="status">{reactionError}</p>{/if}</form>
+            <form class="shrink-0 border-t border-[#293832] p-3 sm:p-4" data-testid="host-chat-composer" onsubmit={(event) => { event.preventDefault(); void send(); }}><div class="mb-2 flex gap-1 overflow-x-auto pb-1">{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div><div class="flex gap-2"><input bind:this={composerInput} bind:value={composer} class="host-input min-w-0 flex-1" disabled={!composerEnabled} placeholder={roomConnection === "offline" ? "Room offline" : roomConnection === "connecting" ? "Connecting…" : "Message as host"} /><button class="host-primary px-4 sm:px-5" disabled={!composerEnabled || !composer.trim()}>Send</button></div><p class:unavailable={!composerEnabled} class="host-composer-status">{roomConnection === "offline" ? "Cached messages are read-only while this room is offline." : roomConnection === "connecting" ? "Connecting this room…" : "Connected. Messages are end-to-end encrypted."}</p>{#if reactionError}<p class="reaction-error" role="status">{reactionError}</p>{/if}</form>
           </div>
         {:else if selectedServerIsHome && (coordinator.status !== "running" || (room && session))}
           <div class="startup-stage">
