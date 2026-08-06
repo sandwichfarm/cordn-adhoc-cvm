@@ -13,6 +13,13 @@ export interface ControllableNip07 {
   signedContactList: (targets: string[]) => NostrEvent;
 }
 
+/** Relay test output deliberately excludes URLs, request ids, and event material. */
+export interface SocialRelaySubscriptionSnapshot {
+  state: "open" | "closed";
+  kinds: number[];
+  authors: string[];
+}
+
 /** A page-lifetime NIP-07 bridge. Generated key material never enters the page's DOM or storage. */
 export async function installControllableNip07(page: Page): Promise<ControllableNip07> {
   const secretKey = generateSecretKey();
@@ -135,6 +142,40 @@ export async function emitSocialContactEvent(page: Page, event: NostrEvent): Pro
   await page.evaluate((signed) => {
     (window as typeof window & { __phase24SocialEmit?: (event: unknown) => void }).__phase24SocialEmit?.(signed);
   }, event);
+}
+
+/**
+ * Collapse duplicate public-relay subscriptions into one logical filter while
+ * retaining whether every backing socket has been closed.  The snapshot is
+ * intentionally metadata-only so contact tests cannot inspect relay traffic.
+ */
+export async function socialRelaySubscriptions(page: Page): Promise<SocialRelaySubscriptionSnapshot[]> {
+  return page.evaluate(() => {
+    type RelayRecord = {
+      closed: boolean;
+      filters: Array<{ authors?: string[]; kinds?: number[] }>;
+    };
+    const testWindow = window as typeof window & { __phase24SocialSockets?: RelayRecord[] };
+    const subscriptions = new Map<string, { closed: boolean; kinds: number[]; authors: string[] }>();
+    for (const socket of testWindow.__phase24SocialSockets ?? []) {
+      for (const filter of socket.filters) {
+        const kinds = [...(filter.kinds ?? [])].sort((left, right) => left - right);
+        const authors = [...(filter.authors ?? [])].sort();
+        const key = JSON.stringify({ kinds, authors });
+        const existing = subscriptions.get(key);
+        if (existing) {
+          existing.closed &&= socket.closed;
+        } else {
+          subscriptions.set(key, { closed: socket.closed, kinds, authors });
+        }
+      }
+    }
+    return [...subscriptions.values()].map(({ closed, kinds, authors }) => ({
+      state: closed ? "closed" : "open",
+      kinds,
+      authors,
+    }));
+  });
 }
 
 interface StoredMessageView {
