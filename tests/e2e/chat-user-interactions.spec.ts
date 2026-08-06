@@ -245,7 +245,7 @@ test("participant menu opens from a non-self author, mentions through the compos
   await trigger.press("Enter");
   const menu = page.getByRole("dialog", { name: "Actions for Participant" });
   await expect(menu.getByRole("button", { name: "Mention" })).toBeFocused();
-  await expect(menu.getByRole("button").allTextContents()).resolves.toEqual(["Mention", "Invite to room", "Follow on Nostr", "Highlight", "Ignore"]);
+  await expect(menu.getByRole("button").allTextContents()).resolves.toEqual(["Mention", "Invite to room", "Follow on Nostr", "Highlight: Default", "Ignore"]);
   await expect(menu.getByRole("button", { name: "Follow on Nostr" })).toBeDisabled();
   await expect(menu).toContainText("Sign in to follow people on Nostr.");
   await page.getByTestId("chat-composer").locator("input").evaluate((input) => input.removeAttribute("disabled"));
@@ -385,7 +385,7 @@ test("host renders the shared participant menu and mention flow for an admitted 
     await expect(hostTrigger).toBeVisible();
     await hostTrigger.click();
     const menu = page.getByRole("dialog", { name: /^Actions for / });
-    await expect(menu.getByRole("button").allTextContents()).resolves.toEqual(["Mention", "Invite to room", "Follow on Nostr", "Highlight", "Ignore"]);
+    await expect(menu.getByRole("button").allTextContents()).resolves.toEqual(["Mention", "Invite to room", "Follow on Nostr", "Highlight: Default", "Ignore"]);
     await menu.getByRole("button", { name: "Mention" }).click();
     await expect(page.getByPlaceholder("Message as host")).toBeFocused();
     await expect(page.getByPlaceholder("Message as host")).toHaveValue(/^@/);
