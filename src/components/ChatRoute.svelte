@@ -9,7 +9,9 @@
   import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, listRooms, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
-  import { projectMessageStreaks } from "../chat/message-presentation";
+  import { projectMessagePresentation } from "../chat/message-presentation";
+  import { chatParticipantPreferences, type ParticipantHighlightName } from "../chat/chat-participant-preferences.svelte";
+  import { nostrSocialStore } from "../invites/nostr-social.svelte";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import { channelPreferences } from "../notifications/channel-preferences.svelte";
   import MessageGroup, { type ParticipantRoomChoice } from "./MessageGroup.svelte";
@@ -59,6 +61,7 @@
   let name = $state("");
   let composer = $state("");
   let pendingRecipientPubkeys = $state<string[]>([]);
+  let expandedIgnoredStreaks = $state<Set<string>>(new Set());
   let composerError = $state("");
   let error = $state("");
   let joining = $state(false);
@@ -632,6 +635,30 @@
     await activeSession.send(inviteUrl, { recipientPubkeys: [participantPubkey] });
   }
 
+  function participantIgnored(pubkey: string): boolean {
+    return room ? chatParticipantPreferences.isIgnored(room.coordinatorPubkey, room.id, pubkey) : false;
+  }
+
+  function setParticipantIgnored(pubkey: string): void {
+    if (!room) return;
+    chatParticipantPreferences.setIgnored(room.coordinatorPubkey, room.id, pubkey, true);
+  }
+
+  function toggleIgnoredStreak(key: string): void {
+    const next = new Set(expandedIgnoredStreaks);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    expandedIgnoredStreaks = next;
+  }
+
+  function setParticipantHighlight(pubkey: string, name: ParticipantHighlightName | undefined): void {
+    chatParticipantPreferences.setHighlight(pubkey, name);
+  }
+
+  async function followParticipant(pubkey: string): Promise<void> {
+    await nostrSocialStore.follow(pubkey);
+  }
+
   async function resume(signer: NostrSigner) {
     if (!room) return;
     const expectedRoom = room;
@@ -784,25 +811,34 @@
       {#if currentRoom.joinRequestSent}<div class="m-4 border border-[#2e553b] bg-[#112219] p-4 text-sm text-[#b9eac5]">Your encrypted join request is with the host. This page keeps checking for your welcome.</div>{:else}
         <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="guest-message-list" onscroll={updateFollowLatest}>
           {#if currentRoom.messages.length === 0}<p class="pt-16 text-center text-sm text-[#82958a]">Say hello — messages are encrypted before they leave your device.</p>{/if}
-          {#each projectMessageStreaks(currentRoom.messages, currentRoom.stablePubkey) as streak (`${streak.sender}:${streak.messages[0].id}`)}
-            <MessageGroup
-              messages={streak.messages}
-              viewerPubkey={currentRoom.stablePubkey}
-              reactionsFor={(messageId) => reactionSummary(currentRoom, messageId, currentRoom.stablePubkey)}
-              pickerOpenMessageId={reactionPickerMessageId}
-              disabled={!composerEnabled}
-              idPrefix="guest"
-              onTogglePicker={(messageId) => reactionPickerMessageId = reactionPickerMessageId === messageId ? null : messageId}
-              onClosePicker={(messageId) => {
-                if (reactionPickerMessageId === messageId) reactionPickerMessageId = null;
-              }}
-              onToggleReaction={toggleReaction}
-              onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
-              onJoinInvite={(sharedInvite) => navigate(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
-              participantRooms={participantRoomChoices()}
-              onMention={mentionParticipant}
-              onInviteToRoom={inviteParticipantToRoom}
-            />
+          {#each projectMessagePresentation(currentRoom.messages, currentRoom.stablePubkey, participantIgnored) as streak (streak.instanceKey)}
+            {#if streak.ignored && !expandedIgnoredStreaks.has(streak.instanceKey)}
+              <button class="ignored-streak-disclosure" type="button" aria-expanded="false" aria-label={`${streak.messages[0].name || "anon"} posted ${streak.messages.length} ${streak.messages.length === 1 ? "message" : "messages"}. Show messages`} onclick={() => toggleIgnoredStreak(streak.instanceKey)}>{streak.messages[0].name || "anon"} posted {streak.messages.length} {streak.messages.length === 1 ? "message" : "messages"}</button>
+            {:else}
+              {#if streak.ignored}<button class="ignored-streak-disclosure" type="button" aria-expanded="true" aria-label={`${streak.messages[0].name || "anon"} posted ${streak.messages.length} ${streak.messages.length === 1 ? "message" : "messages"}. Hide messages`} onclick={() => toggleIgnoredStreak(streak.instanceKey)}>{streak.messages[0].name || "anon"} posted {streak.messages.length} {streak.messages.length === 1 ? "message" : "messages"}</button>{/if}
+              <MessageGroup
+                messages={streak.messages}
+                viewerPubkey={currentRoom.stablePubkey}
+                reactionsFor={(messageId) => reactionSummary(currentRoom, messageId, currentRoom.stablePubkey)}
+                pickerOpenMessageId={reactionPickerMessageId}
+                disabled={!composerEnabled}
+                idPrefix="guest"
+                highlight={chatParticipantPreferences.highlightFor(streak.sender)}
+                followAvailable={Boolean(nostrSocialStore.contactPubkey)}
+                followStatus={nostrSocialStore.followStatus}
+                onTogglePicker={(messageId) => reactionPickerMessageId = reactionPickerMessageId === messageId ? null : messageId}
+                onClosePicker={(messageId) => { if (reactionPickerMessageId === messageId) reactionPickerMessageId = null; }}
+                onToggleReaction={toggleReaction}
+                onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+                onJoinInvite={(sharedInvite) => navigate(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
+                participantRooms={participantRoomChoices()}
+                onMention={mentionParticipant}
+                onInviteToRoom={inviteParticipantToRoom}
+                onIgnore={setParticipantIgnored}
+                onHighlight={setParticipantHighlight}
+                onFollow={followParticipant}
+              />
+            {/if}
           {/each}
         </div>
         <form class="chat-composer shrink-0 border-t border-[#293832] bg-[#101614] p-3 sm:p-4" data-testid="chat-composer" onsubmit={(event) => { event.preventDefault(); void send(); }}>
@@ -834,6 +870,8 @@
 </section>
 
 <style>
+  .ignored-streak-disclosure { width: 100%; border: 1px solid #293832; background: #111814; padding: .65rem; color: #82958a; font-size: .66rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .ignored-streak-disclosure:hover, .ignored-streak-disclosure:focus-visible { border-color: #7cf59d; color: #dfffe7; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .chat-page { width: 100%; height: 100dvh; max-height: 100dvh; }
   .chat-page.embedded { position: static; inset: auto; width: 100%; min-width: 0; height: 100%; max-width: none; max-height: 100%; background: #101614; }
   .chat-page.embedded > [data-testid="cached-room-view"] { width: 100%; min-width: 0; max-width: none; margin-inline: 0; border-inline: 0; }

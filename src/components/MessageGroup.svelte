@@ -7,6 +7,7 @@
   import MessageReactions from "./MessageReactions.svelte";
   import MessageTimestamp from "./MessageTimestamp.svelte";
   import { viewportOverlay } from "../lib/viewport-overlay";
+  import { PARTICIPANT_HIGHLIGHT_PALETTE, type ParticipantHighlight, type ParticipantHighlightName } from "../chat/chat-participant-preferences.svelte";
 
   export interface ParticipantRoomChoice {
     coordinatorPubkey: string;
@@ -30,6 +31,12 @@
     participantRooms?: ParticipantRoomChoice[];
     onMention?: (participantPubkey: string, displayName: string) => void;
     onInviteToRoom?: (participantPubkey: string, room: ParticipantRoomChoice) => Promise<void>;
+    onIgnore?: (participantPubkey: string) => void;
+    onHighlight?: (participantPubkey: string, name: ParticipantHighlightName | undefined) => void;
+    highlight?: ParticipantHighlight;
+    followAvailable?: boolean;
+    followStatus?: "idle" | "pending" | "success" | "error";
+    onFollow?: (participantPubkey: string) => Promise<void>;
   }
 
   let {
@@ -47,6 +54,12 @@
     participantRooms = [],
     onMention,
     onInviteToRoom,
+    onIgnore,
+    onHighlight,
+    highlight,
+    followAvailable = false,
+    followStatus = "idle",
+    onFollow,
   }: Props = $props();
 
   const first = $derived(messages[0]);
@@ -59,6 +72,7 @@
   let invitePendingRoom = $state<string | null>(null);
   let actionError = $state("");
   let actionStatus = $state("");
+  let highlightOpen = $state(false);
 
   const participantName = $derived(first?.name || "anon");
 
@@ -67,6 +81,7 @@
     chooserOpen = false;
     actionError = "";
     actionStatus = "";
+    highlightOpen = false;
     menuOpen = true;
     await tick();
     document.getElementById(`${idPrefix}-participant-mention-${first.sender}`)?.focus();
@@ -83,6 +98,32 @@
     if (!first || !onMention) return;
     menuOpen = false;
     onMention(first.sender, participantName);
+  }
+
+  function ignoreParticipant(): void {
+    if (!first || !onIgnore) return;
+    onIgnore(first.sender);
+    closeSurface();
+  }
+
+  function chooseHighlight(name: ParticipantHighlightName | undefined): void {
+    if (!first || !onHighlight) return;
+    onHighlight(first.sender, name);
+    highlightOpen = false;
+    actionStatus = name ? `Highlight set to ${name}.` : "Highlight cleared.";
+    void tick().then(() => document.getElementById(`${idPrefix}-participant-highlight-${first.sender}`)?.focus());
+  }
+
+  async function followParticipant(): Promise<void> {
+    if (!first || !onFollow || followStatus === "pending") return;
+    actionError = "";
+    actionStatus = "";
+    try {
+      await onFollow(first.sender);
+      actionStatus = `Now following ${participantName}.`;
+    } catch {
+      actionError = "Couldn’t complete that action. Check your connection and try again.";
+    }
   }
 
   async function openChooser(): Promise<void> {
@@ -142,11 +183,13 @@
   <section
     class:mine
     class:host
+    class:highlighted={highlight !== undefined}
     class="message-streak"
     data-testid="message-streak"
     data-sender={first.sender}
     data-message-count={messages.length}
     aria-label={`${first.name || "anon"}, ${messages.length} ${messages.length === 1 ? "message" : "messages"}`}
+    style:--participant-highlight={highlight?.value}
   >
     <img class="streak-avatar" data-testid="message-avatar" src={first.avatar || fallbackAvatar} alt="" onerror={useFallback} />
     <div class="streak-content">
@@ -238,11 +281,20 @@
     >
       <button id={`${idPrefix}-participant-mention-${first.sender}`} type="button" onclick={() => void mentionParticipant()}>Mention</button>
       <button type="button" onclick={() => void openChooser()}>Invite to room</button>
-      <button type="button" disabled aria-describedby={`${idPrefix}-participant-follow-guidance-${first.sender}`}>Follow on Nostr</button>
-      <p id={`${idPrefix}-participant-follow-guidance-${first.sender}`} class="participant-guidance">Sign in to follow people on Nostr.</p>
+      <button type="button" disabled={!followAvailable || followStatus === "pending"} aria-busy={followStatus === "pending"} aria-describedby={!followAvailable ? `${idPrefix}-participant-follow-guidance-${first.sender}` : undefined} onclick={() => void followParticipant()}>{followStatus === "pending" ? `Following ${participantName}…` : "Follow on Nostr"}</button>
+      {#if !followAvailable}<p id={`${idPrefix}-participant-follow-guidance-${first.sender}`} class="participant-guidance">Sign in to follow people on Nostr.</p>{/if}
       <div class="participant-divider" aria-hidden="true"></div>
-      <button type="button" disabled>Highlight</button>
-      <button type="button" disabled>Ignore</button>
+      <button id={`${idPrefix}-participant-highlight-${first.sender}`} type="button" onclick={() => highlightOpen = !highlightOpen}>Highlight</button>
+      {#if highlightOpen}
+        <div class="participant-highlights" aria-label="Highlight color">
+          <button type="button" onclick={() => chooseHighlight(undefined)}>Default</button>
+          {#each Object.keys(PARTICIPANT_HIGHLIGHT_PALETTE) as name (name)}
+            <button type="button" onclick={() => chooseHighlight(name as ParticipantHighlightName)}>{name[0].toUpperCase() + name.slice(1)}</button>
+          {/each}
+        </div>
+      {/if}
+      <button type="button" onclick={ignoreParticipant}>Ignore</button>
+      {#if actionError}<p class="participant-action-error" role="status">{actionError}</p>{/if}
     </div>
   {/if}
 
@@ -301,6 +353,9 @@
   .participant-menu > button:disabled { cursor: not-allowed; color: #82958a; opacity: .8; }
   .participant-guidance, .participant-chooser p { margin: -.25rem .65rem .15rem; color: #82958a; font-size: .62rem; line-height: 1.45; }
   .participant-divider { height: 1px; margin: .1rem 0; background: #293832; }
+  .participant-highlights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; padding: .15rem; }
+  .participant-highlights button { min-height: 2.75rem; border: 1px solid #293832; color: #cfe8d5; font-size: .62rem; }
+  .participant-highlights button:hover, .participant-highlights button:focus-visible { border-color: #7cf59d; background: #14241a; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .participant-chooser h2 { color: #effff2; font-size: .78rem; font-weight: 700; }
   .participant-chooser > strong { color: #b9fac8; font-size: .72rem; }
   .participant-room-list { display: grid; max-height: 16rem; gap: .35rem; overflow-y: auto; overscroll-behavior: contain; }
@@ -314,6 +369,7 @@
   .message-bubble:has(:global(.has-reactions)) { margin-bottom: .72rem; }
   .mine .message-bubble { background: #162019; color: #cbd7ce; }
   .message-streak.host:not(.mine) .message-bubble { background: #18291d; box-shadow: inset 2px 0 rgb(124 245 157 / .12); }
+  .message-streak.highlighted:not(.mine) .message-bubble { box-shadow: inset 2px 0 var(--participant-highlight); }
   .mine .message-bubble.host { background: #162019; box-shadow: none; }
   .message-bubble p { white-space: pre-wrap; overflow-wrap: anywhere; }
   .message-bubble.mentioned { box-shadow: inset 2px 0 #f1f58f; }

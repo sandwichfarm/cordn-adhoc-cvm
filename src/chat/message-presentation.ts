@@ -7,6 +7,12 @@ export interface MessageStreak {
   messages: StoredMessage[];
 }
 
+/** A stable, post-visibility streak projection suitable for private UI state. */
+export interface MessagePresentationEntry extends MessageStreak {
+  instanceKey: string;
+  ignored: boolean;
+}
+
 export function groupMessageStreaks(messages: readonly StoredMessage[]): MessageStreak[] {
   return groupConsecutiveMessages(uniqueRenderableMessages(messages));
 }
@@ -24,6 +30,23 @@ export function projectMessageStreaks(messages: readonly StoredMessage[], viewer
     return recipients.length === 0 || (viewer !== undefined && recipients.includes(viewer));
   });
   return groupConsecutiveMessages(visible);
+}
+
+/**
+ * Apply private participant preferences only after target filtering has formed
+ * the visible sequence. This keeps collapsed ignore disclosures from
+ * resurrecting a non-target invite or joining independent visible streaks.
+ */
+export function projectMessagePresentation(
+  messages: readonly StoredMessage[],
+  viewerPubkey: string,
+  isIgnored: (participantPubkey: string) => boolean,
+): MessagePresentationEntry[] {
+  return projectMessageStreaks(messages, viewerPubkey).map((streak) => ({
+    ...streak,
+    instanceKey: `${streak.sender}:${streak.messages[0]?.id ?? ""}`,
+    ignored: isIgnored(streak.sender),
+  }));
 }
 
 function groupConsecutiveMessages(messages: readonly StoredMessage[]): MessageStreak[] {
