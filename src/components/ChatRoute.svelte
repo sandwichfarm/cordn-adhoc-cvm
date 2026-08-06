@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import { generate } from "lean-qr";
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import type { NostrSigner } from "@contextvm/sdk/core";
@@ -61,7 +62,7 @@
   let name = $state("");
   let composer = $state("");
   let pendingRecipientPubkeys = $state<string[]>([]);
-  let expandedIgnoredStreaks = $state<Set<string>>(new Set());
+  const expandedIgnoredStreaks = new SvelteSet<string>();
   let composerError = $state("");
   let error = $state("");
   let joining = $state(false);
@@ -645,10 +646,8 @@
   }
 
   function toggleIgnoredStreak(key: string): void {
-    const next = new Set(expandedIgnoredStreaks);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    expandedIgnoredStreaks = next;
+    if (expandedIgnoredStreaks.has(key)) expandedIgnoredStreaks.delete(key);
+    else expandedIgnoredStreaks.add(key);
   }
 
   function setParticipantHighlight(pubkey: string, name: ParticipantHighlightName | undefined): void {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
-  import { SvelteMap } from "svelte/reactivity";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import { generate } from "lean-qr";
   import { toSvgDataURL } from "lean-qr/extras/svg";
   import type { CoordinatorIdentity } from "../crypto/key-manager";
@@ -92,7 +92,7 @@
   let sidebarHistory = $state<SidebarHistoryEntry[]>([]);
   let composer = $state("");
   let pendingRecipientPubkeys = $state<string[]>([]);
-  let expandedIgnoredStreaks = $state<Set<string>>(new Set());
+  const expandedIgnoredStreaks = new SvelteSet<string>();
   let revision = $state(0);
   let roomConnection = $state<"connecting" | "connected" | "offline">("connecting");
   let roomConnectionDetail = $state<string | undefined>();
@@ -1093,10 +1093,8 @@
   }
 
   function toggleIgnoredStreak(key: string): void {
-    const next = new Set(expandedIgnoredStreaks);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    expandedIgnoredStreaks = next;
+    if (expandedIgnoredStreaks.has(key)) expandedIgnoredStreaks.delete(key);
+    else expandedIgnoredStreaks.add(key);
   }
 
   function setParticipantHighlight(pubkey: string, name: ParticipantHighlightName | undefined): void {
