@@ -7,12 +7,35 @@ export interface MessageStreak {
 
 export function groupMessageStreaks(messages: readonly StoredMessage[]): MessageStreak[] {
   const streaks: MessageStreak[] = [];
-  for (const message of messages) {
+  for (const message of uniqueRenderableMessages(messages)) {
     const current = streaks.at(-1);
     if (current?.sender === message.sender) current.messages.push(message);
     else streaks.push({ sender: message.sender, messages: [message] });
   }
   return streaks;
+}
+
+/**
+ * Svelte keyed blocks require message ids to be unique. Storage hydration repairs
+ * historical duplicates, but relay replay and concurrent session merges can still
+ * briefly expose two versions of one message before the next persistence cycle.
+ * Keep the render boundary total and prefer the confirmed/latest copy.
+ */
+function uniqueRenderableMessages(messages: readonly StoredMessage[]): StoredMessage[] {
+  const unique = new Map<string, StoredMessage>();
+  for (const message of messages) {
+    const existing = unique.get(message.id);
+    if (!existing) {
+      unique.set(message.id, message);
+      continue;
+    }
+    const existingCursor = existing.cursor ?? -1;
+    const nextCursor = message.cursor ?? -1;
+    if (nextCursor > existingCursor || (existing.pending === true && message.pending !== true)) {
+      unique.set(message.id, message);
+    }
+  }
+  return [...unique.values()];
 }
 
 export function relativeMessageTime(createdAt: number, now = Date.now()): string {

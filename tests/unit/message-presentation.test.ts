@@ -16,6 +16,18 @@ describe("message presentation", () => {
     ]);
   });
 
+  test("repairs non-adjacent duplicate ids before keyed chat rendering", () => {
+    const pending = { ...message("same", "alice"), pending: true };
+    const confirmed = { ...message("same", "alice"), cursor: 12, pending: false, content: "confirmed" };
+    const groups = groupMessageStreaks([pending, message("b1", "bob"), confirmed]);
+
+    expect(groups.flatMap((group) => group.messages)).toEqual([
+      expect.objectContaining({ id: "same", cursor: 12, pending: false, content: "confirmed" }),
+      expect.objectContaining({ id: "b1" }),
+    ]);
+    expect(new Set(groups.flatMap((group) => group.messages.map(({ id }) => id))).size).toBe(2);
+  });
+
   test.each([
     [0, "now", 1_000],
     [9_000, "9s ago", 1_000],
