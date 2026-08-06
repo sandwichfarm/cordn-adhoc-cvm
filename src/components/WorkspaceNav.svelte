@@ -5,6 +5,7 @@
   import { createSameShellChatHref } from "../chat/room-navigation";
   import { coordinatorUnreadTotal, hostIdentityForRoom, listRooms, loadRoom, removeStoredRoom, roomIdentityKey, roomTargetFor, ROOM_UNREAD_CHANGED_EVENT, roomUnreadCount, ROOMS_CHANGED_EVENT, SERVER_ONLINE_EVENT, type RoomTarget, type StoredRoom } from "../chat/room-store";
   import { resourceMonitor } from "../coordinator/resource-monitor.svelte";
+  import ChannelPreferenceIndicators from "./ChannelPreferenceIndicators.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
@@ -432,8 +433,8 @@
               <div class:active={isActive(room)} class="room-row" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)}>
               <button class="room-row-primary" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
-                <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
-                <RoomHostBadge host={room.host} compact />
+                <span class="room-name-with-preferences"><span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>{#if coordinatorStatus === "running"}<ChannelPreferenceIndicators roomKey={roomIdentityKey(room.coordinatorPubkey, room.id)} />{/if}</span>
+                {#if coordinatorStatus === "running"}<span class="channel-owner-avatar"><RoomHostBadge host={room.host} compact avatarOnly /></span>{/if}
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
@@ -459,8 +460,8 @@
               <div class:active={isActive(room)} class="room-row" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)}>
               <button class="room-row-primary" type="button" aria-label={`Open previous local session ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
-                <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
-                <RoomHostBadge host={room.host} compact />
+                <span class="room-name-with-preferences"><span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>{#if coordinatorStatus === "running"}<ChannelPreferenceIndicators roomKey={roomIdentityKey(room.coordinatorPubkey, room.id)} />{/if}</span>
+                {#if coordinatorStatus === "running"}<span class="channel-owner-avatar"><RoomHostBadge host={room.host} compact avatarOnly /></span>{/if}
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
@@ -488,8 +489,8 @@
               <div class:active={isActive(room)} class="room-row" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)}>
               <button class="room-row-primary" type="button" aria-label={`Open room ${room.title}, hosted by ${room.host.name}`} onclick={() => navigate(room.href)}>
                 <span class="hash" aria-hidden="true">#</span>
-                <span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>
-                <RoomHostBadge host={room.host} compact />
+                <span class="room-name-with-preferences"><span class="room-name"><span>{room.title}</span>{#if room.coordinatorKeyMode === "ephemeral"}<small class="key-mode">temporary key</small>{/if}</span>{#if coordinatorStatus === "running"}<ChannelPreferenceIndicators roomKey={roomIdentityKey(room.coordinatorPubkey, room.id)} />{/if}</span>
+                {#if coordinatorStatus === "running"}<span class="channel-owner-avatar"><RoomHostBadge host={room.host} compact avatarOnly /></span>{/if}
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
@@ -564,7 +565,11 @@
   .room-row:hover .room-row-primary, .room-row:focus-within .room-row-primary { background: #111a14; color: #effff2; }
   .room-row.active { border-color: transparent; background: #17241b; color: #effff2; box-shadow: inset 3px 0 #7cf59d; }
   .hash { color: #587060; font-size: .8rem; }
+  .room-name-with-preferences { display: flex; min-width: 0; align-items: center; gap: .35rem; }
   .room-name { display: flex; min-width: 0; flex-direction: column; overflow: hidden; font-size: .72rem; }
+  .room-name-with-preferences .room-name { flex: 0 1 auto; }
+  .channel-owner-avatar { display: inline-grid; opacity: 0; transition: opacity .15s ease; }
+  .room-row:hover .channel-owner-avatar, .room-row:focus-within .channel-owner-avatar { opacity: .72; }
   .room-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .key-mode { margin-top: .08rem; color: #d6ce77; font-size: .47rem; letter-spacing: .05em; text-transform: uppercase; }
   .active-label { color: #7cf59d; font-size: .5rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }

@@ -49,4 +49,6 @@
   .compact.no-role { grid-template-columns: 1.2rem minmax(0, auto); }
   .avatar-only { display: inline-grid; width: 1.65rem; height: 1.65rem; grid-template-columns: 1fr; flex: 0 0 auto; }
   .avatar-only img { width: 1.65rem; height: 1.65rem; }
+  .compact.avatar-only { width: 1rem; height: 1rem; }
+  .compact.avatar-only img { width: 1rem; height: 1rem; }
 </style>

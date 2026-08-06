@@ -22,7 +22,7 @@ key-files:
 
 # Plan 18-05 Summary
 
-The workspace now owns one persisted speaker control at its top-right edge. Each channel can inherit or override global sound and can admit message notifications from everyone, followed accounts, mutuals, or nobody. Incoming tone playback and notification recording consume the effective channel choice, and non-default channels display an accessible accent indicator.
+The workspace now owns one persisted speaker control at its top-right edge. Each channel can inherit or override global sound and can admit message notifications from everyone, followed accounts, mutuals, or nobody. Incoming tone playback and notification recording consume the effective channel choice. After coordinator startup, non-default channels display specific speaker and bell indicators beside their names, while smaller owner avatars appear only when their group row is hovered or keyboard-focused.
 
 The local coordinator create action now renders as a larger right-aligned `+`. It retains the `Create group` accessible name, uses a pointer cursor, and reveals a bounded hover/focus treatment with restrained motion.
 

@@ -21,6 +21,7 @@
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
   import CoordinatorSettings from "./CoordinatorSettings.svelte";
   import CoordinatorRoomCard from "./CoordinatorRoomCard.svelte";
+  import ChannelPreferenceIndicators from "./ChannelPreferenceIndicators.svelte";
   import CoordinatorSetup from "./CoordinatorSetup.svelte";
   import ChatRoute from "./ChatRoute.svelte";
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
@@ -1564,11 +1565,10 @@
                       <button class="channel-row-primary" type="button" aria-label={`Open room ${entry.room.title}, hosted by ${hostIdentityForRoom(entry.room).name}`} disabled={localRailUnavailable} onclick={() => selectRoom(entry)}>
                         <span class="channel-active-mark" aria-hidden="true"></span>
                         <span class="channel-hash" aria-hidden="true">#</span>
-                        <span class="truncate" title={entry.room.title}>{entry.room.title}</span>
-                        {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta"><RoomHostBadge host={hostIdentityForRoom(entry.room)} compact /></span>{/if}
+                        <span class="channel-name-with-preferences"><span class="truncate" title={entry.room.title}>{entry.room.title}</span>{#if localRailActionable}<ChannelPreferenceIndicators roomKey={roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)} />{/if}</span>
+                        {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta channel-owner-avatar"><RoomHostBadge host={hostIdentityForRoom(entry.room)} compact avatarOnly /></span>{/if}
                       </button>
                       {#if localRailActionable}
-                        {#if !channelPreferences.isDefault(roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                         {#if roomUnreadCount(entry.room) > 0}<span class="unread-badge rail-ready-control rail-ready-room-meta" data-room-key={roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)} data-testid={`room-unread-${roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)}`} title={`${roomUnreadCount(entry.room)} unread messages`} aria-label={`${roomUnreadCount(entry.room)} unread messages`}>{displayUnreadCount(roomUnreadCount(entry.room))}</span>{/if}
                         <div class="rail-ready-control rail-ready-room-actions"><RoomActionsMenu sidebar roomTitle={entry.room.title} roomId={entry.room.id} coordinatorPubkey={entry.room.coordinatorPubkey} inviteUrl={entry.inviteUrl} removalMode="delete" onRemove={(origin) => requestSidebarRoomRemoval(entry.room, origin)} /></div>
                       {/if}
@@ -1579,11 +1579,10 @@
                     <button class="channel-row-primary" type="button" aria-label={`Open joined room ${joinedRoom.title}, hosted by ${hostIdentityForRoom(joinedRoom).name}`} disabled={localRailUnavailable} onclick={() => openStoredRoomFromRail(joinedRoom)}>
                       <span class="channel-active-mark" aria-hidden="true"></span>
                       <span class="channel-hash" aria-hidden="true">#</span>
-                      <span class="truncate">{joinedRoom.title}</span>
-                      {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta"><RoomHostBadge host={hostIdentityForRoom(joinedRoom)} compact /></span>{/if}
+                      <span class="channel-name-with-preferences"><span class="truncate">{joinedRoom.title}</span>{#if localRailActionable}<ChannelPreferenceIndicators roomKey={roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)} />{/if}</span>
+                      {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta channel-owner-avatar"><RoomHostBadge host={hostIdentityForRoom(joinedRoom)} compact avatarOnly /></span>{/if}
                     </button>
                     {#if localRailActionable}
-                      {#if !channelPreferences.isDefault(roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                       {#if roomUnreadCount(joinedRoom) > 0}<span class="unread-badge rail-ready-control rail-ready-room-meta" data-room-key={roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)} data-testid={`room-unread-${roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)}`} title={`${roomUnreadCount(joinedRoom)} unread messages`} aria-label={`${roomUnreadCount(joinedRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(joinedRoom))}</span>{/if}
                       <div class="rail-ready-control rail-ready-room-actions"><RoomActionsMenu sidebar roomTitle={joinedRoom.title} roomId={joinedRoom.id} coordinatorPubkey={joinedRoom.coordinatorPubkey} inviteUrl={remoteRoomHref(joinedRoom)} removalMode="leave" onRemove={(origin) => requestSidebarRoomRemoval(joinedRoom, origin)} /></div>
                     {/if}
@@ -1605,10 +1604,9 @@
                       >
                         <span class="channel-active-mark" aria-hidden="true"></span>
                         <span class="channel-hash" aria-hidden="true">#</span>
-                        <span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>
-                        <RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact />
+                        <span class="channel-name-with-preferences"><span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>{#if localRailActionable}<ChannelPreferenceIndicators roomKey={roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)} />{/if}</span>
+                        {#if localRailActionable}<span class="channel-owner-avatar"><RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact avatarOnly /></span>{/if}
                       </button>
-                      {#if !channelPreferences.isDefault(roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                       {#if roomUnreadCount(remoteRoom) > 0}<span class="unread-badge" data-room-key={roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)} data-testid={`room-unread-${roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)}`} title={`${roomUnreadCount(remoteRoom)} unread messages`} aria-label={`${roomUnreadCount(remoteRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(remoteRoom))}</span>{/if}
                       <RoomActionsMenu sidebar roomTitle={remoteRoom.title} roomId={remoteRoom.id} coordinatorPubkey={remoteRoom.coordinatorPubkey} inviteUrl={remoteRoomHref(remoteRoom)} removalMode="leave" onRemove={(origin) => requestSidebarRoomRemoval(remoteRoom, origin)} />
                       </div>
@@ -1620,7 +1618,7 @@
                     <span class="channel-active-mark" aria-hidden="true"></span>
                     <span class="channel-hash" aria-hidden="true">#</span>
                     <span class="truncate">{activeIntentInvite.title || "Invited room"}</span>
-                    <RoomHostBadge host={activeIntentHost ?? { name: "Unknown host", pubkey: "" }} compact />
+                    {#if localRailActionable}<span class="channel-owner-avatar"><RoomHostBadge host={activeIntentHost ?? { name: "Unknown host", pubkey: "" }} compact avatarOnly /></span>{/if}
                   </button>
                 </div>
               {/if}
@@ -2146,7 +2144,6 @@
   .global-sound-toggle svg path + path { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
   .global-sound-toggle:hover { background: #101713; color: #bdebc8; transform: translateY(-1px); }
   .global-sound-toggle.enabled { color: #7cf59d; }
-  .channel-preference-indicator { flex: 0 0 auto; color: #7cf59d; font-size: .45rem; }
   .host-utilities { display: flex; min-width: 0; align-items: stretch; gap: .12rem; }
   .command-cluster { display: flex; min-width: 0; align-items: stretch; gap: .08rem; }
   .command-cluster-label { display: none; align-items: center; padding: 0 .42rem; color: #617268; font-size: .46rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
@@ -2259,6 +2256,10 @@
   .channel-row { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; border: 1px solid transparent; color: #91a59a; text-align: left; font-size: .72rem; }
   .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; border: 1px solid #3b5943; border-radius: 2px; background: #102216; color: #bfeac8; font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; }
   .channel-row-primary { display: grid; min-width: 0; grid-template-columns: .15rem auto minmax(0, 1fr) auto; align-items: center; gap: .55rem; padding: .55rem .2rem; color: inherit; text-align: left; }
+  .channel-name-with-preferences { display: flex; min-width: 0; align-items: center; gap: .35rem; }
+  .channel-name-with-preferences .truncate { min-width: 0; flex: 0 1 auto; }
+  .channel-owner-avatar { display: inline-grid; opacity: 0; transition: opacity .15s ease; }
+  .channel-row:hover .channel-owner-avatar, .channel-row:focus-within .channel-owner-avatar { opacity: .72; }
   .channel-row.unavailable { grid-template-columns: minmax(0, 1fr); color: #728378; }
   .channel-row.unavailable .channel-row-primary { cursor: default; grid-template-columns: .15rem auto minmax(0, 1fr); }
   .channel-row.unavailable.busy .channel-row-primary { cursor: progress; }

@@ -466,14 +466,24 @@ test("global and per-channel sound controls persist and expose non-default state
 
   const roomActions = page.getByTestId("host-chat").getByRole("button", { name: "More room actions" });
   await roomActions.click();
-  await page.getByLabel("Sound setting for Preference room").selectOption("on");
-  await page.getByLabel("Notification setting for Preference room").selectOption("mutuals");
-  await expect(card.getByLabel("Custom sound or notification settings")).toBeVisible();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:channel-preferences"))).toContain("mutuals");
+  await page.getByLabel("Sound setting for Preference room").selectOption("off");
+  await page.getByLabel("Notification setting for Preference room").selectOption("mute");
+  const mutedSound = card.locator('[aria-label="Sound muted for this channel"]');
+  const mutedNotifications = card.locator('[aria-label="Notifications muted for this channel"]');
+  await expect(mutedSound).toBeVisible();
+  await expect(mutedNotifications).toBeVisible();
+  await expect(mutedSound.locator(".strike")).toHaveCount(1);
+  await expect(mutedNotifications.locator(".strike")).toHaveCount(1);
+  expect(await card.locator(".channel-row-primary").evaluate((row) => {
+    const name = row.querySelector<HTMLElement>(".truncate")!.getBoundingClientRect();
+    const indicators = row.querySelector<HTMLElement>(".channel-preference-indicators")!.getBoundingClientRect();
+    return indicators.left >= name.right && indicators.left - name.right < 16;
+  })).toBe(true);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:channel-preferences"))).toContain("mute");
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Enable channel sounds" })).toHaveAttribute("aria-pressed", "false");
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:channel-preferences"))).toContain("mutuals");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:channel-preferences"))).toContain("mute");
 });
 
 async function navigateWithinShell(page: import("@playwright/test").Page, href: string): Promise<void> {
@@ -1834,8 +1844,11 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   const inviteLink = await page.getByTestId("invite-link").textContent();
   await expect(page.getByTestId("host-chat")).toBeVisible();
   const hostedRoomRow = page.getByTestId("invite-panel").getByRole("button", { name: "Open room Working room" });
-  await expect(hostedRoomRow.getByTestId("room-host-identity")).toContainText("Mara");
-  await expect(hostedRoomRow.getByTestId("room-host-identity")).toContainText("host");
+  await expect.poll(() => hostedRoomRow.locator(".channel-owner-avatar").evaluate((element) => getComputedStyle(element).opacity)).toBe("0");
+  await hostedRoomRow.hover();
+  await expect.poll(() => hostedRoomRow.locator(".channel-owner-avatar").evaluate((element) => getComputedStyle(element).opacity)).toBe("0.72");
+  await expect(hostedRoomRow.getByTestId("room-host-identity")).toHaveAttribute("title", "Hosted by Mara");
+  await expect(hostedRoomRow.getByTestId("room-host-identity")).toHaveText("");
   const hostActions = await openRoomActions(page, "Working room");
   await expect(hostActions.getByRole("menuitem", { name: "Copy coordinator pubkey for Working room" })).toBeVisible();
   const hostInviteAction = hostActions.getByRole("menuitem", { name: "Copy invite link for Working room" });
@@ -1871,8 +1884,11 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   await expect(guestActions).toBeHidden();
   await expect(guest.getByTestId("active-server-context")).toHaveCount(0);
   const guestSidebarRoom = guest.getByTestId("invite-panel").getByRole("button", { name: /Open room Working room/ });
-  await expect(guestSidebarRoom.getByTestId("room-host-identity")).toContainText("Mara");
-  await expect(guestSidebarRoom.getByTestId("room-host-identity")).toContainText("host");
+  await expect.poll(() => guestSidebarRoom.locator(".channel-owner-avatar").evaluate((element) => getComputedStyle(element).opacity)).toBe("0");
+  await guestSidebarRoom.hover();
+  await expect.poll(() => guestSidebarRoom.locator(".channel-owner-avatar").evaluate((element) => getComputedStyle(element).opacity)).toBe("0.72");
+  await expect(guestSidebarRoom.getByTestId("room-host-identity")).toHaveAttribute("title", "Hosted by Mara");
+  await expect(guestSidebarRoom.getByTestId("room-host-identity")).toHaveText("");
   await guest.getByPlaceholder("Message").fill("Hello from BDD");
   await guest.getByRole("button", { name: "Send" }).click();
   await expect(page.getByTestId("host-chat").getByText("Hello from BDD")).toBeVisible({ timeout: 15_000 });
