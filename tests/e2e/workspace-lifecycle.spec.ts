@@ -2664,19 +2664,19 @@ test("startup uses fluid masked ASCII ripple reveals", async ({ page }) => {
 
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-preference", "normal");
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-mode", "active");
+  const bedTexture = page.getByTestId("startup-ascii-field").locator(".ascii-bed .ascii-texture");
+  const initialTransform = await bedTexture.evaluate((element) => getComputedStyle(element).transform);
+  await page.waitForTimeout(650);
+  await expect.poll(() => bedTexture.evaluate((element) => getComputedStyle(element).transform)).not.toBe(initialTransform);
   await expectStartupFillsHostPane(page);
   const stage = page.locator(".startup-stage");
   await expect(stage).toHaveCSS("position", "absolute");
   await expectShellControlsUsable(page);
   await expectStartupMasks(page);
   await expectStartupVisualContract(page);
-  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-preference", "normal");
-  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-mode", "active");
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", /idle|restoring|retrying|exhausted/);
-  const bedTexture = page.getByTestId("startup-ascii-field").locator(".ascii-bed .ascii-texture");
-  const initialTransform = await bedTexture.evaluate((element) => getComputedStyle(element).transform);
-  await page.waitForTimeout(650);
-  await expect.poll(() => bedTexture.evaluate((element) => getComputedStyle(element).transform)).not.toBe(initialTransform);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-forward-target", /\d+/);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", /idle|restoring|retrying|exhausted/);
   await expect(page.getByRole("progressbar")).toBeVisible();
