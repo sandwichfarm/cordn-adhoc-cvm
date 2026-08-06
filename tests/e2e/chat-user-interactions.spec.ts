@@ -565,6 +565,7 @@ test("both composers restore edited mentions after signer failure", async ({ pag
 test("authenticated host expands filtered ignored streaks", async ({ page: host, browser }) => {
   test.setTimeout(150_000);
   const roomTitle = "Host ignore projection";
+  const filteredInviteCreatedAt = Math.floor(Date.now() / 1_000) * 1_000;
   await installControllableNip07(host);
   await host.goto("/");
   await authenticateNip07(host);
@@ -601,24 +602,56 @@ test("authenticated host expands filtered ignored streaks", async ({ page: host,
 
     const aIdentity = await roomIdentity(a, roomTitle);
     const bIdentity = await roomIdentity(b, roomTitle);
-    await host.evaluate(({ title, sender, target }) => {
+    const filteredInvite = createInviteUrl(new URL(host.url()).origin, {
+      groupId: "filtered-targeted-invite",
+      coordinatorPubkey: "a".repeat(64),
+      relayUrls: ["wss://relay.example"],
+      title: "Filtered targeted invite",
+    });
+    const filteredInviteId = getEventHash({
+      kind: 9,
+      pubkey: aIdentity.stablePubkey,
+      created_at: Math.floor(filteredInviteCreatedAt / 1_000),
+      tags: [["name", "anon"], ["p", bIdentity.stablePubkey]],
+      content: filteredInvite,
+    });
+    const inserted = await host.evaluate(({ title, sender, target, content, id, createdAt }) => {
       for (let index = 0; index < localStorage.length; index += 1) {
         const key = localStorage.key(index);
         if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
         const room = JSON.parse(localStorage.getItem(key) ?? "null") as { title?: string; messages?: unknown[] };
         if (room.title !== title || !room.messages) continue;
         room.messages.splice(2, 0, {
-          type: "message", id: "filtered-targeted-invite", sender, name: "anon", content: "https://chat.example/chat/filtered-targeted-invite",
-          createdAt: Date.now(), recipientPubkeys: [target], auth: { id: "filtered-targeted-invite", sig: "fixture" },
+          type: "message", id, sender, name: "anon", content, createdAt,
+          recipientPubkeys: [target], auth: { id, sig: "cordn" },
         });
         localStorage.setItem(key, JSON.stringify(room));
-        return;
+        return true;
       }
-    }, { title: roomTitle, sender: aIdentity.stablePubkey, target: bIdentity.stablePubkey });
+      return false;
+    }, {
+      title: roomTitle,
+      sender: aIdentity.stablePubkey,
+      target: bIdentity.stablePubkey,
+      content: filteredInvite,
+      id: filteredInviteId,
+      createdAt: filteredInviteCreatedAt,
+    });
+    expect(inserted).toBe(true);
+    // Recover the active room through the app instead of relying on a stale
+    // in-memory fixture, then prove the authenticated targeted invite arrived.
+    await host.reload();
     await host.getByRole("button", { name: new RegExp(`^Open room ${roomTitle}, hosted by`) }).click();
     const log = host.getByTestId("host-message-list");
     await expect(log.getByText("A second visible message")).toBeVisible({ timeout: 35_000 });
-    await expect(log.locator('[data-message-id="filtered-targeted-invite"]')).toHaveCount(0);
+    const deliveredFilteredInvite = await waitForStoredMessage(host, roomTitle, (message) => message.id === filteredInviteId);
+    expect(deliveredFilteredInvite).toMatchObject({
+      id: filteredInviteId,
+      content: filteredInvite,
+      recipientPubkeys: [bIdentity.stablePubkey],
+      auth: { id: filteredInviteId, sig: "cordn" },
+    });
+    await expect(log.locator(`[data-message-id="${filteredInviteId}"]`)).toHaveCount(0);
     const firstActions = log.locator("[data-testid=message-streak]").filter({ hasText: "A target host stays visible" }).getByRole("button", { name: /^Actions for / });
     await firstActions.click();
     await host.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Ignore" }).click();
@@ -627,10 +660,14 @@ test("authenticated host expands filtered ignored streaks", async ({ page: host,
     await disclosures.nth(0).click();
     await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "true");
     await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
+    await expect(log.getByText("A target host stays visible")).toBeVisible();
+    await expect(log.getByText("A second visible message")).toHaveCount(0);
     await expect(log.getByTestId("mentioned-you")).toHaveCount(1);
     await disclosures.nth(1).click();
+    await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "true");
     await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "true");
-    await expect(log.locator('[data-message-id="filtered-targeted-invite"]')).toHaveCount(0);
+    await expect(log.getByText("A second visible message")).toBeVisible();
+    await expect(log.locator(`[data-message-id="${filteredInviteId}"]`)).toHaveCount(0);
   } finally {
     await Promise.all([aContext.close(), bContext.close()]);
   }
