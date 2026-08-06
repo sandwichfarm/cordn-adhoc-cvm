@@ -95,6 +95,7 @@
   let audioContext: AudioContext | null = null;
   let knownMessageIds = new Set<string>();
   let inviteDialogOpen = $state(false);
+  let inviteQrExpanded = $state(false);
   let createDialogOpen = $state(false);
   let settingsDialogOpen = $state(false);
   let newRoomAutoApprove = $state(true);
@@ -859,11 +860,13 @@
     copyState = "idle";
     detailCopyState = "idle";
     refreshState = "idle";
+    inviteQrExpanded = false;
     inviteDialogOpen = true;
   }
 
   function closeInviteDialog() {
     inviteDialogOpen = false;
+    inviteQrExpanded = false;
     copyState = "idle";
     detailCopyState = "idle";
     refreshState = "idle";
@@ -2036,7 +2039,7 @@
     {#if inviteDialogOpen && room}
       <div class="share-overlay" data-testid="invite-dialog">
         <button class="share-backdrop" type="button" aria-label="Close invite dialog" onclick={closeInviteDialog}></button>
-        <div class="share-dialog invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-dialog-title">
+        <div class:qr-expanded={inviteQrExpanded} class="share-dialog invite-dialog" role="dialog" aria-modal="true" aria-labelledby="invite-dialog-title">
           <header class="share-dialog-header invite-dialog-header">
             <div class="min-w-0">
               <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7cf59d]">Invite</p>
@@ -2047,7 +2050,16 @@
           <div class="share-dialog-body">
             <div class="share-dialog-content invite-dialog-content">
               <section class="invite-qr-section" aria-labelledby="invite-qr-label">
-                <p id="invite-qr-label" class="invite-section-label">Scan</p>
+                <div class="invite-qr-heading">
+                  <p id="invite-qr-label" class="invite-section-label">Scan</p>
+                  <button
+                    type="button"
+                    class="invite-qr-expand"
+                    aria-pressed={inviteQrExpanded}
+                    aria-label={inviteQrExpanded ? "Restore QR code size" : "Enlarge QR code"}
+                    onclick={() => inviteQrExpanded = !inviteQrExpanded}
+                  >{inviteQrExpanded ? "Restore" : "Enlarge"}</button>
+                </div>
                 <a href={inviteUrl} aria-label="Open room invite" class="share-qr">
                   {#key inviteUrl}<img src={qrUrl} alt={`QR code to join ${room.title}`} />{/key}
                 </a>
@@ -2304,7 +2316,10 @@
   .invite-dialog-header .share-close { border: 0; background: transparent; }
   .invite-dialog-content { align-items: start; gap: 1.6rem; padding: .8rem 1.3rem 1.3rem; }
   .invite-qr-section { display: grid; justify-items: center; gap: .55rem; }
+  .invite-qr-heading { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 1rem; }
   .invite-section-label { justify-self: start; color: #718277; font-size: .54rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  .invite-qr-expand { border: 1px solid #34483a; padding: .28rem .48rem; color: #9bf6b3; font-size: .52rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .invite-qr-expand:hover, .invite-qr-expand:focus-visible { border-color: #7cf59d; background: #142018; color: #effff2; outline: none; }
   .share-qr { display: block; width: min(21rem, 100%); margin-inline: auto; border: .5rem solid #dfffe7; background: #dfffe7; }
   .share-qr img { display: block; width: 100%; aspect-ratio: 1; }
   .invite-details { display: grid; min-width: 0; }
@@ -2322,6 +2337,14 @@
   .refresh-guidance { min-height: .85rem; color: #718277; font-size: .55rem; line-height: 1.5; }
   .refresh-guidance.refreshed { color: #9bf6b3; }
   .share-qr img { animation: qr-refresh .24s ease-out; }
+  .invite-dialog.qr-expanded { display: grid; width: calc(100vw - 2rem); height: calc(100dvh - 2rem); max-width: none; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+  .invite-dialog.qr-expanded .share-dialog-body { display: grid; min-height: 0; overflow: hidden; }
+  .invite-dialog.qr-expanded .invite-dialog-content { display: grid; min-height: 0; height: 100%; grid-template-columns: minmax(0, 1fr); place-items: stretch; overflow: hidden; padding: 1rem; }
+  .invite-dialog.qr-expanded .invite-qr-section { display: grid; width: 100%; min-height: 0; height: 100%; grid-template-rows: auto minmax(0, 1fr); align-items: stretch; }
+  .invite-dialog.qr-expanded .invite-qr-heading { width: 100%; }
+  .invite-dialog.qr-expanded .share-qr { width: auto; height: 100%; max-width: 100%; max-height: 100%; aspect-ratio: 1; box-sizing: border-box; }
+  .invite-dialog.qr-expanded .share-qr img { width: 100%; height: 100%; }
+  .invite-dialog.qr-expanded .invite-details, .invite-dialog.qr-expanded .invite-in-app { display: none; }
   .emoji-button { flex: 0 0 auto; border: 1px solid #293832; background: #0b0e0d; padding: .2rem .4rem; font-size: .9rem; line-height: 1; }
   .emoji-button:hover { border-color: #7cf59d; background: #112219; }
   .emoji-button:disabled { cursor: not-allowed; opacity: .28; }
@@ -2464,6 +2487,7 @@
     .invite-dialog-header { padding-inline: .85rem; }
     .invite-in-app { margin-inline: .85rem; }
     .share-qr { width: min(100%, 15rem, 42dvh); border-width: .4rem; }
+    .invite-dialog.qr-expanded { width: calc(100vw - 1.1rem); height: calc(100dvh - 1.1rem); }
     .host-composer-status:not(.unavailable) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   }
 

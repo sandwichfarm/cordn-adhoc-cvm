@@ -1697,6 +1697,26 @@ test("Feature: invite-only chat — Scenario: a guest link opens inside the unif
   await expect(inviteDialog.getByText("Interoperable invite code")).toHaveCount(0);
   await expect(inviteDialog.getByText("Send in app")).toBeVisible();
   await expect.poll(async () => (await inviteDialog.getByAltText("QR code to join BDD room").boundingBox())?.width ?? 0).toBeGreaterThan(200);
+  const qrCode = inviteDialog.getByAltText("QR code to join BDD room");
+  const compactQrWidth = (await qrCode.boundingBox())!.width;
+  await inviteDialog.getByRole("button", { name: "Enlarge QR code" }).click();
+  await expect(inviteDialog.getByRole("button", { name: "Restore QR code size" })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await qrCode.boundingBox())?.width ?? 0).toBeGreaterThan(compactQrWidth);
+  await expect(inviteDialog.locator(".invite-details")).toBeHidden();
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await expect.poll(() => inviteDialog.evaluate((dialog) => ({
+    dialogScrolls: dialog.scrollHeight > dialog.clientHeight,
+    pageScrolls: document.documentElement.scrollHeight > document.documentElement.clientHeight,
+    qrBottom: Math.ceil(dialog.querySelector(".share-qr")!.getBoundingClientRect().bottom),
+    dialogBottom: Math.floor(dialog.getBoundingClientRect().bottom),
+  }))).toEqual(expect.objectContaining({ dialogScrolls: false, pageScrolls: false }));
+  expect(await inviteDialog.evaluate((dialog) => {
+    const qrBottom = dialog.querySelector(".share-qr")!.getBoundingClientRect().bottom;
+    return qrBottom <= dialog.getBoundingClientRect().bottom;
+  })).toBe(true);
+  await inviteDialog.getByRole("button", { name: "Restore QR code size" }).click();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(inviteDialog.getByRole("button", { name: "Enlarge QR code" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".host-layout")).toHaveCSS("filter", "blur(2px)");
   const inviteLink = await page.getByTestId("invite-link").textContent();
   expect(inviteLink).toContain("/chat/");
