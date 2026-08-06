@@ -76,6 +76,32 @@ describe("room navigation persistence", () => {
     window.removeEventListener(ROOMS_CHANGED_EVENT, listener);
   });
 
+  it("repairs duplicate persisted message ids before a keyed chat render", () => {
+    const duplicateId = "7a513fe44ec0d9fc66eb5f9e41bfaf1dc11430cb03fad357b034ffaa7101137a";
+    const room = storedRoom({
+      id: "duplicate-messages",
+      title: "Duplicate messages",
+      coordinatorPubkey: "a".repeat(64),
+      isHost: false,
+      messages: [
+        { type: "message", id: duplicateId, sender: "b".repeat(64), name: "Guest", content: "hello", createdAt: 1, pending: true },
+        { type: "message", id: duplicateId, sender: "b".repeat(64), name: "Guest", content: "hello", createdAt: 1, cursor: 12, pending: false },
+      ],
+      pending: [
+        { id: duplicateId, opaqueBase64: "first" },
+        { id: duplicateId, opaqueBase64: "second" },
+      ],
+    });
+    localStorage.setItem(currentRoomKey(room), JSON.stringify(room));
+
+    expect(loadRoom(room.id, room.coordinatorPubkey)?.messages).toEqual([
+      expect.objectContaining({ id: duplicateId, cursor: 12, pending: false }),
+    ]);
+    expect(loadRoom(room.id, room.coordinatorPubkey)?.pending).toEqual([
+      { id: duplicateId, opaqueBase64: "first" },
+    ]);
+  });
+
   it.each([
     undefined,
     null,

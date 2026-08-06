@@ -524,6 +524,37 @@ test("unread badge lifecycle projects exact room and coordinator counts", async 
   expect(pageErrors).toEqual([]);
 });
 
+test("repairs replayed message ids before rendering cached production state", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto("/");
+  await seedJoinedRoom(page, "Replay-safe room", "7".repeat(64));
+  await page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+      const room = JSON.parse(localStorage.getItem(key) ?? "{}");
+      if (room.title !== "Replay-safe room") continue;
+      const message = {
+        type: "message",
+        id: "7a513fe44ec0d9fc66eb5f9e41bfaf1dc11430cb03fad357b034ffaa7101137a",
+        sender: "8".repeat(64),
+        name: "Replay sender",
+        content: "render once",
+        createdAt: Date.now(),
+        cursor: 4,
+      };
+      room.messages = [message, { ...message }];
+      localStorage.setItem(key, JSON.stringify(room));
+    }
+  });
+  await page.reload();
+
+  await page.getByRole("button", { name: /Open room Replay-safe room/ }).click();
+  await expect(page.getByText("render once", { exact: true })).toHaveCount(1);
+  expect(pageErrors.filter((message) => message.includes("each_key_duplicate"))).toEqual([]);
+});
+
 test("unread zero transition announces once from the page-level owner", async ({ page }) => {
   await page.goto("/");
   const coordinatorPubkey = "c".repeat(64);
