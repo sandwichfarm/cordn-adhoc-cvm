@@ -366,7 +366,7 @@
       unregisterAnonymousSession = null;
       session?.discard();
       session = null;
-      removeStoredRoom(latest);
+      removeStoredRoom(latest, { reason: mode === "delete" ? "deleted" : "left", coordinatorLabel: removalCoordinatorLabel(latest) });
       room = null;
       navigate(mode === "delete" ? "/" : "/chats");
       return true;

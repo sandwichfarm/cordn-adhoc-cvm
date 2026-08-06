@@ -24,6 +24,7 @@ import {
   type ChatReactionMutation,
   type LocalKeyPackage,
 } from "./protocol";
+import { persistRemovedSidebarRoom } from "./sidebar-ledger";
 import {
   ChatCoordinatorClient,
   type ChatCoordinatorClientFactory,
@@ -1286,7 +1287,10 @@ export function saveRoom(room: StoredRoom): void {
   }));
 }
 
-export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubkey">): void {
+export function removeStoredRoom(
+  room: Pick<StoredRoom, "id" | "coordinatorPubkey">,
+  history?: { reason: "deleted" | "left"; coordinatorLabel: string },
+): void {
   // Resolve the validated preference while the room still exists. Once storage is
   // removed loadLastOpenRoom can no longer distinguish this exact composite room
   // from a stale/corrupt preference.
@@ -1297,6 +1301,7 @@ export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubke
 
   const currentKey = roomStorageKey(room.coordinatorPubkey, room.id);
   const current = readStoredRoom(localStorage.getItem(currentKey));
+  if (current && history) persistRemovedSidebarRoom(current, history.reason, history.coordinatorLabel);
   if (sameRoomIdentity(current, room)) localStorage.removeItem(currentKey);
 
   const legacyKey = `${ROOM_KEY_PREFIX}${room.id}`;
@@ -1313,13 +1318,15 @@ export function removeHostedRoomsForCoordinator(coordinatorPubkey: string): void
   const normalizedCoordinatorPubkey = coordinatorPubkey.trim().toLowerCase();
   if (!normalizedCoordinatorPubkey) return;
 
-  const targets = new Map<string, Pick<StoredRoom, "id" | "coordinatorPubkey">>();
+  const targets = new Map<string, StoredRoom>();
   for (const { room } of storedRoomEntries()) {
     if (!room.isHost || room.coordinatorPubkey.trim().toLowerCase() !== normalizedCoordinatorPubkey) continue;
     targets.set(roomIdentityKey(room.coordinatorPubkey, room.id), room);
   }
 
-  for (const room of targets.values()) removeStoredRoom(room);
+  for (const room of targets.values()) {
+    removeStoredRoom(room, { reason: "deleted", coordinatorLabel: `Previous local ${room.coordinatorPubkey.slice(0, 6)}` });
+  }
   forgetLastOpenRoom(coordinatorPubkey);
 }
 

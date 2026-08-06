@@ -17,6 +17,8 @@ and closes with repeatable delivery guidance and automated proof.
 - [ ] **Phase 18: Unified Presence, Notifications & Controls** - Consolidate personal presence and notifications while separating them from host lifecycle actions.
 - [ ] **Phase 19: Grouped Conversations & Reactions** - Make active conversations easier to scan and react to without visual repetition.
 - [ ] **Phase 20: Delivery Contract & Regression Proof** - Document the GSD lifecycle and protect the complete v1.1 experience with automated coverage.
+- [ ] **Phase 21: First-Run Coordinator Identity & Profile** - Require deliberate operator identity and coordinator naming before first startup.
+- [ ] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history.
 
 ## Phase Details
 
@@ -160,6 +162,27 @@ Plans:
 - [ ] 21-05-PLAN.md — Verify live canonical cordn.net name resolution before and after rename/restart.
 **UI hint**: yes
 
+### Phase 22: Coordinator-Grouped Sidebar
+
+**Goal**: Users can understand and navigate local, remote, and historical groups without coordinator switching or activity-driven list movement.
+**Depends on**: Phase 18
+**Requirements**: SIDE-01, SIDE-02, SIDE-03, SIDE-04, SIDE-05, SIDE-06
+**Success Criteria** (what must be TRUE):
+
+  1. The rail order is Join from invite → local coordinator controls → selected local-room invite/admission controls → local and remote coordinator cards → collapsed History → personal controls.
+  2. Every active coordinator has a lightweight fieldset-style hairline card; local is first and owns the only `+ Group` action.
+  3. No coordinator shows more than five rooms until its reveal control is activated, while the active room remains visible.
+  4. Retired, rotated-key, explicitly deleted, and explicitly left rooms are represented only by secret-free History records, collapsed by default.
+  5. First-seen coordinator and room order survives reload and never changes because of messages, unread counts, connection status, or recovery state.
+  6. Existing exact open/delete/leave actions, responsive containment, and accessible names remain proven by browser tests.
+
+**Plans**: 2 plans
+
+- [ ] 22-01-PLAN.md — Add secret-free sidebar history and stable first-seen ordering persistence with unit coverage.
+- [ ] 22-02-PLAN.md — Replace coordinator switching with coordinator cards, reveal limits, ordered controls, and browser coverage.
+
+**UI hint**: yes
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -171,3 +194,4 @@ Plans:
 | 19. Grouped Conversations & Reactions | 0/TBD | Not started | - |
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
 | 21. First-Run Coordinator Identity & Profile | 0/TBD | Not started | - |
+| 22. Coordinator-Grouped Sidebar | 0/2 | Not started | - |

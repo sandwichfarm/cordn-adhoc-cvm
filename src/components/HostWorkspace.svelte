@@ -11,6 +11,7 @@
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { emptySidebarLedger, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import {
     type ChatCoordinatorClientFactory,
@@ -18,6 +19,7 @@
   } from "../chat/coordinator-client";
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
   import CoordinatorSettings from "./CoordinatorSettings.svelte";
+  import CoordinatorRoomCard from "./CoordinatorRoomCard.svelte";
   import CoordinatorSetup from "./CoordinatorSetup.svelte";
   import ChatRoute from "./ChatRoute.svelte";
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
@@ -33,6 +35,7 @@
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
+  import SidebarHistory from "./SidebarHistory.svelte";
   import StartupSignalField from "./StartupSignalField.svelte";
   import StartupProgressMeter from "./StartupProgressMeter.svelte";
   import { projectStartupSignal } from "./startup-signal-presentation";
@@ -80,6 +83,8 @@
   let homeJoinedRooms = $state<StoredRoom[]>([]);
   let remoteRooms = $state<StoredRoom[]>([]);
   let previousLocalRooms = $state<StoredRoom[]>([]);
+  let sidebarLedger = $state<SidebarLedger>(emptySidebarLedger());
+  let sidebarHistory = $state<SidebarHistoryEntry[]>([]);
   let composer = $state("");
   let revision = $state(0);
   let roomConnection = $state<"connecting" | "connected" | "offline">("connecting");
@@ -182,7 +187,7 @@
     remoteServers[0]?.pubkey ?? previousLocalServers[0]?.pubkey,
   );
   const hasAnySavedRooms = $derived(
-    hostedRooms.length + homeJoinedRooms.length + remoteRooms.length + previousLocalRooms.length > 0,
+    hostedRooms.length + homeJoinedRooms.length + remoteRooms.length + previousLocalRooms.length + sidebarHistory.length > 0,
   );
   const activeIntentInvite = $derived(parseInviteUrl(currentUrl));
   const activeIntentHost = $derived(activeIntentInvite?.host
@@ -197,6 +202,10 @@
     intentStoredRoom?.isHost && intentStoredRoom.coordinatorPubkey === coordinatorPubkey,
   ));
   const embeddedChatActive = $derived(hasChatIntent && !intentTargetsCurrentHostedRoom);
+  const activeSidebarRoomKey = $derived(roomIdentityKey(
+    embeddedChatActive ? activeIntentInvite?.coordinatorPubkey ?? "" : room?.coordinatorPubkey ?? "",
+    embeddedChatActive ? activeIntentInvite?.groupId ?? "" : room?.id ?? "",
+  ));
   const setupState = $derived<"checking" | "identity">(
     !identityReady ? "checking" : "identity",
   );
@@ -693,13 +702,25 @@
 
   function refreshRemoteRooms() {
     const rooms = listRooms();
-    homeJoinedRooms = rooms.filter((storedRoom) =>
+    let storedLedger: SidebarLedger;
+    try {
+      storedLedger = parseSidebarLedger(localStorage.getItem(SIDEBAR_LEDGER_KEY));
+    } catch {
+      storedLedger = sidebarLedger;
+    }
+    const projection = reconcileSidebarLedger(storedLedger, rooms, coordinatorPubkey, config.coordinatorName || "My coordinator");
+    sidebarLedger = projection.ledger;
+    sidebarHistory = projection.history;
+    try { localStorage.setItem(SIDEBAR_LEDGER_KEY, serializeSidebarLedger(projection.ledger)); } catch { /* presentation order remains in memory */ }
+    const activeRooms = projection.activeRooms;
+    hostedRooms = activeRooms
+      .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
+      .map(buildHostedRoomEntry);
+    homeJoinedRooms = activeRooms.filter((storedRoom) =>
       storedRoom.coordinatorPubkey === coordinatorPubkey && !storedRoom.isHost
     );
-    previousLocalRooms = rooms.filter((storedRoom) =>
-      storedRoom.isHost && storedRoom.coordinatorPubkey !== coordinatorPubkey
-    );
-    remoteRooms = rooms.filter((storedRoom) =>
+    previousLocalRooms = [];
+    remoteRooms = activeRooms.filter((storedRoom) =>
       !storedRoom.isHost && storedRoom.coordinatorPubkey !== coordinatorPubkey
     );
     probeRemoteCoordinatorsIfTargetsChanged();
@@ -728,9 +749,6 @@
       roomConnectionDetail = undefined;
     }
 
-    hostedRooms = listRooms()
-      .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
-      .map(buildHostedRoomEntry);
     refreshRemoteRooms();
   }
 
@@ -795,7 +813,7 @@
       });
       const entry = buildHostedRoomEntry(created);
       await openHostChat(created);
-      hostedRooms = [entry, ...hostedRooms.filter((candidate) => !sameRoomIdentity(candidate.room, created))];
+      refreshRemoteRooms();
       inviteUrl = entry.inviteUrl;
       qrUrl = entry.qrUrl;
       createDialogOpen = false;
@@ -1067,7 +1085,10 @@
         session?.discard();
         session = null;
       }
-      removeStoredRoom(latest);
+      removeStoredRoom(latest, {
+        reason: frozenMode === "delete" ? "deleted" : "left",
+        coordinatorLabel: coordinatorLabelFor(latest.coordinatorPubkey),
+      });
       hostedRooms = hostedRooms.filter((entry) => !sameRoomIdentity(entry.room, target));
       homeJoinedRooms = homeJoinedRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
       remoteRooms = remoteRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
@@ -1172,9 +1193,6 @@
       if (createDialogOpen) closeCreateDialog();
       settingsDialogOpen = false;
     };
-    hostedRooms = listRooms()
-      .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
-      .map(buildHostedRoomEntry);
     refreshRemoteRooms();
     const compactQuery = window.matchMedia("(max-width: 900px)");
     const markCoordinatorOnline = (event: Event) => handleCoordinatorReachabilityEvent(event, "online");
@@ -1309,6 +1327,7 @@
         <span class="sr-only" aria-live="polite">{unreadAnnouncement}</span>
         <div class="flex min-h-full flex-col gap-4">
             <div class="rail-join"><InviteRedeemer onNavigate={navigateFromRail} /></div>
+            {#if false}
             <nav class="channel-browser" aria-label="Server and channel browser">
               <div class="channel-context">
                 <div class="channel-context-row">
@@ -1587,6 +1606,84 @@
               {/if}
               {#if error}<p class="text-sm text-[#ffaaa3]">{error}</p>{/if}
             {/if}
+            {/if}
+
+            <div class="coordinator-runtime-stack">
+            <section class="coordinator-runtime-card" data-testid="coordinator-runtime-card" aria-label={`Local coordinator ${config.coordinatorName || "My coordinator"}`}>
+              <div class="coordinator-runtime-copy">
+                <span
+                  class:online={localCoordinatorStatus === "online"}
+                  class:connecting={localCoordinatorStatus === "connecting"}
+                  class:offline={localCoordinatorStatus === "offline"}
+                  class="channel-server-dot"
+                  data-testid="selected-coordinator-status"
+                  data-coordinator-pubkey={coordinatorPubkey}
+                  data-state={localCoordinatorStatus}
+                  role="img"
+                  aria-label={localCoordinatorStatusLabel}
+                ></span>
+                <span><strong>{config.coordinatorName || "My coordinator"}</strong><small>{localCoordinatorStatusLabel} · {relayUrls.length} relay {relayUrls.length === 1 ? "path" : "paths"}</small></span>
+              </div>
+              {#if !locked}
+                <div class="coordinator-actions" role="group" aria-label="Coordinator controls">
+                  <LifecyclePanel {coordinator} compact minimal onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+                  <button class:pending={coordinator.restartRequired} class="channel-settings" type="button" aria-label={`Settings for ${config.coordinatorName || "My coordinator"}`} onclick={openSettings}>
+                    <span aria-hidden="true">⚙</span>
+                    {#if coordinator.restartRequired}<span class="channel-settings-pip" aria-label="Restart required"></span>{/if}
+                  </button>
+                </div>
+              {/if}
+            </section>
+
+            {#if room && localRailActionable}
+              <div class="room-tools rail-ready-control rail-ready-tools" aria-label={`Controls for ${room.title}`}>
+                <button class="share-trigger" type="button" aria-label="Invite" aria-haspopup="dialog" onclick={openInviteDialog}><span>Invite</span><span aria-hidden="true">↗</span></button>
+                <button class:enabled={autoApprove} class="room-access-toggle" type="button" aria-pressed={autoApprove} aria-label={`Auto-approve invitees for ${room.title}: ${autoApprove ? "on" : "off"}`} onclick={() => void setAutoApprove(!autoApprove)}><span>Auto-approve</span><strong>{autoApprove ? "On" : "Off"}</strong></button>
+              </div>
+              <span class="sr-only" data-testid="invite-link">{inviteUrl}</span>
+              {#if !autoApprove}<PendingInvitees requests={pendingJoinRequests} onApprove={approveWaitingInvitees} />{/if}
+              {#if error}<p class="text-sm text-[#ffaaa3]">{error}</p>{/if}
+            {/if}
+            </div>
+
+            <nav class="coordinator-card-list" aria-label="Server and channel browser">
+              <CoordinatorRoomCard
+                pubkey={coordinatorPubkey}
+                label={config.coordinatorName || "My coordinator"}
+                status={localCoordinatorStatus}
+                statusLabel={localCoordinatorStatusLabel}
+                local
+                rooms={[
+                  ...hostedRooms.map((entry) => ({ room: entry.room, inviteUrl: entry.inviteUrl, removalMode: "delete" as const })),
+                  ...homeJoinedRooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const })),
+                ]}
+                unreadCount={coordinatorUnreadCount(coordinatorPubkey)}
+                {activeSidebarRoomKey}
+                disabled={localRailUnavailable}
+                busy={localRailBusy}
+                {soundsEnabled}
+                onCreate={() => void openCreateDialog()}
+                onOpen={openCoordinatorRoom}
+                onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
+                onToggleSounds={toggleSounds}
+              />
+              {#each remoteServers as server (server.pubkey)}
+                <CoordinatorRoomCard
+                  pubkey={server.pubkey}
+                  label={`Coordinator ${shortKey(server.pubkey)}`}
+                  status={externalCoordinatorReachability(server.pubkey)}
+                  statusLabel={reachabilityLabel(externalCoordinatorReachability(server.pubkey))}
+                  rooms={server.rooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const }))}
+                  unreadCount={coordinatorUnreadCount(server.pubkey)}
+                  {activeSidebarRoomKey}
+                  {soundsEnabled}
+                  onOpen={openCoordinatorRoom}
+                  onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
+                  onToggleSounds={toggleSounds}
+                />
+              {/each}
+            </nav>
+            <SidebarHistory entries={sidebarHistory} />
           <div class="sidebar-account" role="group" aria-label="Personal controls">
             <UserProfile
               {config}
@@ -2032,7 +2129,16 @@
   .settings-button:hover, .settings-button.pending { background: #101713; color: #dfffe7; }
   .settings-pip { position: absolute; top: .35rem; right: .35rem; width: .4rem; height: .4rem; border-radius: 999px; background: #e4e78d; box-shadow: 0 0 8px rgb(228 231 141 / .4); }
   .host-rail { background: #0d1310; }
+  .host-rail > div { gap: .75rem; }
   .rail-join { flex: 0 0 auto; border: 1px solid #293832; }
+  .coordinator-runtime-stack { display: grid; gap: 0; }
+  .coordinator-runtime-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; border: 1px solid #293832; background: #0b120d; }
+  .coordinator-runtime-stack > .room-tools { margin-top: -1px; }
+  .coordinator-runtime-copy { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .6rem; padding: .65rem .7rem; }
+  .coordinator-runtime-copy > span:last-child, .coordinator-runtime-copy strong, .coordinator-runtime-copy small { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .coordinator-runtime-copy strong { color: #dfffe7; font-size: .7rem; font-weight: 650; }
+  .coordinator-runtime-copy small { margin-top: .18rem; color: #718277; font-size: .5rem; text-transform: capitalize; }
+  .coordinator-card-list { display: grid; gap: .5rem; }
   .host-input { width: 100%; border: 1px solid #34433b; background: #090d0b; padding: .7rem .8rem; color: #effff2; outline: none; }
   .host-input:focus { border-color: #7cf59d; box-shadow: 0 0 0 2px rgb(124 245 157 / .11); }
   .host-input:disabled { cursor: not-allowed; border-color: #26322c; color: #64766b; opacity: .72; }
