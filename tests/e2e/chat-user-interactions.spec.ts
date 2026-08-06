@@ -361,7 +361,26 @@ test("participant feedback remains visible and persistent in host and guest rend
   const viewer = "e".repeat(64);
   const participant = "d".repeat(64);
 
+  for (const pane of ["host", "guest"] as const) {
+    await openMessageGroupFixture(page, pane);
+    const fixtureTrigger = page.getByRole("button", { name: "Actions for Participant" });
+    const fixtureStreak = page.getByTestId("message-streak");
+    const fixtureBubble = page.getByTestId("message-bubble");
+    const [streakBefore, bubbleBefore] = await Promise.all([
+      fixtureStreak.boundingBox(),
+      fixtureBubble.boundingBox(),
+    ]);
+    await fixtureTrigger.click();
+    await expect.poll(() => fixtureTrigger.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.width >= 44 && rect.height >= 44;
+    })).toBe(true);
+    await expect(Promise.all([fixtureStreak.boundingBox(), fixtureBubble.boundingBox()]))
+      .resolves.toEqual([streakBefore, bubbleBefore]);
+  }
+
   await page.goto("/");
+  await page.evaluate(() => localStorage.removeItem("cordn:v1:chat-participant-preferences"));
   await seedGuestMessages(page, viewer, [{
     id: "highlight-before-ignore",
     sender: participant,
@@ -390,11 +409,11 @@ test("participant feedback remains visible and persistent in host and guest rend
   await expect(trigger).toBeVisible({ timeout: 20_000 });
   await trigger.click();
   const menu = page.getByRole("dialog", { name: "Actions for Participant" });
-  const highlightAction = menu.getByRole("button", { name: "Highlight: Default" });
+  const highlightAction = menu.locator("#guest-participant-highlight");
   await expect(highlightAction).toHaveText("Highlight: Default");
   await highlightAction.click();
-  const defaultHighlight = menu.getByRole("button", { name: "Default" });
-  const goldHighlight = menu.getByRole("button", { name: "Gold" });
+  const defaultHighlight = menu.getByTestId("participant-highlight-default");
+  const goldHighlight = menu.getByTestId("participant-highlight-gold");
   await expect(defaultHighlight).toHaveAttribute("aria-pressed", "true");
   await expect(goldHighlight).toHaveAttribute("aria-pressed", "false");
   await goldHighlight.click();
@@ -408,21 +427,26 @@ test("participant feedback remains visible and persistent in host and guest rend
   await menu.getByRole("button", { name: "Ignore" }).click();
   const disclosures = page.getByRole("button", { name: /Participant posted 1 message/ });
   await expect(disclosures).toHaveCount(2);
-  await expect(disclosures.nth(0)).toHaveText("Participant posted 1 message Show messages");
-  await expect(disclosures.nth(1)).toHaveText("Participant posted 1 message Show messages");
+  await expect(disclosures.nth(0)).toHaveText(/Participant posted 1 message\s*Show messages/);
+  await expect(disclosures.nth(1)).toHaveText(/Participant posted 1 message\s*Show messages/);
   await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "false");
   await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
   await disclosures.nth(0).click();
-  await expect(disclosures.nth(0)).toHaveText("Participant posted 1 message Hide messages");
+  await expect(disclosures.nth(0)).toHaveText(/Participant posted 1 message\s*Hide messages/);
   await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "true");
   await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByText("First local preference message")).toBeVisible();
   await page.reload();
   await openSeededGuestRoom(page);
-  await expect(page.getByRole("button", { name: /Participant posted 1 message/ })).toHaveCount(2, { timeout: 20_000 });
-  await trigger.click();
-  await expect(menu.getByRole("button", { name: "Highlight: Gold" })).toBeVisible();
-  await menu.getByRole("button", { name: "Highlight: Gold" }).click();
+  const restoredDisclosures = page.getByRole("button", { name: /Participant posted 1 message/ });
+  await expect(restoredDisclosures).toHaveCount(2, { timeout: 20_000 });
+  await restoredDisclosures.nth(0).click();
+  const restoredTrigger = page.getByTestId("message-streak").filter({
+    has: page.locator('[data-message-id="highlight-before-ignore"]'),
+  }).getByRole("button", { name: "Actions for Participant" });
+  await restoredTrigger.click();
+  await expect(highlightAction).toHaveText("Highlight: Gold");
+  await highlightAction.click();
   await expect(goldHighlight).toHaveAttribute("aria-pressed", "true");
   await defaultHighlight.click();
   await expect(highlightAction).toHaveText("Highlight: Default");

@@ -85,6 +85,9 @@
   let highlightOpen = $state(false);
 
   const participantName = $derived(first?.name || "anon");
+  const currentHighlightLabel = $derived(
+    highlight ? `${highlight.name[0].toUpperCase()}${highlight.name.slice(1)}` : "Default",
+  );
   const participantSurfaceOpen = $derived(
     activeParticipantSurfaceKey === participantSurfaceKey && (menuOpen || chooserOpen),
   );
@@ -98,7 +101,7 @@
     menuOpen = true;
     onActivateParticipantSurface(participantSurfaceKey);
     await tick();
-    document.getElementById(`${idPrefix}-participant-mention-${first.sender}`)?.focus();
+    document.getElementById(`${idPrefix}-participant-mention`)?.focus();
   }
 
   function closeSurface(restoreFocus = true): void {
@@ -126,7 +129,7 @@
     onHighlight(first.sender, name);
     highlightOpen = false;
     actionStatus = name ? `Highlight set to ${name}.` : "Highlight cleared.";
-    void tick().then(() => document.getElementById(`${idPrefix}-participant-highlight-${first.sender}`)?.focus());
+    void tick().then(() => document.getElementById(`${idPrefix}-participant-highlight`)?.focus());
   }
 
   async function followParticipant(): Promise<void> {
@@ -146,7 +149,7 @@
     chooserOpen = true;
     actionError = "";
     await tick();
-    document.getElementById(`${idPrefix}-participant-room-${participantRooms[0]?.coordinatorPubkey}-${participantRooms[0]?.roomId}`)?.focus();
+    document.getElementById(`${idPrefix}-participant-room-0`)?.focus();
   }
 
   async function sendRoomInvite(room: ParticipantRoomChoice): Promise<void> {
@@ -321,17 +324,17 @@
       use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520 }}
       onkeydown={handleSurfaceKeydown}
     >
-      <button id={`${idPrefix}-participant-mention-${first.sender}`} type="button" onclick={() => void mentionParticipant()}>Mention</button>
+      <button id={`${idPrefix}-participant-mention`} type="button" onclick={() => void mentionParticipant()}>Mention</button>
       <button type="button" onclick={() => void openChooser()}>Invite to room</button>
-      <button type="button" disabled={!followAvailable || followStatus === "pending"} aria-busy={followStatus === "pending"} aria-describedby={!followAvailable ? `${idPrefix}-participant-follow-guidance-${first.sender}` : undefined} onclick={() => void followParticipant()}>{followStatus === "pending" ? `Following ${participantName}…` : "Follow on Nostr"}</button>
-      {#if !followAvailable}<p id={`${idPrefix}-participant-follow-guidance-${first.sender}`} class="participant-guidance">Sign in to follow people on Nostr.</p>{/if}
+      <button type="button" disabled={!followAvailable || followStatus === "pending"} aria-busy={followStatus === "pending"} aria-describedby={!followAvailable ? `${idPrefix}-participant-follow-guidance` : undefined} onclick={() => void followParticipant()}>{followStatus === "pending" ? `Following ${participantName}…` : "Follow on Nostr"}</button>
+      {#if !followAvailable}<p id={`${idPrefix}-participant-follow-guidance`} class="participant-guidance">Sign in to follow people on Nostr.</p>{/if}
       <div class="participant-divider" aria-hidden="true"></div>
-      <button id={`${idPrefix}-participant-highlight-${first.sender}`} type="button" onclick={() => highlightOpen = !highlightOpen}>Highlight</button>
+      <button id={`${idPrefix}-participant-highlight`} type="button" onclick={() => highlightOpen = !highlightOpen}>Highlight: {currentHighlightLabel}</button>
       {#if highlightOpen}
         <div class="participant-highlights" aria-label="Highlight color">
-          <button type="button" onclick={() => chooseHighlight(undefined)}>Default</button>
+          <button data-testid="participant-highlight-default" class:highlight-selected={highlight === undefined} type="button" aria-pressed={highlight === undefined} onclick={() => chooseHighlight(undefined)}>Default{#if highlight === undefined} <span class="highlight-selected-marker">Selected</span>{/if}</button>
           {#each Object.keys(PARTICIPANT_HIGHLIGHT_PALETTE) as name (name)}
-            <button type="button" onclick={() => chooseHighlight(name as ParticipantHighlightName)}>{name[0].toUpperCase() + name.slice(1)}</button>
+            <button data-testid={`participant-highlight-${name}`} class:highlight-selected={highlight?.name === name} type="button" aria-pressed={highlight?.name === name} onclick={() => chooseHighlight(name as ParticipantHighlightName)}>{name[0].toUpperCase() + name.slice(1)}{#if highlight?.name === name} <span class="highlight-selected-marker">Selected</span>{/if}</button>
           {/each}
         </div>
       {/if}
@@ -356,10 +359,10 @@
         <p>Join or create another active room before sending an invite.</p>
       {:else}
         <div class="participant-room-list" aria-busy={invitePendingRoom !== null}>
-          {#each participantRooms as room (`${room.coordinatorPubkey}:${room.roomId}`)}
+          {#each participantRooms as room, index (`${room.coordinatorPubkey}:${room.roomId}`)}
             {@const key = `${room.coordinatorPubkey}:${room.roomId}`}
             <button
-              id={`${idPrefix}-participant-room-${room.coordinatorPubkey}-${room.roomId}`}
+              id={`${idPrefix}-participant-room-${index}`}
               type="button"
               disabled={invitePendingRoom !== null}
               onclick={() => void sendRoomInvite(room)}
@@ -387,7 +390,7 @@
   .streak-author strong { overflow: hidden; color: #b9fac8; font-size: .7rem; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
   .mine .streak-author strong { color: #7f9387; }
   .message-badge { display: inline-flex; user-select: text; align-items: center; gap: .22rem; border: 1px solid #41664b; background: rgb(124 245 157 / .07); padding: .12rem .32rem; color: #93dba4; font-size: .48rem; font-weight: 680; letter-spacing: .09em; line-height: 1.15; text-transform: uppercase; }
-  .participant-trigger { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: .4rem; border: 1px solid transparent; padding: .18rem .26rem; color: inherit; text-align: left; }
+  .participant-trigger { box-sizing: border-box; display: inline-flex; min-width: 44px; min-height: 44px; max-width: 100%; align-items: center; gap: .4rem; border: 1px solid transparent; padding: .18rem .26rem; color: inherit; text-align: left; }
   .participant-trigger:hover, .participant-trigger:focus-visible, .participant-trigger[aria-expanded="true"] { border-color: #7cf59d; background: #101a13; outline: 2px solid transparent; outline-offset: 2px; }
   .participant-trigger:focus-visible { outline-color: #7cf59d; }
   .participant-menu, .participant-chooser { box-sizing: border-box; display: grid; width: min(18rem, calc(100vw - 1rem)); gap: .5rem; border: 1px solid #405348; background: #0c120f; padding: .5rem; color: #dfffe7; box-shadow: 0 .75rem 2rem rgb(0 0 0 / .38); }
@@ -398,6 +401,8 @@
   .participant-divider { height: 1px; margin: .1rem 0; background: #293832; }
   .participant-highlights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; padding: .15rem; }
   .participant-highlights button { min-height: 2.75rem; border: 1px solid #293832; color: #cfe8d5; font-size: .62rem; }
+  .participant-highlights button.highlight-selected { border-color: #7cf59d; box-shadow: inset 3px 0 #7cf59d; }
+  .highlight-selected-marker { margin-left: .35rem; font-weight: 700; }
   .participant-highlights button:hover, .participant-highlights button:focus-visible { border-color: #7cf59d; background: #14241a; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .participant-chooser h2 { color: #effff2; font-size: .78rem; font-weight: 700; }
   .participant-chooser > strong { color: #b9fac8; font-size: .72rem; }
