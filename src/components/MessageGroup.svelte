@@ -177,14 +177,35 @@
       && (actionTrigger?.contains(target) === true
         || menuSurface?.contains(target) === true
         || chooserSurface?.contains(target) === true);
-    const dismissOnOutsideInteraction = (event: Event) => {
+    const dismissOnPointerInteraction = (event: PointerEvent) => {
+      // A top-layer manual popover can overlap a later author trigger. Detect
+      // that trigger below the surface so activating another author still
+      // switches surfaces instead of leaving the old menu to eat the click.
+      const nextTrigger = [...document.querySelectorAll<HTMLButtonElement>(".participant-trigger")]
+        .find((trigger) => {
+          if (trigger === actionTrigger) return false;
+          const rect = trigger.getBoundingClientRect();
+          return event.clientX >= rect.left
+            && event.clientX <= rect.right
+            && event.clientY >= rect.top
+            && event.clientY <= rect.bottom;
+        });
+      if (nextTrigger) {
+        event.preventDefault();
+        closeSurface(false);
+        nextTrigger.click();
+        return;
+      }
       if (!isInsideSurface(event.target)) closeSurface(false);
     };
-    document.addEventListener("pointerdown", dismissOnOutsideInteraction, true);
-    document.addEventListener("focusin", dismissOnOutsideInteraction, true);
+    const dismissOnFocusInteraction = (event: FocusEvent) => {
+      if (!isInsideSurface(event.target)) closeSurface(false);
+    };
+    document.addEventListener("pointerdown", dismissOnPointerInteraction, true);
+    document.addEventListener("focusin", dismissOnFocusInteraction, true);
     return () => {
-      document.removeEventListener("pointerdown", dismissOnOutsideInteraction, true);
-      document.removeEventListener("focusin", dismissOnOutsideInteraction, true);
+      document.removeEventListener("pointerdown", dismissOnPointerInteraction, true);
+      document.removeEventListener("focusin", dismissOnFocusInteraction, true);
     };
   });
 

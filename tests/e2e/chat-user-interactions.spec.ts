@@ -43,6 +43,15 @@ async function seedGuestMessages(page: Page, recipientPubkey: string, messages: 
   }, { recipient: recipientPubkey, seededMessages: messages });
 }
 
+async function openSeededGuestRoom(page: Page): Promise<void> {
+  const room = page.getByRole("button", { name: /^Open room Recipient tracer guest/ });
+  if (!(await room.isVisible())) {
+    const roomBrowser = page.getByRole("button", { name: "Open room browser" });
+    if (await roomBrowser.isVisible()) await roomBrowser.click();
+  }
+  await room.click();
+}
+
 test("signed recipient tracer renders Mentioned you in the shared invitee presentation", async ({ page }) => {
   await page.goto("/");
   const guestPubkey = "b".repeat(64);
@@ -64,7 +73,7 @@ test("signed recipient tracer renders Mentioned you in the shared invitee presen
     auth: { id: eventId, sig: "cordn" },
   }]);
   await page.reload();
-  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+  await openSeededGuestRoom(page);
   await expect(page.getByTestId("guest-message-list").getByText("A signed recipient tracer message")).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => page.evaluate(() => {
     const raw = Object.entries(localStorage).find(([key]) => key.startsWith("cordn-adhoc-chat-room:v2:"))?.[1];
@@ -92,7 +101,7 @@ test("targeted invite projection removes non-target layout artifacts before grou
     { id: "public-invite", sender: "f".repeat(64), name: "Public host", content: invite, createdAt: 4 },
   ]);
   await page.reload();
-  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+  await openSeededGuestRoom(page);
 
   const log = page.getByTestId("guest-message-list");
   await expect(log.getByText("After targeted invite")).toBeVisible({ timeout: 20_000 });
@@ -150,7 +159,7 @@ test("participant menu opens from a non-self author, mentions through the compos
     localStorage.setItem(`cordn-adhoc-chat-room:v2:${encodeURIComponent(retiredRoom.coordinatorPubkey)}:${encodeURIComponent(retiredRoom.id)}`, JSON.stringify(retiredRoom));
   });
   await page.reload();
-  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+  await openSeededGuestRoom(page);
 
   const trigger = page.getByRole("button", { name: "Actions for Participant" });
   await expect(trigger).toBeVisible({ timeout: 20_000 });
@@ -172,6 +181,7 @@ test("participant menu opens from a non-self author, mentions through the compos
   await secondTrigger.click();
   await expect(page.getByRole("dialog", { name: "Actions for Participant" })).toHaveCount(0);
   const secondMenu = page.getByRole("dialog", { name: "Actions for Second participant" });
+  await expect(secondMenu).toHaveCount(1);
   await expect(secondMenu).toBeVisible();
   await page.getByTestId("chat-composer").locator("input").focus();
   await expect(secondMenu).toHaveCount(0);
@@ -210,7 +220,7 @@ test("participant surfaces keep invite controls contained at 320px and disable i
     { id: "motion-safe-invite", sender: "f".repeat(64), name: "Host", content: invite, createdAt: 2 },
   ]);
   await page.reload();
-  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+  await openSeededGuestRoom(page);
 
   const trigger = page.getByRole("button", { name: "Actions for Participant" });
   await expect(trigger).toBeVisible({ timeout: 20_000 });
@@ -291,13 +301,16 @@ test("ignore collapses each participant streak locally and highlight stays priva
     createdAt: Date.now() + 2,
   }]);
   await page.reload();
-  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
-  const trigger = page.getByRole("button", { name: "Actions for Participant" });
+  await openSeededGuestRoom(page);
+  const firstParticipantStreak = page.getByTestId("message-streak").filter({
+    has: page.locator('[data-message-id="highlight-before-ignore"]'),
+  });
+  const trigger = firstParticipantStreak.getByRole("button", { name: "Actions for Participant" });
   await expect(trigger).toBeVisible({ timeout: 20_000 });
   await trigger.click();
   await page.getByRole("dialog", { name: "Actions for Participant" }).getByRole("button", { name: "Highlight" }).click();
   await page.getByRole("button", { name: "Gold" }).click();
-  await expect(page.getByTestId("guest-message-list").getByTestId("message-streak")).toHaveClass(/highlighted/);
+  await expect(firstParticipantStreak).toHaveClass(/highlighted/);
   await trigger.click();
   await page.getByRole("dialog", { name: "Actions for Participant" }).getByRole("button", { name: "Ignore" }).click();
   const disclosures = page.getByRole("button", { name: /Participant posted 1 message/ });
@@ -309,7 +322,7 @@ test("ignore collapses each participant streak locally and highlight stays priva
   await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByText("First local preference message")).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+  await openSeededGuestRoom(page);
   await expect(page.getByRole("button", { name: /Participant posted 1 message/ })).toHaveCount(2, { timeout: 20_000 });
   await expect(page.locator("body")).not.toContainText(participant);
 });
