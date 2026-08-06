@@ -437,7 +437,7 @@
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
-              <RoomActionsMenu sidebar roomTitle={room.title} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} {soundsEnabled} removalMode={room.isHost ? "delete" : "leave"} onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              <RoomActionsMenu sidebar roomTitle={room.title} roomId={room.id} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} removalMode={room.isHost ? "delete" : "leave"} onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
           </div>
@@ -464,7 +464,7 @@
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
-              <RoomActionsMenu sidebar roomTitle={room.title} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              <RoomActionsMenu sidebar roomTitle={room.title} roomId={room.id} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} removalMode="leave" onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
           </div>
@@ -493,7 +493,7 @@
                 {#if isActive(room)}<span class="active-label" aria-label="Current room">live</span>{/if}
               </button>
               {#if room.unreadCount > 0}<span class="unread-badge" data-room-key={roomIdentityKey(room.coordinatorPubkey, room.id)} data-testid={`room-unread-${roomIdentityKey(room.coordinatorPubkey, room.id)}`} title={`${room.unreadCount} unread messages`} aria-label={`${room.unreadCount} unread messages`}>{displayUnreadCount(room.unreadCount)}</span>{/if}
-              <RoomActionsMenu sidebar roomTitle={room.title} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} {soundsEnabled} removalMode="leave" onToggleSounds={() => {}} onRemove={(origin) => requestRemoval(room, origin)} />
+              <RoomActionsMenu sidebar roomTitle={room.title} roomId={room.id} coordinatorPubkey={room.coordinatorPubkey} inviteUrl={room.href} removalMode="leave" onRemove={(origin) => requestRemoval(room, origin)} />
               </div>
             {/each}
           </div>

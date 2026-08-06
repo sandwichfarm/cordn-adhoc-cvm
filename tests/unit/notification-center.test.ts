@@ -5,6 +5,7 @@ import {
   NOTIFICATION_FEED_STORAGE_KEY,
   NotificationCenterStore,
 } from "../../src/notifications/notification-center.svelte";
+import { channelPreferences, registerChannelNotificationRelationships } from "../../src/notifications/channel-preferences.svelte";
 
 interface CapturedNotification {
   title: string;
@@ -100,6 +101,25 @@ describe("NotificationCenterStore", () => {
     expect(reloaded.cadenceMs).toBe(30_000);
     store.destroy();
     reloaded.destroy();
+  });
+
+  test("filters channel message notifications by mute and relationship preferences", () => {
+    const store = new NotificationCenterStore();
+    const roomKey = "coordinator\0filtered-room";
+    const unregisterRelationships = registerChannelNotificationRelationships(() => ({ following: ["alice"], mutuals: [] }));
+
+    channelPreferences.setNotifications(roomKey, "mute");
+    store.record({ category: "new_message", key: "muted", roomKey, actorPubkey: "alice" });
+    expect(store.feed).toHaveLength(0);
+
+    channelPreferences.setNotifications(roomKey, "follows");
+    store.record({ category: "new_message", key: "followed", roomKey, actorPubkey: "alice" });
+    store.record({ category: "new_message", key: "stranger", roomKey, actorPubkey: "bob" });
+    expect(store.feed.map((entry) => entry.key)).toEqual(["followed"]);
+
+    channelPreferences.setNotifications(roomKey, "all");
+    unregisterRelationships();
+    store.destroy();
   });
 
   test("deduplicates repeated events during a cadence window", async () => {

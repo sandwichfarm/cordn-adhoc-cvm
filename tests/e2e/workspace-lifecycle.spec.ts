@@ -430,6 +430,52 @@ async function createRoom(page: import("@playwright/test").Page, title: string):
   await expect(dialog).toBeHidden();
 }
 
+test("global and per-channel sound controls persist and expose non-default state", async ({ page }) => {
+  await installEstablishedInstallation(page);
+  await page.goto("/");
+  await configureMockRelay(page);
+  await startCoordinator(page);
+  await createRoom(page, "Preference room");
+
+  const globalSound = page.getByRole("button", { name: "Mute all channel sounds" });
+  await expect(globalSound).toBeVisible();
+  const headerBounds = await page.locator(".host-topbar").boundingBox();
+  const soundBounds = await globalSound.boundingBox();
+  expect(headerBounds).not.toBeNull();
+  expect(soundBounds).not.toBeNull();
+  expect(Math.abs((headerBounds!.x + headerBounds!.width) - (soundBounds!.x + soundBounds!.width))).toBeLessThan(24);
+  await globalSound.click();
+  await expect(page.getByRole("button", { name: "Enable channel sounds" })).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:global-sound"))).toBe("false");
+
+  const card = page.getByTestId("coordinator-card").first();
+  const createGroup = card.getByRole("button", { name: "Create group" });
+  await expect(createGroup).toHaveText("+");
+  await expect(card).not.toContainText("+ Group");
+  const createMetrics = await createGroup.evaluate((element) => ({
+    fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+    transformBefore: getComputedStyle(element).transform,
+    cursor: getComputedStyle(element).cursor,
+    rightGap: Math.abs((element.closest("legend")!.getBoundingClientRect().right) - element.getBoundingClientRect().right),
+  }));
+  expect(createMetrics.fontSize).toBeGreaterThanOrEqual(18);
+  expect(createMetrics.cursor).toBe("pointer");
+  expect(createMetrics.rightGap).toBeLessThan(12);
+  await createGroup.hover();
+  await expect.poll(() => createGroup.evaluate((element) => getComputedStyle(element).transform)).not.toBe("none");
+
+  const roomActions = page.getByTestId("host-chat").getByRole("button", { name: "More room actions" });
+  await roomActions.click();
+  await page.getByLabel("Sound setting for Preference room").selectOption("on");
+  await page.getByLabel("Notification setting for Preference room").selectOption("mutuals");
+  await expect(card.getByLabel("Custom sound or notification settings")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:channel-preferences"))).toContain("mutuals");
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Enable channel sounds" })).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:channel-preferences"))).toContain("mutuals");
+});
+
 async function navigateWithinShell(page: import("@playwright/test").Page, href: string): Promise<void> {
   await page.evaluate((nextHref) => {
     const target = new URL(nextHref, window.location.origin);
@@ -1797,10 +1843,11 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   const hostInvite = await hostInviteAction.locator("code").textContent();
   expect(new URL(hostInvite!).origin).toBe(new URL(page.url()).origin);
   expect(new URL(hostInvite!).searchParams.get("c")).toMatch(/^nprofile1/);
-  await expect(hostActions.getByRole("menuitemcheckbox", { name: /Mute notification sounds/ })).toBeVisible();
+  await expect(hostActions.getByLabel("Sound setting for Working room")).toBeVisible();
+  await expect(hostActions.getByLabel("Notification setting for Working room")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(hostActions).toBeHidden();
-  await expect(page.getByTestId("invite-panel").getByLabel("Mute notification sounds")).toHaveCount(0);
+  await expect(page.getByTestId("invite-panel").getByLabel("Sound setting for Working room")).toHaveCount(0);
 
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
@@ -1817,7 +1864,8 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
   const guestActions = await openRoomActions(guest, "Working room");
   await expect(guestActions.getByRole("menuitem", { name: "Copy coordinator pubkey for Working room" })).toBeVisible();
   await expect(guestActions.getByRole("menuitem", { name: "Copy invite link for Working room" })).toBeVisible();
-  await expect(guestActions.getByRole("menuitemcheckbox", { name: /Mute notification sounds/ })).toBeVisible();
+  await expect(guestActions.getByLabel("Sound setting for Working room")).toBeVisible();
+  await expect(guestActions.getByLabel("Notification setting for Working room")).toBeVisible();
   await expect(guestActions.getByRole("menuitem", { name: "Leave room Working room" })).toBeVisible();
   await guest.keyboard.press("Escape");
   await expect(guestActions).toBeHidden();

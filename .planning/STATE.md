@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Quality of Life & Polish
 current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
-status: executing
+status: "Phase 18 shipped — PR #8"
 stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-08-06T13:00:49.923Z"
-last_activity: 2026-08-03
-last_activity_desc: Phase 18 execution started
+last_updated: "2026-08-06T15:03:51.570Z"
+last_activity: 2026-08-06
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 25
   completed_plans: 24
+last_activity_desc: Phase 18 execution started
 ---
 
 # Project State
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 
 Phase: 18 (Unified Presence, Notifications & Controls) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-08-03 — Phase 18 execution started
+Status: Phase 18 shipped — PR #8
+Last activity: 2026-08-06
 Pull request: [#7 — maximize room QR codes](https://github.com/sandwichfarm/CAHMLS/pull/7) — open, CI in progress. [#6](https://github.com/sandwichfarm/CAHMLS/pull/6) merged 2026-08-06.
 
 Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 93%)

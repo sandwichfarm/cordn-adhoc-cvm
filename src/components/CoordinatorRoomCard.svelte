@@ -1,5 +1,6 @@
 <script lang="ts">
   import { hostIdentityForRoom, roomIdentityKey, roomUnreadCount, type StoredRoom } from "../chat/room-store";
+  import { channelPreferences } from "../notifications/channel-preferences.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
 
@@ -20,11 +21,9 @@
     activeRoomKey?: string;
     disabled?: boolean;
     busy?: boolean;
-    soundsEnabled: boolean;
     onCreate?: () => void;
     onOpen: (room: StoredRoom) => void | Promise<void>;
     onRemove: (room: StoredRoom, origin: HTMLButtonElement) => void;
-    onToggleSounds: () => void | Promise<void>;
   }
 
   let {
@@ -38,11 +37,9 @@
     activeRoomKey,
     disabled = false,
     busy = false,
-    soundsEnabled,
     onCreate,
     onOpen,
     onRemove,
-    onToggleSounds,
   }: Props = $props();
   let expanded = $state(false);
   const limit = 5;
@@ -67,7 +64,7 @@
     <span class="coordinator-card-status">{status}</span>
     {#if unreadCount > 0}<span class="unread-badge coordinator-unread" aria-label={`${unreadCount} unread messages for this coordinator`}>{displayUnreadCount(unreadCount)}</span>{/if}
     {#if local && onCreate}
-      <button class="coordinator-create" type="button" aria-label="Create group" disabled={disabled} onclick={onCreate}>+ Group</button>
+      <button class="coordinator-create" type="button" aria-label="Create group" title="Create group" disabled={disabled} onclick={onCreate}>+</button>
     {/if}
   </legend>
 
@@ -88,8 +85,9 @@
             <span class="truncate" title={item.room.title}>{item.room.title}</span>
             <RoomHostBadge host={hostIdentityForRoom(item.room)} compact />
           </button>
+          {#if !channelPreferences.isDefault(key)}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
           {#if unread > 0}<span class="unread-badge" data-testid={`room-unread-${key}`} title={`${unread} unread messages`} aria-label={`${unread} unread messages`}>{displayUnreadCount(unread)}</span>{/if}
-          {#if !disabled}<RoomActionsMenu sidebar roomTitle={item.room.title} coordinatorPubkey={item.room.coordinatorPubkey} inviteUrl={item.inviteUrl} {soundsEnabled} removalMode={item.removalMode} onToggleSounds={onToggleSounds} onRemove={(origin) => onRemove(item.room, origin)} />{/if}
+          {#if !disabled}<RoomActionsMenu sidebar roomTitle={item.room.title} roomId={item.room.id} coordinatorPubkey={item.room.coordinatorPubkey} inviteUrl={item.inviteUrl} removalMode={item.removalMode} onRemove={(origin) => onRemove(item.room, origin)} />{/if}
         </div>
       {/each}
     </div>
@@ -103,16 +101,17 @@
 
 <style>
   .coordinator-room-card { min-width: 0; border: 1px solid #293832; padding: .25rem .35rem .35rem; background: transparent; }
-  legend { display: flex; max-width: calc(100% - .35rem); align-items: center; gap: .38rem; margin-left: .35rem; padding: 0 .38rem; background: #0d1310; color: #82958a; font-size: .55rem; line-height: 1.5; }
+  .channel-preference-indicator { flex: 0 0 auto; color: #7cf59d; font-size: .45rem; }
+  legend { display: flex; width: calc(100% - .7rem); max-width: calc(100% - .7rem); align-items: center; gap: .38rem; margin-left: .35rem; padding: 0 .38rem; background: #0d1310; color: #82958a; font-size: .55rem; line-height: 1.5; }
   .coordinator-card-dot { width: .34rem; height: .34rem; flex: 0 0 auto; border-radius: 999px; background: #39473f; }
   .coordinator-card-dot.online { background: #7cf59d; box-shadow: 0 0 7px rgb(124 245 157 / .25); }
   .coordinator-card-dot.connecting { background: #d4bc69; }
   .coordinator-card-dot.offline, .coordinator-card-dot.unknown { background: #59675f; }
   .coordinator-card-label { min-width: 0; overflow: hidden; color: #cde4d2; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
   .coordinator-card-status { flex: 0 0 auto; color: #64766b; font-size: .48rem; text-transform: capitalize; }
-  .coordinator-create { flex: 0 0 auto; margin-left: .25rem; color: #9bf6b3; font-size: .52rem; font-weight: 700; }
+  .coordinator-create { display: grid; width: 1.8rem; height: 1.8rem; flex: 0 0 auto; margin-left: auto; cursor: pointer; place-items: center; border: 1px solid transparent; background: transparent; color: #9bf6b3; font-size: 1.15rem; font-weight: 500; line-height: 1; transition: border-color .15s ease, background .15s ease, color .15s ease, transform .15s ease; }
   .coordinator-unread { flex: 0 0 auto; }
-  .coordinator-create:hover:not(:disabled), .coordinator-create:focus-visible { color: #effff2; outline: none; }
+  .coordinator-create:hover:not(:disabled), .coordinator-create:focus-visible { border-color: #496451; outline: none; background: #142019; color: #effff2; transform: rotate(90deg) scale(1.08); }
   .coordinator-create:disabled { cursor: not-allowed; opacity: .35; }
   .coordinator-card-rooms { display: grid; gap: .1rem; }
   .coordinator-card-empty { display: grid; gap: .2rem; padding: .65rem .55rem; color: #718277; }
