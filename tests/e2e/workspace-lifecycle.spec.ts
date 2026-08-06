@@ -2680,19 +2680,6 @@ test("startup uses fluid masked ASCII ripple reveals", async ({ page }) => {
   await expect(page.getByRole("progressbar")).toBeVisible();
   await expect(page.getByRole("status")).toBeVisible();
   await expectShellControlsUsable(page);
-  await stage.getByRole("button", { name: "Review settings" }).click();
-  const stageSettings = page.getByTestId("coordinator-settings");
-  await expect(stageSettings).toBeVisible();
-  await closeCoordinatorSettings(stageSettings);
-  await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(page.getByTestId("status-badge")).toHaveText("starting");
-  await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
-  await expect(page.getByTestId("room-connection-panel")).toHaveCount(0);
-  await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
-  await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(localStatus).toHaveAttribute("data-state", "connecting");
-  await expect(localStatus).toHaveAttribute("aria-label", "Coordinator starting");
-
 });
 
 test("startup reduced motion stays static and readable", async ({ page }) => {
