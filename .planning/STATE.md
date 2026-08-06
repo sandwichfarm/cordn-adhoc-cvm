@@ -31,7 +31,7 @@ Phase: 18 (Unified Presence, Notifications & Controls) — EXECUTING
 Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-03 — Phase 18 execution started
-Pull request: [#6 — stabilize coordinator delivery and workspace flows](https://github.com/sandwichfarm/cahmls/pull/6) — open, CI in progress
+Pull request: [#7 — maximize room QR codes](https://github.com/sandwichfarm/CAHMLS/pull/7) — open, CI in progress. [#6](https://github.com/sandwichfarm/CAHMLS/pull/6) merged 2026-08-06.
 
 Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 93%)
 
@@ -119,7 +119,7 @@ None yet.
 | 8 | Show relative message timestamps until seven days old | 2026-08-06 | 08cb3aa | — |
 | 9 | Add required Git remote synchronization, commit, issue, push, and pull-request procedures | 2026-08-06 | 7ff1d08 | — |
 | 10 | Show reaction add control on message hover and separate it from reaction chips | 2026-08-06 | 37f65d0 | — |
-| 11 | Add viewport-maximized QR mode to the room invite dialog | 2026-08-06 | 4edd248 | — |
+| 11 | Add viewport-maximized QR mode to the room invite dialog | 2026-08-06 | 7a7ee4e | — |
 
 ## Deferred Items
 
