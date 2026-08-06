@@ -187,6 +187,7 @@ describe("validated kind-3 contact lists", () => {
     const social = new NostrSocialStore({ createPool: () => pool } as never);
 
     const started = social.startContactList(signer);
+    await vi.waitFor(() => expect(pool.subscribeMany).toHaveBeenCalledOnce());
     pool.emit(liveEvent);
     query.resolve([oldEvent]);
     await started;
@@ -234,5 +235,20 @@ describe("validated kind-3 contact lists", () => {
     expect(social.following).toEqual([]);
     expect(social.contactStatus).toBe("reconnecting");
     expect(social.error).not.toContain("relay detail");
+  });
+
+  test("keeps contact-list state when the optional presence lifecycle stops", async () => {
+    const secret = generateSecretKey();
+    const signer = createLocalNip44Signer(secret);
+    const pool = new FakeContactPool();
+    const current = signedContact(secret, 10, [["p", "a".repeat(64)]]);
+    pool.queries.push([current]);
+    const social = new NostrSocialStore({ createPool: () => pool } as never);
+
+    await social.startContactList(signer);
+    social.disconnectPresence();
+
+    expect(social.selectedContactEvent?.id).toBe(current.id);
+    expect(social.following).toEqual(["a".repeat(64)]);
   });
 });

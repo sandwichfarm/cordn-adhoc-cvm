@@ -5,6 +5,7 @@
   import { configStore } from "./config/config.svelte";
   import { coordinatorStore } from "./coordinator/coordinator.svelte";
   import { userProfileStore } from "./identity/user-profile.svelte";
+  import { nostrSocialStore } from "./invites/nostr-social.svelte";
   import {
     initialWorkspaceIntent,
     isLegacyChatIndexPath,
@@ -28,6 +29,20 @@
 
   $effect(() => {
     void userProfileStore.initialize(configStore.userName);
+  });
+
+  $effect(() => {
+    const signer = userProfileStore.activeSigner;
+    const authenticated = userProfileStore.initialized
+      && userProfileStore.method !== "anonymous"
+      && signer !== null
+      && userProfileStore.pubkey.length > 0;
+    if (!authenticated || !signer) {
+      nostrSocialStore.stopContactList();
+      return;
+    }
+    void nostrSocialStore.startContactList(signer);
+    return () => nostrSocialStore.stopContactList();
   });
 
   function canonicalize(intent: string | null): void {

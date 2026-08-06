@@ -1,5 +1,5 @@
 import type { NostrSigner } from "@contextvm/sdk/core";
-import { SimplePool, type Event as NostrEvent } from "nostr-tools";
+import { SimplePool, getEventHash, verifyEvent, type Event as NostrEvent } from "nostr-tools";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import type { PresenceState } from "../config/config.svelte";
 import {
@@ -58,8 +58,47 @@ interface InvitePayload {
   createdAt: number;
 }
 
+export type ContactListStatus = "idle" | "connecting" | "ready" | "reconnecting" | "error";
+
+interface NostrSocialStoreOptions {
+  createPool?: () => SimplePool;
+  now?: () => number;
+}
+
+function normalizePubkey(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  return /^[0-9a-f]{64}$/.test(normalized) ? normalized : null;
+}
+
+function contactTargets(event: NostrEvent): string[] | null {
+  const targets: string[] = [];
+  const seen = new SvelteSet<string>();
+  for (const tag of event.tags) {
+    if (tag[0] !== "p") continue;
+    const target = normalizePubkey(tag[1] ?? "");
+    if (!target) return null;
+    if (!seen.has(target)) {
+      seen.add(target);
+      targets.push(target);
+    }
+  }
+  return targets;
+}
+
+export function isNewerContactEvent(next: NostrEvent, current: NostrEvent | null): boolean {
+  if (!current) return true;
+  return next.created_at > current.created_at
+    || (next.created_at === current.created_at && next.id < current.id);
+}
+
 export class NostrSocialStore {
   status = $state<"idle" | "connecting" | "ready" | "error">("idle");
+  contactStatus = $state<ContactListStatus>("idle");
+  contactError = $state("");
+  selectedContactEvent = $state<NostrEvent | null>(null);
+  contactPubkey = $state("");
+  followStatus = $state<"idle" | "pending" | "success" | "error">("idle");
+  followError = $state("");
   following = $state<string[]>([]);
   followers = $state<string[]>([]);
   onlineContacts = $state<SocialContact[]>([]);
@@ -69,6 +108,13 @@ export class NostrSocialStore {
   private pubkey = "";
   private pool: SimplePool | null = null;
   private subscription: { close(): void } | null = null;
+  private contactSigner: NostrSigner | null = null;
+  private contactPool: SimplePool | null = null;
+  private contactSubscription: { close(): void } | null = null;
+  private contactGeneration = 0;
+  private contactStarting: Promise<void> | null = null;
+  private readonly createPool: () => SimplePool;
+  private readonly now: () => number;
   private heartbeat: number | null = null;
   private expiryTimer: number | null = null;
   private presence: PresenceState = "invisible";
@@ -76,6 +122,11 @@ export class NostrSocialStore {
   private socialGraphRefreshedAt = 0;
   private readonly seen = new SvelteSet<string>();
   private readonly profiles = new SvelteMap<string, NostrProfile>();
+
+  constructor(options: NostrSocialStoreOptions = {}) {
+    this.createPool = options.createPool ?? (() => new SimplePool());
+    this.now = options.now ?? (() => Date.now());
+  }
 
   get mutuals(): string[] {
     const followers = new SvelteSet(this.followers);
@@ -97,16 +148,15 @@ export class NostrSocialStore {
       return;
     }
 
-    this.disconnect();
+    this.disconnectPresence();
     this.signer = signer;
     this.pubkey = pubkey;
-    this.pubkey = pubkey;
-    this.pool = new SimplePool();
+    this.pool = this.createPool();
     this.status = "connecting";
     this.error = "";
     try {
       await this.refreshSocialGraph();
-      this.subscribe();
+      this.subscribeGiftWraps();
       this.expiryTimer = window.setInterval(() => this.pruneExpired(), 10_000);
       await this.setPresence(presence, descriptor);
       this.status = "ready";
@@ -118,14 +168,11 @@ export class NostrSocialStore {
 
   async refreshSocialGraph(): Promise<void> {
     if (!this.pool || !this.pubkey) return;
-    const [ownLists, followerCandidates] = await Promise.all([
-      this.pool.querySync(SOCIAL_RELAYS, { kinds: [3], authors: [this.pubkey], limit: 10 }, { maxWait: 4_000 }),
-      this.pool.querySync(SOCIAL_RELAYS, { kinds: [3], "#p": [this.pubkey], limit: 500 }, { maxWait: 4_000 }),
-    ]);
-    const ownLatest = ownLists.sort((left, right) => right.created_at - left.created_at)[0];
-    this.following = ownLatest
-      ? [...new SvelteSet(ownLatest.tags.filter((tag) => tag[0] === "p" && tag[1]).map((tag) => tag[1]!))]
-      : [];
+    const followerCandidates = await this.pool.querySync(
+      SOCIAL_RELAYS,
+      { kinds: [3], "#p": [this.pubkey], limit: 500 },
+      { maxWait: 4_000 },
+    );
 
     const candidates = [...new SvelteSet(followerCandidates.map((event) => event.pubkey))];
     const currentLists = candidates.length
@@ -146,6 +193,90 @@ export class NostrSocialStore {
     const profiles = await fetchNostrProfiles([...new SvelteSet([...this.following, ...this.followers])]);
     this.profiles.clear();
     for (const [key, profile] of profiles) this.profiles.set(key, profile);
+  }
+
+  async startContactList(signer: NostrSigner): Promise<void> {
+    const pubkey = normalizePubkey(await signer.getPublicKey());
+    if (!pubkey) {
+      this.stopContactList();
+      return;
+    }
+    if (this.contactPubkey === pubkey && this.contactPool) {
+      await this.contactStarting;
+      return;
+    }
+
+    this.stopContactList();
+    const generation = this.contactGeneration;
+    this.contactSigner = signer;
+    this.contactPubkey = pubkey;
+    this.contactPool = this.createPool();
+    this.contactStatus = "connecting";
+    this.contactError = "";
+    this.followStatus = "idle";
+    this.followError = "";
+    this.contactSubscription = this.contactPool.subscribeMany(
+      SOCIAL_RELAYS,
+      { kinds: [3], authors: [pubkey] },
+      { onevent: (event) => this.considerContactEvent(event, generation) },
+    );
+    const starting = this.refreshContactList(generation);
+    this.contactStarting = starting;
+    try {
+      await starting;
+    } finally {
+      if (this.contactStarting === starting) this.contactStarting = null;
+    }
+  }
+
+  stopContactList(): void {
+    this.contactGeneration += 1;
+    this.contactSubscription?.close();
+    this.contactSubscription = null;
+    this.contactPool?.destroy();
+    this.contactPool = null;
+    this.contactSigner = null;
+    this.contactStarting = null;
+    this.contactPubkey = "";
+    this.selectedContactEvent = null;
+    this.following = [];
+    this.contactStatus = "idle";
+    this.contactError = "";
+    this.followStatus = "idle";
+    this.followError = "";
+  }
+
+  async refreshContactList(expectedGeneration = this.contactGeneration): Promise<void> {
+    const pool = this.contactPool;
+    const pubkey = this.contactPubkey;
+    if (!pool || !pubkey || expectedGeneration !== this.contactGeneration) return;
+    try {
+      const events = await pool.querySync(
+        SOCIAL_RELAYS,
+        { kinds: [3], authors: [pubkey], limit: 10 },
+        { maxWait: 4_000 },
+      );
+      if (expectedGeneration !== this.contactGeneration) return;
+      for (const event of events) this.considerContactEvent(event, expectedGeneration);
+      if (expectedGeneration === this.contactGeneration) {
+        this.contactStatus = "ready";
+        this.contactError = "";
+      }
+    } catch {
+      if (expectedGeneration !== this.contactGeneration) return;
+      this.contactStatus = "reconnecting";
+      this.contactError = "Unable to refresh contacts. Try again.";
+    }
+  }
+
+  private considerContactEvent(event: NostrEvent, generation: number): boolean {
+    if (generation !== this.contactGeneration || event.kind !== 3) return false;
+    if (event.pubkey !== this.contactPubkey || event.id !== getEventHash(event) || !verifyEvent(event)) return false;
+    const targets = contactTargets(event);
+    if (!targets || !isNewerContactEvent(event, this.selectedContactEvent)) return false;
+    this.selectedContactEvent = event;
+    this.following = targets;
+    return true;
   }
 
   async setPresence(state: PresenceState, descriptor = this.descriptor): Promise<void> {
@@ -186,6 +317,11 @@ export class NostrSocialStore {
   }
 
   disconnect(): void {
+    this.stopContactList();
+    this.disconnectPresence();
+  }
+
+  disconnectPresence(): void {
     this.subscription?.close();
     this.subscription = null;
     if (this.heartbeat !== null) window.clearInterval(this.heartbeat);
@@ -197,12 +333,11 @@ export class NostrSocialStore {
     this.pubkey = "";
     this.signer = null;
     this.status = "idle";
-    this.following = [];
     this.followers = [];
     this.onlineContacts = [];
   }
 
-  private subscribe(): void {
+  private subscribeGiftWraps(): void {
     if (!this.pool || !this.signer) return;
     const since = Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60;
     this.subscription = this.pool.subscribeMany(
