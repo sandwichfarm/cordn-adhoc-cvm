@@ -167,3 +167,35 @@ test("participant menu opens from a non-self author, mentions through the compos
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
 });
+
+test("ignore collapses each participant streak locally and highlight stays private across reload", async ({ page }) => {
+  const viewer = "e".repeat(64);
+  const participant = "d".repeat(64);
+  await page.goto("/");
+  await seedGuestMessages(page, viewer, [{
+    id: "highlight-before-ignore",
+    sender: participant,
+    name: "Participant",
+    content: "First local preference message",
+    createdAt: Date.now(),
+  }]);
+  await page.reload();
+  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+  const trigger = page.getByRole("button", { name: "Actions for Participant" });
+  await expect(trigger).toBeVisible({ timeout: 20_000 });
+  await trigger.click();
+  await page.getByRole("dialog", { name: "Actions for Participant" }).getByRole("button", { name: "Highlight" }).click();
+  await page.getByRole("button", { name: "Gold" }).click();
+  await expect(page.getByTestId("guest-message-list").getByTestId("message-streak")).toHaveClass(/highlighted/);
+  await trigger.click();
+  await page.getByRole("dialog", { name: "Actions for Participant" }).getByRole("button", { name: "Ignore" }).click();
+  const disclosure = page.getByRole("button", { name: /Participant posted 1 message/ });
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("First local preference message")).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+  await expect(page.getByRole("button", { name: /Participant posted 1 message/ })).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("body")).not.toContainText(participant);
+});
