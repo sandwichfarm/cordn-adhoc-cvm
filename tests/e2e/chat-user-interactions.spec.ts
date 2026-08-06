@@ -159,6 +159,8 @@ test("participant menu opens from a non-self author, mentions through the compos
   const menu = page.getByRole("dialog", { name: "Actions for Participant" });
   await expect(menu.getByRole("button", { name: "Mention" })).toBeFocused();
   await expect(menu.getByRole("button").allTextContents()).resolves.toEqual(["Mention", "Invite to room", "Follow on Nostr", "Highlight", "Ignore"]);
+  await expect(menu.getByRole("button", { name: "Follow on Nostr" })).toBeDisabled();
+  await expect(menu).toContainText("Sign in to follow people on Nostr.");
   await page.getByTestId("chat-composer").locator("input").evaluate((input) => input.removeAttribute("disabled"));
   await menu.getByRole("button", { name: "Mention" }).click();
   await expect(page.getByTestId("chat-composer").locator("input")).toBeFocused();
@@ -185,8 +187,48 @@ test("participant menu opens from a non-self author, mentions through the compos
   await expect(chooser.getByRole("button", { name: /Other active room/ })).toBeVisible();
   await expect(chooser).not.toContainText("Recipient tracer guest");
   await expect(chooser).not.toContainText("History room");
+  await chooser.getByRole("button", { name: /Other active room/ }).click();
+  await expect(chooser.getByRole("status")).toContainText("Couldn’t send the invite");
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
+});
+
+test("participant surfaces keep invite controls contained at 320px and disable invite motion", async ({ page }) => {
+  const viewer = "e".repeat(64);
+  const participant = "d".repeat(64);
+  const invite = createInviteUrl("https://chat.example", {
+    groupId: "motion-safe-invite",
+    coordinatorPubkey: "a".repeat(64),
+    relayUrls: ["wss://relay.example"],
+    title: "Motion safe room",
+  });
+  await page.setViewportSize({ width: 320, height: 360 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await seedGuestMessages(page, viewer, [
+    { id: "compact-participant", sender: participant, name: "Participant", content: "Compact menu", createdAt: 1 },
+    { id: "motion-safe-invite", sender: "f".repeat(64), name: "Host", content: invite, createdAt: 2 },
+  ]);
+  await page.reload();
+  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+
+  const trigger = page.getByRole("button", { name: "Actions for Participant" });
+  await expect(trigger).toBeVisible({ timeout: 20_000 });
+  await trigger.click();
+  const menu = page.getByRole("dialog", { name: "Actions for Participant" });
+  await expect(menu).toBeVisible();
+  await expect.poll(() => menu.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight;
+  })).toBe(true);
+  await menu.getByRole("button", { name: "Invite to room" }).click();
+  const chooser = page.getByRole("dialog", { name: "Invite Participant to a room" });
+  await expect(chooser).toBeVisible();
+  await expect.poll(() => chooser.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight;
+  })).toBe(true);
+  await expect(page.getByRole("button", { name: /Join Motion safe room/ })).toHaveCSS("transition-duration", "0s");
 });
 
 test("ignore collapses each participant streak locally and highlight stays private across reload", async ({ page }) => {
@@ -199,6 +241,18 @@ test("ignore collapses each participant streak locally and highlight stays priva
     name: "Participant",
     content: "First local preference message",
     createdAt: Date.now(),
+  }, {
+    id: "other-before-ignore",
+    sender: "f".repeat(64),
+    name: "Other participant",
+    content: "Separating message",
+    createdAt: Date.now() + 1,
+  }, {
+    id: "highlight-after-ignore",
+    sender: participant,
+    name: "Participant",
+    content: "Second local preference message",
+    createdAt: Date.now() + 2,
   }]);
   await page.reload();
   await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
@@ -210,13 +264,16 @@ test("ignore collapses each participant streak locally and highlight stays priva
   await expect(page.getByTestId("guest-message-list").getByTestId("message-streak")).toHaveClass(/highlighted/);
   await trigger.click();
   await page.getByRole("dialog", { name: "Actions for Participant" }).getByRole("button", { name: "Ignore" }).click();
-  const disclosure = page.getByRole("button", { name: /Participant posted 1 message/ });
-  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-  await disclosure.click();
-  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  const disclosures = page.getByRole("button", { name: /Participant posted 1 message/ });
+  await expect(disclosures).toHaveCount(2);
+  await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "false");
+  await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
+  await disclosures.nth(0).click();
+  await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "true");
+  await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByText("First local preference message")).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
-  await expect(page.getByRole("button", { name: /Participant posted 1 message/ })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: /Participant posted 1 message/ })).toHaveCount(2, { timeout: 20_000 });
   await expect(page.locator("body")).not.toContainText(participant);
 });

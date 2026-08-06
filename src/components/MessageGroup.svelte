@@ -420,4 +420,7 @@
     .message-bubble { padding-inline: .65rem; }
     .shared-invite-action { align-items: flex-start; flex-direction: column; gap: .45rem; }
   }
+  @media (prefers-reduced-motion: reduce) {
+    .shared-invite-action { transition: none; }
+  }
 </style>
