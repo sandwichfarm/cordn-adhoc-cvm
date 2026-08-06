@@ -121,7 +121,7 @@
   .channel-name-with-preferences .truncate { min-width: 0; flex: 0 1 auto; }
   .channel-owner-avatar { display: inline-grid; opacity: 0; transition: opacity .15s ease; }
   .channel-row:hover .channel-owner-avatar, .channel-row:focus-within .channel-owner-avatar { opacity: .72; }
-  .channel-row:hover .channel-row-primary, .channel-row:focus-within .channel-row-primary { background: #111a14; color: #dfffe7; }
+  .channel-row:hover, .channel-row:focus-within { background: #111a14; color: #dfffe7; }
   .channel-row.active { background: #17241b; color: #effff2; }
   .channel-row.unavailable { color: #617268; }
   .channel-row.unavailable.busy .channel-row-primary { cursor: progress; }

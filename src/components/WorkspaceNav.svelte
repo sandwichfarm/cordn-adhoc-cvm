@@ -562,7 +562,7 @@
   .room-row { grid-template-columns: minmax(0, 1fr) auto auto; color: #91a59a; }
   .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; border: 1px solid #3b5943; border-radius: 2px; background: #102216; color: #bfeac8; font-size: .58rem; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
   .room-row-primary { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: .6rem; padding: .62rem .65rem; color: inherit; text-align: left; }
-  .room-row:hover .room-row-primary, .room-row:focus-within .room-row-primary { background: #111a14; color: #effff2; }
+  .room-row:hover, .room-row:focus-within { background: #111a14; color: #effff2; }
   .room-row.active { border-color: transparent; background: #17241b; color: #effff2; box-shadow: inset 3px 0 #7cf59d; }
   .hash { color: #587060; font-size: .8rem; }
   .room-name-with-preferences { display: flex; min-width: 0; align-items: center; gap: .35rem; }

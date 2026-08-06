@@ -2264,8 +2264,8 @@
   .channel-row.unavailable .channel-row-primary { cursor: default; grid-template-columns: .15rem auto minmax(0, 1fr); }
   .channel-row.unavailable.busy .channel-row-primary { cursor: progress; }
   .channel-row.unavailable .channel-row-primary:disabled { opacity: .72; }
-  .channel-row.unavailable:hover .channel-row-primary, .channel-row.unavailable:focus-within .channel-row-primary { background: transparent; color: #728378; }
-  .channel-row:hover .channel-row-primary, .channel-row:focus-within .channel-row-primary { background: #111a14; color: #dfffe7; }
+  .channel-row:hover, .channel-row:focus-within { background: #111a14; color: #dfffe7; }
+  .channel-row.unavailable:hover, .channel-row.unavailable:focus-within { background: transparent; color: #728378; }
   .channel-row.active { background: #17241b; color: #effff2; }
   .channel-active-mark { align-self: stretch; border-radius: 0 2px 2px 0; background: transparent; }
   .channel-row.active .channel-active-mark { background: #7cf59d; box-shadow: 0 0 10px rgb(124 245 157 / .25); }
