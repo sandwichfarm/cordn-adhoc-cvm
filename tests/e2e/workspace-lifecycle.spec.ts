@@ -3041,6 +3041,13 @@ test("destroys persisted state after explicit confirmation", async ({ page }) =>
   await setup.getByTestId("setup-anonymous").click();
   await setup.getByTestId("setup-coordinator-name").fill("Replacement coordinator");
   await setup.getByTestId("setup-save").click();
+  await setup.getByTestId("setup-advanced").click();
+  await setup.getByTestId("setup-ephemeral").click();
+  await setup.getByTestId("setup-advanced-persistence").getByRole("button", { name: "Continue to relays", exact: true }).click();
+  await setup.getByTestId("setup-advanced-relays").getByRole("button", { name: "Continue to announcement", exact: true }).click();
+  await setup.getByTestId("setup-advanced-announce").getByRole("button", { name: "Continue to autostart", exact: true }).click();
+  await setup.getByTestId("setup-advanced-autostart").getByRole("button").filter({ hasText: /^No/ }).click();
+  await setup.getByTestId("setup-finish").click();
   const backToCoordinator = page.getByRole("button", { name: "Back to my coordinator" }).first();
   if (await backToCoordinator.isVisible()) await backToCoordinator.click();
   await expect(page.getByTestId("guided-start-state")).toBeVisible();

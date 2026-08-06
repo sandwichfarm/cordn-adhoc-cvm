@@ -23,6 +23,7 @@
   import CoordinatorRoomCard from "./CoordinatorRoomCard.svelte";
   import ChannelPreferenceIndicators from "./ChannelPreferenceIndicators.svelte";
   import CoordinatorSetup from "./CoordinatorSetup.svelte";
+  import type { CoordinatorSetupSubmission } from "./coordinator-setup";
   import ChatRoute from "./ChatRoute.svelte";
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
   import LifecyclePanel from "./LifecyclePanel.svelte";
@@ -1163,8 +1164,36 @@
     await coordinator.start();
   }
 
-  async function completeCoordinatorSetup(name: string): Promise<void> {
-    await coordinator.completeSetupAndPublish(name);
+  async function completeCoordinatorSetup(submission: CoordinatorSetupSubmission): Promise<string | null> {
+    const persistenceWasEnabled = coordinator.persistenceEnabled;
+    try {
+      if (submission.persistence === "persistent") {
+        const persisted = await coordinator.enablePersistence(submission.passphrase, submission.confirmPassphrase);
+        if (!persisted) return coordinator.persistenceError ?? "Could not save the coordinator identity";
+      } else if (coordinator.persistenceEnabled) {
+        await coordinator.disablePersistence();
+      }
+
+      const completed = config.completeFirstRunSetup({
+        name: submission.name,
+        relays: submission.relays,
+        announce: submission.announce,
+        autostart: submission.autostart,
+      });
+      if (!completed) {
+        if (submission.persistence === "persistent" && !persistenceWasEnabled) await coordinator.disablePersistence();
+        return config.setupError ?? config.relayError ?? "Could not save coordinator setup";
+      }
+
+      await coordinator.retryCoordinatorProfilePublication();
+      if (submission.autostart) {
+        autostartAttempted = true;
+        await coordinator.start();
+      }
+      return null;
+    } catch {
+      return "Could not finish coordinator setup. Try again.";
+    }
   }
 
   async function send() {
@@ -1742,7 +1771,11 @@
           <PassphrasePrompt embedded {coordinator} />
         {:else if setupRequired}
           <div class="startup-stage coordinator-setup-stage">
-            <CoordinatorSetup {setupState} onComplete={completeCoordinatorSetup} />
+            <CoordinatorSetup
+              {setupState}
+              initialRelays={config.relays.filter((relay) => relay.enabled).map((relay) => relay.url)}
+              onComplete={completeCoordinatorSetup}
+            />
           </div>
         {:else if embeddedChatActive}
           {#key currentUrl}

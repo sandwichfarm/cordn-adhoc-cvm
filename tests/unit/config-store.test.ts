@@ -88,6 +88,73 @@ describe("ConfigStore runtime limits", () => {
     expect(reloaded.coordinatorOptions.coordinatorName).toBe("Madeira node");
   });
 
+  test("commits first-run preferences together and survives reload", () => {
+    const store = new ConfigStore();
+
+    expect(store.completeFirstRunSetup({
+      name: "  Recommended coordinator  ",
+      relays: ["wss://relay.example.com", "wss://backup.example.com"],
+      announce: false,
+      autostart: true,
+    })).toBe(true);
+
+    const reloaded = new ConfigStore();
+    expect(reloaded.isSetupComplete).toBe(true);
+    expect(reloaded.coordinatorName).toBe("Recommended coordinator");
+    expect(reloaded.inviteRelayUrls).toEqual(["wss://relay.example.com", "wss://backup.example.com"]);
+    expect(reloaded.announce).toBe(false);
+    expect(reloaded.autostart).toBe(true);
+  });
+
+  test.each([
+    ["no relays", [], "Add at least one relay"],
+    ["invalid relay", ["https://relay.example.com"], "Relay URL must start with ws:// or wss://"],
+    ["insecure relay", ["ws://relay.example.com"], "Relay URL must start with wss://"],
+    ["duplicate relays", ["wss://relay.example.com", "wss://relay.example.com"], "Relay URLs must be unique"],
+  ])("rejects %s without partially completing first-run setup", (_case, relays, expectedError) => {
+    const store = new ConfigStore();
+
+    expect(store.completeFirstRunSetup({ name: "Draft", relays, announce: true, autostart: true })).toBe(false);
+    expect(store.relayError).toBe(expectedError);
+    expect(store.isSetupComplete).toBe(false);
+    expect(store.coordinatorName).toBe("My coordinator");
+    expect(store.announce).toBe(false);
+    expect(store.autostart).toBe(false);
+    expect(localStorage.getItem("cordn:v1:config")).toBeNull();
+  });
+
+  test("leaves first-run state and revisions unchanged when durable config storage fails", () => {
+    const store = new ConfigStore();
+    const before = {
+      name: store.coordinatorName,
+      relays: store.relays.map((relay) => ({ ...relay })),
+      announce: store.announce,
+      autostart: store.autostart,
+      setupCompleted: store.setupCompleted,
+      revision: store.revision,
+      runtimeRevision: store.runtimeRevision,
+    };
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("synthetic private failure"); });
+
+    expect(store.completeFirstRunSetup({
+      name: "Must remain a draft",
+      relays: ["wss://relay.example.com"],
+      announce: true,
+      autostart: true,
+    })).toBe(false);
+    expect(store.setupError).toBe("Could not save coordinator setup");
+    expect({
+      name: store.coordinatorName,
+      relays: store.relays.map((relay) => ({ ...relay })),
+      announce: store.announce,
+      autostart: store.autostart,
+      setupCompleted: store.setupCompleted,
+      revision: store.revision,
+      runtimeRevision: store.runtimeRevision,
+    }).toEqual(before);
+    expect(localStorage.getItem("cordn:v1:config")).toBeNull();
+  });
+
   test.each([
     ["meaningful legacy name", "  Existing coordinator  ", "complete", "Existing coordinator"],
     ["untouched default", "My coordinator", "incomplete", "My coordinator"],

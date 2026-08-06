@@ -22,6 +22,13 @@ export function validateRelayUrl(value: string): string | null {
   return null;
 }
 
+export function validateShareableRelayUrl(value: string): string | null {
+  const error = validateRelayUrl(value);
+  if (error) return error;
+  if (new URL(value.trim()).protocol !== "wss:") return "Relay URL must start with wss://";
+  return null;
+}
+
 export const MIN_MAX_USERS = 1;
 export const DEFAULT_MAX_USERS = 64;
 export const BROWSER_MAX_USERS_CAP = 256;

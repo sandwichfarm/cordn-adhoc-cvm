@@ -150,7 +150,7 @@ Plans:
 
 **Goal**: A first-time operator deliberately chooses an authenticated or anonymous operator identity, names the coordinator before startup, and has that name resolve in canonical Cordn clients.
 **Depends on**: Phase 17
-**Requirements**: SETUP-01, SETUP-02, SETUP-03, SETUP-04, PROFILE-01, PROFILE-02
+**Requirements**: SETUP-01, SETUP-02, SETUP-03, SETUP-04, SETUP-05, SETUP-06, SETUP-07, PROFILE-01, PROFILE-02
 **Success Criteria** (what must be TRUE):
 
   1. A new installation cannot start its coordinator until the operator has explicitly chosen sign-in or durable anonymous operation and supplied a valid coordinator name.

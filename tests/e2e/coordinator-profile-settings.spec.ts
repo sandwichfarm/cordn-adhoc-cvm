@@ -122,7 +122,7 @@ test("rename publishes a signed coordinator profile with mixed acknowledgement o
   const secondaryEventsBefore = secondaryRelay.events().filter((event) => event.kind === 0).length;
 
   await expect(name).toHaveValue("Before rename");
-  await expect(settings.getByText("Your personal operator profile remains separate.", { exact: false })).toBeVisible();
+  await expect(settings.getByText("This public coordinator name is separate from your operator profile.", { exact: true })).toBeVisible();
   await name.fill("Renamed coordinator");
   const save = settings.getByRole("button", { name: "Save coordinator name", exact: true });
   await expect(save).toBeEnabled();

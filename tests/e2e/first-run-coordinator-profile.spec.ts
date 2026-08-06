@@ -48,8 +48,19 @@ test("checking and anonymous setup keep coordinator start unavailable until a va
   await expect(setup.getByTestId("setup-save")).toBeDisabled();
 
   await name.fill("  My test coordinator  ");
-  await page.evaluate(() => { (window as typeof window & { __setupAllowStart?: boolean }).__setupAllowStart = true; });
   await setup.getByTestId("setup-save").click();
+  await expect(setup.getByTestId("setup-path-stage")).toBeVisible();
+  expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), configStorageKey)).toBeNull();
+  await setup.getByTestId("setup-advanced").click();
+  await setup.getByTestId("setup-ephemeral").click();
+  await setup.getByTestId("setup-advanced-persistence").getByRole("button", { name: "Continue to relays", exact: true }).click();
+  await expect(setup.getByTestId("setup-relay-input")).toHaveCount(3);
+  await setup.getByTestId("setup-advanced-relays").getByRole("button", { name: "Continue to announcement", exact: true }).click();
+  await setup.getByTestId("setup-advanced-announce").getByRole("button").filter({ hasText: /^No/ }).click();
+  await setup.getByTestId("setup-advanced-announce").getByRole("button", { name: "Continue to autostart", exact: true }).click();
+  await setup.getByTestId("setup-advanced-autostart").getByRole("button").filter({ hasText: /^No/ }).click();
+  await page.evaluate(() => { (window as typeof window & { __setupAllowStart?: boolean }).__setupAllowStart = true; });
+  await setup.getByTestId("setup-finish").click();
   await expect(page.getByTestId("guided-start-state")).toBeVisible();
   await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
   expect(await page.evaluate(() => {
@@ -87,28 +98,116 @@ test("identity recovery stays reachable inside the setup gate", async ({ page })
   await expect(setup).toHaveAttribute("data-setup-state", "identity");
 });
 
-async function completeAnonymousSetup(page: import("@playwright/test").Page, name = "Encrypted setup coordinator"): Promise<void> {
+test("advanced setup preserves draft choices and commits edited relays only at finish", async ({ page }) => {
+  await page.goto("/");
+  const setup = page.getByTestId("coordinator-setup");
+  await setup.getByTestId("setup-anonymous").click();
+  await setup.getByTestId("setup-coordinator-name").fill("Advanced coordinator");
+  await setup.getByTestId("setup-save").click();
+  await setup.getByTestId("setup-advanced").click();
+  await setup.getByTestId("setup-ephemeral").click();
+  await setup.getByTestId("setup-advanced-persistence").getByRole("button", { name: "Continue to relays", exact: true }).click();
+
+  const relayStage = setup.getByTestId("setup-advanced-relays");
+  await relayStage.getByTestId("setup-relay-input").first().fill("wss://custom.example.com");
+  await relayStage.getByRole("button", { name: "Remove relay 3" }).click();
+  await relayStage.getByTestId("setup-add-relay").click();
+  await relayStage.getByTestId("setup-relay-input").last().fill("wss://extra.example.com");
+  await relayStage.getByRole("button", { name: "Continue to announcement", exact: true }).click();
+  await setup.getByTestId("setup-advanced-announce").getByRole("button").filter({ hasText: /^Yes/ }).click();
+  await setup.getByTestId("setup-advanced-announce").getByRole("button", { name: "Back to relays", exact: true }).click();
+  expect(await relayStage.getByTestId("setup-relay-input").evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value))).toEqual([
+    "wss://custom.example.com",
+    "wss://bucket.coracle.social",
+    "wss://extra.example.com",
+  ]);
+  expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), configStorageKey)).toBeNull();
+
+  await relayStage.getByRole("button", { name: "Continue to announcement", exact: true }).click();
+  await expect(setup.getByTestId("setup-advanced-announce").getByRole("button").filter({ hasText: /^Yes/ })).toHaveAttribute("aria-pressed", "true");
+  await setup.getByTestId("setup-advanced-announce").getByRole("button", { name: "Continue to autostart", exact: true }).click();
+  await setup.getByTestId("setup-advanced-autostart").getByRole("button").filter({ hasText: /^No/ }).click();
+  await setup.getByTestId("setup-finish").click();
+  await expect(page.getByTestId("guided-start-state")).toBeVisible();
+
+  expect(await page.evaluate((storageKey) => JSON.parse(localStorage.getItem(storageKey) ?? "{}"), configStorageKey)).toMatchObject({
+    coordinatorName: "Advanced coordinator",
+    setupCompleted: true,
+    relays: [
+      { url: "wss://custom.example.com", enabled: true },
+      { url: "wss://bucket.coracle.social", enabled: true },
+      { url: "wss://extra.example.com", enabled: true },
+    ],
+    announce: true,
+    autostart: false,
+  });
+  expect(await page.evaluate(() => localStorage.getItem("cordn:v1:persistence"))).toBeNull();
+});
+
+async function completeRecommendedAnonymousSetup(page: import("@playwright/test").Page, passphrase: string, name = "Encrypted setup coordinator"): Promise<void> {
   const setup = page.getByTestId("coordinator-setup");
   await expect(setup).toHaveAttribute("data-setup-state", "identity");
   await setup.getByTestId("setup-anonymous").click();
   await setup.getByTestId("setup-coordinator-name").fill(name);
   await setup.getByTestId("setup-save").click();
-  await expect(page.getByTestId("guided-start-state")).toBeVisible();
+  await setup.getByTestId("setup-recommended").click();
+  await setup.getByTestId("setup-passphrase").fill(passphrase);
+  await setup.getByTestId("setup-passphrase-confirmation").fill(`${passphrase}-wrong`);
+  await setup.getByTestId("setup-save-and-start").click();
+  await expect(setup.getByTestId("setup-persistence-error")).toHaveText("Passphrases do not match");
+  expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), configStorageKey)).toBeNull();
+  await setup.getByTestId("setup-passphrase-confirmation").fill(passphrase);
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & { __recommendedStartObserved?: boolean; __recommendedStartObserver?: MutationObserver };
+    testWindow.__recommendedStartObserved = false;
+    const check = () => {
+      if (document.querySelector('[data-testid="startup-progress-panel"]')) testWindow.__recommendedStartObserved = true;
+    };
+    testWindow.__recommendedStartObserver = new MutationObserver(check);
+    testWindow.__recommendedStartObserver.observe(document.documentElement, { childList: true, subtree: true });
+  });
+  await setup.getByTestId("setup-save-and-start").click();
+  await expect(setup).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __recommendedStartObserved?: boolean }).__recommendedStartObserved ?? false)).toBe(true);
+  expect(await page.evaluate(() => localStorage.getItem("cordn:v1:persistence"))).not.toBeNull();
+  expect(await page.evaluate((storageKey) => JSON.parse(localStorage.getItem(storageKey) ?? "{}"), configStorageKey)).toMatchObject({
+    coordinatorName: name,
+    setupCompleted: true,
+    autostart: true,
+    announce: false,
+  });
 }
+
+test("durable config failure keeps recommended setup incomplete and never starts", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (this === window.localStorage && key === storageKey) throw new Error("synthetic private config failure");
+      return original.call(this, key, value);
+    };
+  }, configStorageKey);
+  await page.goto("/");
+  const setup = page.getByTestId("coordinator-setup");
+  await setup.getByTestId("setup-anonymous").click();
+  await setup.getByTestId("setup-coordinator-name").fill("Uncommitted coordinator");
+  await setup.getByTestId("setup-save").click();
+  await setup.getByTestId("setup-recommended").click();
+  await setup.getByTestId("setup-passphrase").fill("config-write-failure");
+  await setup.getByTestId("setup-passphrase-confirmation").fill("config-write-failure");
+  await setup.getByTestId("setup-save-and-start").click();
+
+  await expect(setup.getByTestId("setup-persistence-error")).toHaveText("Could not save coordinator setup");
+  await expect(setup).toHaveAttribute("data-setup-state", "preferences");
+  await expect(page.getByTestId("guided-start-state")).toHaveCount(0);
+  await expect(page.getByTestId("startup-progress")).toHaveCount(0);
+  expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), configStorageKey)).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("cordn:v1:persistence"))).toBeNull();
+});
 
 test("encrypted coordinator unlock resolves before setup and then honors persisted completion state", async ({ page }) => {
   const passphrase = "phase-21-setup-unlock";
   await page.goto("/");
-  await completeAnonymousSetup(page);
-
-  await page.getByRole("button", { name: "Review settings", exact: true }).click();
-  const settings = page.getByTestId("coordinator-settings");
-  await settings.getByRole("button", { name: "Edit settings" }).click();
-  await settings.getByRole("button", { name: "Enable persistence" }).click();
-  await settings.getByPlaceholder("passphrase", { exact: true }).fill(passphrase);
-  await settings.getByPlaceholder("confirm passphrase").fill(passphrase);
-  await settings.getByRole("button", { name: "Save key" }).click();
-  await expect(settings.getByText("Saved on this device")).toBeVisible();
+  await completeRecommendedAnonymousSetup(page, passphrase);
 
   await page.reload();
   const unlock = page.getByTestId("coordinator-unlock");
@@ -116,7 +215,7 @@ test("encrypted coordinator unlock resolves before setup and then honors persist
   await expect(page.getByTestId("coordinator-setup")).toHaveCount(0);
   await unlock.getByPlaceholder("passphrase", { exact: true }).fill(passphrase);
   await unlock.getByRole("button", { name: "Unlock coordinator" }).click();
-  await expect(page.getByTestId("guided-start-state")).toBeVisible();
+  await expect(page.getByTestId("coordinator-setup")).toHaveCount(0);
 
   await page.evaluate((storageKey) => {
     const config = JSON.parse(localStorage.getItem(storageKey) ?? "{}");

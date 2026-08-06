@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_USERS, validateMaxUsers, validateRelayUrl } from "./config-validator";
+import { DEFAULT_MAX_USERS, validateMaxUsers, validateRelayUrl, validateShareableRelayUrl } from "./config-validator";
 import { shareableRelayUrls, withRequiredLocalRelay } from "../lib/relay-pool";
 
 const CONFIG_STORAGE_KEY = "cordn:v1:config";
@@ -23,6 +23,13 @@ export interface BrowserCoordinatorOptions {
   coordinatorName: string;
 }
 
+export interface FirstRunSetupOptions {
+  name: unknown;
+  relays: string[];
+  announce: boolean;
+  autostart: boolean;
+}
+
 export type PresenceState = "online" | "invisible" | "offline";
 
 interface PersistedConfig {
@@ -44,6 +51,7 @@ export class ConfigStore {
   relays = $state<RelayConfig[]>(cloneDefaultRelays());
   editMode = $state(false);
   relayError = $state<string | null>(null);
+  setupError = $state<string | null>(null);
   limitError = $state<string | null>(null);
   announce = $state(false);
   maxUsers = $state(DEFAULT_MAX_USERS);
@@ -170,6 +178,59 @@ export class ConfigStore {
     return true;
   }
 
+  completeFirstRunSetup(options: FirstRunSetupOptions): boolean {
+    const name = normalizeCoordinatorName(options.name);
+    if (name === null) return false;
+
+    const urls = options.relays.map((value) => value.trim());
+    if (urls.length === 0) {
+      this.relayError = "Add at least one relay";
+      return false;
+    }
+    const invalidRelay = urls.find((url) => validateShareableRelayUrl(url) !== null);
+    if (invalidRelay !== undefined) {
+      this.relayError = validateShareableRelayUrl(invalidRelay);
+      return false;
+    }
+    if (urls.some((url, index) => urls.indexOf(url) !== index)) {
+      this.relayError = "Relay URLs must be unique";
+      return false;
+    }
+
+    const nextRelays = urls.map((url, index) => ({ id: `setup-relay-${index}-${crypto.randomUUID()}`, url, enabled: true }));
+    const persisted: PersistedConfig = {
+      version: CONFIG_STORAGE_VERSION,
+      relaySetVersion: DEFAULT_RELAY_SET_VERSION,
+      relays: nextRelays.map((relay) => ({ url: relay.url, enabled: true })),
+      announce: options.announce,
+      maxUsers: this.maxUsers,
+      autostart: options.autostart,
+      coordinatorName: name,
+      setupCompleted: true,
+      userName: this.userName,
+      hostBadgeLabel: this.hostBadgeLabel,
+      hostBadgeEmoji: this.hostBadgeEmoji,
+      presenceState: this.presenceState,
+    };
+    try {
+      if ("localStorage" in globalThis) localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(persisted));
+    } catch {
+      this.setupError = "Could not save coordinator setup";
+      return false;
+    }
+
+    this.coordinatorName = name;
+    this.relays = nextRelays;
+    this.announce = options.announce;
+    this.autostart = options.autostart;
+    this.setupCompleted = true;
+    this.relayError = null;
+    this.setupError = null;
+    this.revision += 1;
+    this.runtimeRevision += 1;
+    return true;
+  }
+
   setCoordinatorName(value: unknown): boolean {
     const name = normalizeCoordinatorName(value);
     if (name === null) return false;
@@ -211,6 +272,7 @@ export class ConfigStore {
     this.relays = cloneDefaultRelays();
     this.editMode = false;
     this.relayError = null;
+    this.setupError = null;
     this.limitError = null;
     this.announce = false;
     this.maxUsers = DEFAULT_MAX_USERS;
