@@ -12,7 +12,7 @@
   import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
   import { emptySidebarLedger, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
-  import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
+  import { CHAT_EMOJI_SHORTCUTS, normalizeRecipientPubkeys, type ChatEmojiShortcut } from "../chat/protocol";
   import { projectMessagePresentation } from "../chat/message-presentation";
   import { chatParticipantPreferences, type ParticipantHighlightName } from "../chat/chat-participant-preferences.svelte";
   import { nostrSocialStore } from "../invites/nostr-social.svelte";
@@ -1064,6 +1064,8 @@
   async function inviteParticipantToRoom(participantPubkey: string, choice: ParticipantRoomChoice): Promise<void> {
     const activeSession = session;
     const currentRoom = room;
+    const recipients = normalizeRecipientPubkeys([participantPubkey]);
+    if (recipients.length !== 1) throw new Error("This participant cannot receive a targeted invite");
     const candidate = listRooms().find((stored) => stored.membershipStatus !== "retired"
       && stored.coordinatorPubkey === choice.coordinatorPubkey
       && stored.id === choice.roomId);
@@ -1080,7 +1082,7 @@
       coordinatorKeyMode: candidate.coordinatorKeyMode,
     });
     activeSession.setIdentity(currentHostIdentity());
-    await activeSession.send(inviteUrl, { recipientPubkeys: [participantPubkey] });
+    await activeSession.send(inviteUrl, { recipientPubkeys: recipients });
   }
 
   function participantIgnored(pubkey: string): boolean {

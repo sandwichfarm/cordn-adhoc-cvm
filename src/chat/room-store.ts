@@ -312,6 +312,9 @@ export class ChatRoomSession {
     if (!trimmed) return;
     await this.runExclusive(async () => {
       const recipientPubkeys = normalizeRecipientPubkeys(options.recipientPubkeys);
+      if ((options.recipientPubkeys?.length ?? 0) > 0 && recipientPubkeys.length === 0) {
+        throw new Error("Targeted messages require at least one valid recipient");
+      }
       if (this.stopped || this.status.connection !== "connected") {
         throw new Error("The coordinator must be connected before you can send a message");
       }

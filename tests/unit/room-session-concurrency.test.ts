@@ -209,6 +209,19 @@ describe("ChatRoomSession concurrency", () => {
     await sending;
   });
 
+  it("fails closed when a targeted send has no valid recipients", async () => {
+    const session = connectedSession();
+
+    await expect(session.send("targeted invite", { recipientPubkeys: ["not-a-pubkey"] }))
+      .rejects.toThrow("Targeted messages require at least one valid recipient");
+
+    expect(protocolMocks.signChatEnvelope).not.toHaveBeenCalled();
+    expect(protocolMocks.encryptMessage).not.toHaveBeenCalled();
+    expect(coordinatorMocks.postGroupMessage).not.toHaveBeenCalled();
+    expect(session.room.messages).toEqual([]);
+    expect(session.room.pending).toEqual([]);
+  });
+
   it("waits for an active message pull before encrypting a send", async () => {
     const activePull = deferred<Array<{ cursor: number; msg_64: string }>>();
     const order: string[] = [];
