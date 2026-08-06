@@ -75,6 +75,15 @@
 - [x] **SIDE-05**: Coordinator and room ordering is stable across connection, unread, and message activity changes and persists across browser sessions; newly discovered entries append without reordering existing entries.
 - [x] **SIDE-06**: The reorganized sidebar remains keyboard-operable, screen-reader-labelled, compact-viewport bounded, and preserves exact room open/delete/leave targeting.
 
+### Bounded Gift-Wrap Delivery
+
+- [ ] **RELAY-01**: Optional localhost publication is readiness-gated, time-bounded, and cannot block or degrade a healthy remote relay path.
+- [ ] **RELAY-02**: Every primary and optional publication has explicit retry and elapsed-time limits and is aborted when its relay handler, owning room session, or coordinator transport closes.
+- [ ] **RELAY-03**: Steady-state room polling remains single-flight so an unresolved sync or publication cannot accumulate additional ContextVM gift-wrap requests.
+- [ ] **RELAY-04**: Safe publish diagnostics identify relay URL, event ID, event kind, logical operation, attempt, elapsed time, and terminal outcome without exposing encrypted content or secrets.
+- [ ] **RELAY-05**: Bounded delivery retains transient-outage recovery, multi-relay success, reconnect behavior, and persistent/ephemeral ContextVM gift-wrap interoperability.
+- [ ] **RELAY-06**: Automated coverage proves offline-localhost containment, bounded retry lifetime, lifecycle cancellation, single-flight polling, healthy-remote isolation, and transient recovery.
+
 ## Future Requirements
 
 ### Notification Expansion
@@ -139,13 +148,19 @@
 | SIDE-04 | Phase 22 | Complete |
 | SIDE-05 | Phase 22 | Complete |
 | SIDE-06 | Phase 22 | Complete |
+| RELAY-01 | Phase 23 | Pending |
+| RELAY-02 | Phase 23 | Pending |
+| RELAY-03 | Phase 23 | Pending |
+| RELAY-04 | Phase 23 | Pending |
+| RELAY-05 | Phase 23 | Pending |
+| RELAY-06 | Phase 23 | Pending |
 
 **Coverage:**
 
-- v1.1 requirements: 40 total
-- Mapped to phases: 40
+- v1.1 requirements: 46 total
+- Mapped to phases: 46
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-02*
-*Last updated: 2026-08-05 after first-run coordinator identity and profile scope confirmation*
+*Last updated: 2026-08-06 after bounded gift-wrap delivery scope confirmation*

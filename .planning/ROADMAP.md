@@ -19,6 +19,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [ ] **Phase 20: Delivery Contract & Regression Proof** - Document the GSD lifecycle and protect the complete v1.1 experience with automated coverage.
 - [ ] **Phase 21: First-Run Coordinator Identity & Profile** - Require deliberate operator identity and coordinator naming before first startup.
 - [x] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history. (completed 2026-08-06)
+- [ ] **Phase 23: Bounded Gift-Wrap Delivery** - Stop unavailable relays and room polling from accumulating immortal ContextVM gift-wrap publications.
 
 ## Phase Details
 
@@ -186,6 +187,26 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 23: Bounded Gift-Wrap Delivery
+
+**Goal**: ContextVM gift-wrap delivery remains bounded, cancellable, observable, and interoperable when localhost or remote relays are unavailable.
+**Depends on**: Phase 20
+**Requirements**: RELAY-01, RELAY-02, RELAY-03, RELAY-04, RELAY-05, RELAY-06
+**Success Criteria** (what must be TRUE):
+
+  1. An unavailable optional localhost relay creates no immortal publication and never delays a successful remote path.
+  2. Primary and optional publishes stop within explicit attempt/time budgets and abort when their owner closes.
+  3. Four-second room polling never overlaps a still-running sync or publication.
+  4. Safe diagnostics expose relay, event, operation, attempt, elapsed time, and outcome without payload material.
+  5. Persistent and ephemeral gift wraps still deliver through canonical ContextVM/Cordn paths, including recovery from a transient outage.
+
+**Plans**: 2 plans
+
+- [ ] 23-01-PLAN.md — Add bounded, cancellable relay publication with localhost readiness gating and safe diagnostics.
+- [ ] 23-02-PLAN.md — Prove single-flight polling, lifecycle cancellation, bounded retries, and upstream interoperability.
+
+**UI hint**: no
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -198,3 +219,4 @@ Plans:
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
 | 21. First-Run Coordinator Identity & Profile | 0/TBD | Not started | - |
 | 22. Coordinator-Grouped Sidebar | 2/2 | Complete | 2026-08-06 |
+| 23. Bounded Gift-Wrap Delivery | 0/2 | Not started | - |
