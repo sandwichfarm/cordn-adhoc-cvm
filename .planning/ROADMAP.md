@@ -130,6 +130,7 @@ Plans:
 **Plans**: 1 plan
 
 - [x] 19-01-PLAN.md — Deliver one ownership-aware grouped renderer with adaptive timestamps and retained reaction interoperability.
+
 **UI hint**: yes
 
 ### Phase 20: Delivery Contract & Regression Proof
@@ -169,6 +170,7 @@ Plans:
 - [ ] 21-03-PLAN.md — Deliver identity-first onboarding, authenticated prefill, anonymous continuity, and autostart gating.
 - [ ] 21-04-PLAN.md — Persist and immediately republish settings renames with truthful restart status.
 - [ ] 21-05-PLAN.md — Verify live canonical cordn.net name resolution before and after rename/restart.
+
 **UI hint**: yes
 
 ### Phase 22: Coordinator-Grouped Sidebar
@@ -225,14 +227,15 @@ Plans:
   4. In-room invite targeting lets a viewer select another active room and sends its current invite only as a presentation-targeted message for the chosen participant.
   5. The active identity loads and live-maintains only the newest valid self-authored kind-3 event, and follow publication safely preserves its prior contact-list data.
 
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 Plans:
 
-- [ ] 24-01-PLAN.md — Prove signed kind-9 recipient metadata through send/decrypt and shared viewer-aware presentation.
+- [x] 24-01-PLAN.md — Prove signed kind-9 recipient metadata through send/decrypt and shared viewer-aware presentation.
 - [ ] 24-02-PLAN.md — Add strict exact-room ignore and global highlight preference contracts with the composite-room invariant.
 - [ ] 24-03-PLAN.md — Own validated live kind-3 state and serialize lossless relay-accepted follow publication.
 - [ ] 24-04-PLAN.md — Deliver the shared participant menu, targeted room invites, disclosures, follow feedback, highlights, and UI proof.
+
 **UI hint**: yes
 
 ## Progress
@@ -248,4 +251,4 @@ Plans:
 | 21. First-Run Coordinator Identity & Profile | 0/TBD | Not started | - |
 | 22. Coordinator-Grouped Sidebar | 2/2 | Complete | 2026-08-06 |
 | 23. Bounded Gift-Wrap Delivery | 2/2 | Complete | 2026-08-06 |
-| 24. Chat User Interactions | 0/TBD | Not started | - |
+| 24. Chat User Interactions | 1/4 | In Progress|  |
