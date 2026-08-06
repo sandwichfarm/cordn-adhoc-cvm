@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { userProfileStore } from "../identity/user-profile.svelte";
+  import IdentityRotationDialog from "./IdentityRotationDialog.svelte";
   import OperatorIdentityChoices from "./OperatorIdentityChoices.svelte";
 
   interface Props {
@@ -92,10 +93,14 @@
     <div class="setup-copy">
       <p class="setup-kicker">First run</p>
       {#if userProfileStore.recoveryRequired}
-        <h1 id="coordinator-setup-heading">Recover local identity</h1>
+        <h1 id="coordinator-setup-heading">Identity recovery required</h1>
         <p>Your local operator identity needs recovery before coordinator setup can continue.</p>
-        <button class="setup-save" type="button" disabled={saving} onclick={() => void recoverAnonymousIdentity()}>{saving ? "Creating identity…" : "Create new identity"}</button>
-        {#if userProfileStore.error}<p role="alert">Unable to create a new identity. Try again.</p>{/if}
+        <IdentityRotationDialog
+          variant="recovery"
+          membershipCount={0}
+          onConfirm={recoverAnonymousIdentity}
+          onClose={() => undefined}
+        />
       {:else}
         <h1 id="coordinator-setup-heading">Preparing your coordinator</h1>
         <p role="status">Checking local coordinator setup…</p>

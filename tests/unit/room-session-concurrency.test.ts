@@ -285,6 +285,32 @@ describe("ChatRoomSession concurrency", () => {
     }
   });
 
+  it("keeps steady-state polling single-flight while a coordinator publication is unresolved", async () => {
+    vi.useFakeTimers();
+    try {
+      const activePull = deferred<Array<{ cursor: number; msg_64: string }>>();
+      coordinatorMocks.fetchMessages.mockImplementationOnce(() => activePull.promise).mockResolvedValue([]);
+      const session = connectedSession();
+
+      session.activateSteadyState();
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(coordinatorMocks.fetchMessages).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(16_000);
+      expect(coordinatorMocks.fetchMessages).toHaveBeenCalledOnce();
+
+      activePull.resolve([]);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(coordinatorMocks.fetchMessages).toHaveBeenCalledTimes(2);
+
+      session.stop();
+      expect(coordinatorMocks.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not persist or publish a late aborted recovery", async () => {
     const activePull = deferred<Array<{ cursor: number; msg_64: string }>>();
     coordinatorMocks.fetchMessages.mockImplementationOnce(() => activePull.promise);

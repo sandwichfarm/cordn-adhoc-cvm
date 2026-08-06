@@ -556,6 +556,35 @@ describe("canonical Cordn client conformance", () => {
     });
   });
 
+  test("collapses replayed join requests before keyed pending-invite rendering", () => {
+    const room = {
+      version: 1,
+      id: "room",
+      title: "Replay room",
+      coordinatorPubkey: "3".repeat(64),
+      relayUrls: [],
+      name: "Host",
+      stablePubkey: "1".repeat(64),
+      isHost: true,
+      stateBase64: "",
+      keyPackage: { reference: "host", publicBase64: "", privateBase64: "" },
+      lastCursor: 0,
+      messages: [],
+      pending: [],
+    } satisfies StoredRoom;
+    const session = new ChatRoomSession(room, {} as NostrSigner);
+    const replayed = [
+      { gid: room.id, pk: "2".repeat(64), kp_ref: "7".repeat(64), at: 10 },
+      { gid: room.id, pk: "2".repeat(64), kp_ref: "7".repeat(64), at: 11 },
+    ];
+
+    const current = (session as unknown as {
+      currentInviteRequests(requests: RemoteJoinRequest[]): RemoteJoinRequest[];
+    }).currentInviteRequests(replayed);
+
+    expect(current).toEqual([replayed[1]]);
+  });
+
   test("falls back to the requester's current last-resort key package after its reference rotates", async () => {
     const hostKeys = await createKeyPackage("11".repeat(32));
     const guestKeys = await createKeyPackage("22".repeat(32), { lastResort: true });

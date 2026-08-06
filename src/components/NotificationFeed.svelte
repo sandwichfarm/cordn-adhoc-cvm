@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import { SvelteDate } from "svelte/reactivity";
   import { nostrSocialStore } from "../invites/nostr-social.svelte";
   import {
     notificationCenter,
     type FeedNotificationEntry,
   } from "../notifications/notification-center.svelte";
+  import { viewportOverlay } from "../lib/viewport-overlay";
 
   interface Props {
     onNavigate: (href: string) => void;
@@ -22,7 +23,6 @@
   let dialog: HTMLDivElement | undefined = $state();
   let closeButton: HTMLButtonElement | undefined = $state();
   let keepButton: HTMLButtonElement | undefined = $state();
-  let panelStyle = $state("");
 
   const unreadLabel = $derived(notificationCenter.unreadCount > 99 ? "99+" : String(notificationCenter.unreadCount));
   const bellName = $derived(notificationCenter.unreadCount > 0
@@ -38,7 +38,6 @@
     const markedUnread = notificationCenter.feed.filter((entry) => !entry.read).length;
     notificationCenter.markVisibleRead(renderedIds);
     void tick().then(() => {
-      positionPanel();
       closeButton?.focus();
     });
     if (markedUnread > 0) actionError = `${markedUnread} ${markedUnread === 1 ? "notification" : "notifications"} marked read.`;
@@ -51,9 +50,14 @@
       return;
     }
     open = false;
-    panelStyle = "";
     actionError = "";
     void tick().then(() => trigger?.focus());
+  }
+
+  function clearAll(): void {
+    pendingDismissId = null;
+    notificationCenter.clearAll();
+    actionError = "All notifications cleared.";
   }
 
   function liveInvitation(entry: FeedNotificationEntry) {
@@ -126,37 +130,6 @@
     }
   }
 
-  function positionPanel(): void {
-    if (!open || !trigger || !dialog) return;
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      panelStyle = "";
-      return;
-    }
-
-    const gutter = 8;
-    const gap = 7;
-    const triggerRect = trigger.getBoundingClientRect();
-    const width = Math.min(416, window.innerWidth - gutter * 2);
-    const left = Math.min(
-      Math.max(gutter, triggerRect.right - width),
-      window.innerWidth - width - gutter,
-    );
-    const spaceAbove = triggerRect.top - gap - gutter;
-    const spaceBelow = window.innerHeight - triggerRect.bottom - gap - gutter;
-    if (spaceAbove >= spaceBelow) {
-      const bottom = window.innerHeight - triggerRect.top + gap;
-      panelStyle = `left: ${left}px; bottom: ${bottom}px; width: ${width}px; max-height: ${Math.max(0, spaceAbove)}px;`;
-    } else {
-      const top = triggerRect.bottom + gap;
-      panelStyle = `left: ${left}px; top: ${top}px; width: ${width}px; max-height: ${Math.max(0, spaceBelow)}px;`;
-    }
-  }
-
-  onMount(() => {
-    window.addEventListener("resize", positionPanel);
-    return () => window.removeEventListener("resize", positionPanel);
-  });
-
   function groupEntries(entries: FeedNotificationEntry[]): Array<{ name: "Now" | "Today" | "Earlier"; entries: FeedNotificationEntry[] }> {
     const todayStart = new SvelteDate();
     todayStart.setHours(0, 0, 0, 0);
@@ -218,13 +191,16 @@
 
   {#if open}
     <button class="notification-feed-backdrop" type="button" aria-label="Close notifications" onclick={close}></button>
-    <div bind:this={dialog} class="notification-feed-panel" role="dialog" aria-modal="true" aria-label="Notifications" tabindex="-1" style={panelStyle} onkeydown={handleKeydown}>
+    <div bind:this={dialog} use:viewportOverlay={{ anchor: trigger, preferredSide: "above", align: "end", compactSheetBelow: 900 }} class="notification-feed-panel" role="dialog" aria-modal="true" aria-label="Notifications" tabindex="-1" onkeydown={handleKeydown}>
       <header>
         <div>
           <h2>Notifications</h2>
           <p>{notificationCenter.unreadCount > 0 ? `${notificationCenter.unreadCount} unread` : "All caught up"}</p>
         </div>
-        <button bind:this={closeButton} type="button" aria-label="Close notifications" onclick={close}>×</button>
+        <div class="notification-feed-header-actions">
+          <button class="notification-clear-all" type="button" disabled={notificationCenter.feed.length === 0} onclick={clearAll}>Clear all</button>
+          <button bind:this={closeButton} type="button" aria-label="Close notifications" onclick={close}>×</button>
+        </div>
       </header>
 
       <div class="notification-feed-body">
@@ -267,7 +243,7 @@
           {/each}
         {/if}
       </div>
-      <p class="notification-feed-status" aria-live="polite">{actionError}</p>
+      <p class="notification-feed-status" role="status" aria-live="polite">{actionError}</p>
     </div>
   {/if}
 </div>
@@ -286,6 +262,9 @@
   .notification-feed-panel header p, .notification-feed-status { margin-top: .2rem; color: #718277; font-size: .52rem; }
   .notification-feed-panel header button { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #91a59a; font-size: 1rem; }
   .notification-feed-panel header button:hover { background: #162019; color: #effff2; }
+  .notification-feed-header-actions { display: flex; align-items: center; gap: .25rem; }
+  .notification-feed-panel header .notification-clear-all { width: auto; min-width: 2.75rem; padding: 0 .55rem; font-size: .54rem; }
+  .notification-feed-panel header .notification-clear-all:disabled { color: #4f5d55; cursor: not-allowed; }
   .notification-feed-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .notification-feed-body section + section { border-top: 1px solid #202d25; }
   .notification-feed-body h3 { padding: .65rem .9rem .35rem; color: #718277; font-size: .5rem; letter-spacing: .14em; text-transform: uppercase; }

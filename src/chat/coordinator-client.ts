@@ -72,28 +72,29 @@ export class ChatCoordinatorClient implements ChatCoordinatorOperations {
   private readonly ephemeralTransport: NostrClientTransport;
   private stableConnected: Promise<void> | null = null;
   private ephemeralConnected: Promise<void> | null = null;
+  private readonly lifecycle = new AbortController();
 
   constructor(private readonly target: CoordinatorTarget, signer: NostrSigner) {
     const operationalRelays = target.relayUrls.length > 0
       ? target.relayUrls
       : CORDN_DEFAULT_RELAY_URLS;
     const websocketPool = withRequiredLocalRelay(operationalRelays);
-    const transportBase = {
+    const transportBase = (operation: string) => ({
       serverPubkey: target.coordinatorPubkey,
-      relayHandler: createRequiredRelayPool(websocketPool),
+      relayHandler: createRequiredRelayPool(websocketPool, { operation }),
       fallbackOperationalRelayUrls: [...CORDN_DEFAULT_RELAY_URLS],
       logLevel: "error" as const,
       isStateless: true,
       giftWrapMode: GiftWrapMode.EPHEMERAL,
       openStream: { enabled: true },
       oversizedTransfer: { enabled: true },
-    };
+    });
     this.stableTransport = new NostrClientTransport({
-      ...transportBase,
+      ...transportBase("chat-coordinator-stable-request"),
       signer,
     });
     this.ephemeralTransport = new NostrClientTransport({
-      ...transportBase,
+      ...transportBase("chat-coordinator-ephemeral-request"),
       signer: new PrivateKeySigner(),
     });
   }
@@ -102,9 +103,12 @@ export class ChatCoordinatorClient implements ChatCoordinatorOperations {
     await Promise.allSettled([
       this.stableClient.close(),
       this.ephemeralClient.close(),
+    ]);
+    await Promise.allSettled([
       this.stableTransport.close(),
       this.ephemeralTransport.close(),
     ]);
+    this.lifecycle.abort();
     this.stableConnected = null;
     this.ephemeralConnected = null;
   }
@@ -193,6 +197,7 @@ export class ChatCoordinatorClient implements ChatCoordinatorOperations {
       undefined,
       {
         timeout: CHAT_COORDINATOR_REQUEST_TIMEOUT_MS,
+        signal: this.lifecycle.signal,
         onprogress: () => undefined,
         resetTimeoutOnProgress: true,
       },

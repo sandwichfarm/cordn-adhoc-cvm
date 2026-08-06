@@ -9,6 +9,7 @@
   import IdentityRotationDialog from "./IdentityRotationDialog.svelte";
   import { anonymousMembershipImpact } from "../chat/room-store";
   import OperatorIdentityChoices from "./OperatorIdentityChoices.svelte";
+  import { viewportOverlay } from "../lib/viewport-overlay";
 
   interface Props {
     config: ConfigStore;
@@ -29,6 +30,7 @@
   let rotationDialog = $state<"confirm" | "recovery" | null>(null);
   let membershipCount = $state(0);
   let completionAnnouncement = $state("");
+  let trigger: HTMLButtonElement | undefined = $state();
 
   const shortKey = $derived(userProfileStore.pubkey
     ? `${userProfileStore.pubkey.slice(0, 8)}…${userProfileStore.pubkey.slice(-6)}`
@@ -72,6 +74,7 @@
   async function openRotationDialog(): Promise<void> {
     const impact = await anonymousMembershipImpact(userProfileStore.pubkey);
     membershipCount = impact.count;
+    closeMenu();
     rotationDialog = "confirm";
   }
 
@@ -113,6 +116,7 @@
   <p class="sr-only" aria-live="polite">{completionAnnouncement}</p>
   {#if userProfileStore.initialized && !userProfileStore.recoveryRequired}
   <button
+    bind:this={trigger}
     class="user-trigger"
     type="button"
     aria-label={`${open ? "Close" : "Open"} profile for ${userProfileStore.displayName}. Presence ${presenceLabel}`}
@@ -141,7 +145,7 @@
 
   {#if open}
     <button class="user-scrim" type="button" aria-label="Close profile menu" onclick={closeMenu}></button>
-    <div class="user-menu" role="dialog" aria-label="User profile">
+    <div use:viewportOverlay={{ anchor: trigger, preferredSide: "above", align: "start", compactSheetBelow: 900 }} class="user-menu" role="dialog" aria-label="User profile">
       <header>
         <img src={userProfileStore.avatarUrl} alt="" onerror={avatarFallback} />
         <div class="min-w-0">
@@ -172,6 +176,7 @@
       {:else}
         <div class="user-menu-section">
           {#if userProfileStore.profile?.nip05}<p class="profile-nip05">{userProfileStore.profile.nip05}</p>{/if}
+          {#if userProfileStore.profile?.about}<p class="profile-about">{userProfileStore.profile.about}</p>{/if}
           <div class="profile-actions">
             <button type="button" onclick={() => void userProfileStore.refreshProfile()}>Refresh profile</button>
             <button class="disconnect" type="button" onclick={() => void disconnect()}>Disconnect</button>

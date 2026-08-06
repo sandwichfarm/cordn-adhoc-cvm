@@ -116,14 +116,6 @@ async function seedStoredRoom(
   }, { ...input, privateFixture });
 }
 
-async function chooseCoordinator(page: Page, name: RegExp): Promise<void> {
-  await page.locator("button.channel-context-button").click();
-  const menu = page.getByRole("menu", { name: "Choose coordinator" });
-  await expect(menu).toBeVisible();
-  await menu.getByRole("menuitem", { name }).click();
-  await expect(menu).toBeHidden();
-}
-
 async function openRoomActions(page: Page, roomTitle: string): Promise<Locator> {
   const navigation = page.getByTestId("workspace-navigation");
   await expect(navigation.getByRole("button", { name: "More room actions" })).toHaveCount(0);
@@ -152,14 +144,7 @@ async function expectEmbeddedChatFillsHostPane(page: Page): Promise<void> {
   })).toBe(true);
 }
 
-async function expectSelectedCoordinatorOffline(page: Page): Promise<void> {
-  const status = page.getByTestId("selected-coordinator-status");
-  await expect(status).toHaveAttribute("data-state", "offline", { timeout: 15_000 });
-  await expect(status).toHaveAttribute("aria-label", /coordinator offline/i);
-  await expect(status).not.toHaveClass(/\bonline\b/);
-}
-
-test("keeps a foreign host record as a leaveable previous local session after reload", async ({ page }) => {
+test("moves a foreign host record into collapsed history after reload", async ({ page }) => {
   const roomId = "same-id-current-and-previous-local-room";
   const passphrase = "stale-local-session-passphrase";
   await page.goto("/");
@@ -204,37 +189,13 @@ test("keeps a foreign host record as a leaveable previous local session after re
   });
   await expect(currentRoomButton).toBeVisible();
 
-  await page.locator("button.channel-context-button").click();
-  const coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
-  await expect(coordinatorMenu.getByText("Previous local sessions", { exact: true })).toBeVisible();
-  await expect(coordinatorMenu.getByText(/Coordinator offline · key changed; retained on this device\./)).toBeVisible({ timeout: 15_000 });
-  await coordinatorMenu.getByRole("menuitem", { name: /Previous local/ }).click();
-  await expectSelectedCoordinatorOffline(page);
-
-  await expect(page.getByText("This session belongs to a previous local coordinator key. Open it to leave its saved copy; the current coordinator cannot delete it.", { exact: true })).toBeVisible();
-  const previousSession = page.getByRole("button", {
-    name: `Open previous local session ${currentTestTitle}, hosted by Original host`,
-  });
-  await expect(previousSession).toContainText("temporary key");
-  await previousSession.click();
-
-  // The room deep link is now in shell state; the address and surrounding GUI
-  // stay canonical and stable while cached content opens in the main pane.
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId("operator-shell")).toBeVisible();
-  await expect(page.getByTestId("cached-room-view")).toBeVisible();
-  await expectEmbeddedChatFillsHostPane(page);
-  const roomActions = await openRoomActions(page, currentTestTitle);
-  const leaveRoom = roomActions.getByRole("menuitem", { name: `Leave room ${currentTestTitle}` });
-  await expect(leaveRoom).toBeVisible();
-  await expect(roomActions.getByRole("menuitem", { name: `Delete room ${currentTestTitle}` })).toHaveCount(0);
-
-  await leaveRoom.click();
-  const dialog = page.getByTestId("room-removal-dialog");
-  await expect(dialog.getByRole("heading", { name: `Leave #${currentTestTitle}?` })).toBeVisible();
-  await dialog.getByTestId("confirm-leave-room").click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId("operator-shell")).toBeVisible();
+  const history = page.getByTestId("sidebar-history");
+  await expect(history.getByRole("button", { name: /History 1/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(history).not.toContainText(currentTestTitle);
+  await history.getByRole("button", { name: /History 1/ }).click();
+  await expect(history).toContainText(currentTestTitle);
+  await expect(history).toContainText("Coordinator key rotated");
+  await expect(page.getByRole("button", { name: `Open previous local session ${currentTestTitle}, hosted by Original host` })).toHaveCount(0);
 
   await expect.poll(() => page.evaluate(({ currentCoordinatorPubkey, previousCoordinatorPubkey, roomId }) => {
     const roomKey = (coordinatorPubkey: string) => (
@@ -242,7 +203,7 @@ test("keeps a foreign host record as a leaveable previous local session after re
     );
     return {
       current: JSON.parse(localStorage.getItem(roomKey(currentCoordinatorPubkey)) ?? "null"),
-      previous: localStorage.getItem(roomKey(previousCoordinatorPubkey)),
+      previous: JSON.parse(localStorage.getItem(roomKey(previousCoordinatorPubkey)) ?? "null"),
     };
   }, { currentCoordinatorPubkey, previousCoordinatorPubkey, roomId })).toEqual({
     current: expect.objectContaining({
@@ -250,10 +211,12 @@ test("keeps a foreign host record as a leaveable previous local session after re
       coordinatorPubkey: currentCoordinatorPubkey,
       isHost: true,
     }),
-    previous: null,
+    previous: expect.objectContaining({
+      id: roomId,
+      coordinatorPubkey: previousCoordinatorPubkey,
+      isHost: true,
+    }),
   });
-
-  await chooseCoordinator(page, /My coordinator/);
   await expect(page.getByRole("button", {
     name: new RegExp(`^Open room ${currentTestTitle}, hosted by `),
   })).toBeVisible();
@@ -287,10 +250,9 @@ test("keeps a stale remote room readable without granting a mismatched signer se
   await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByTestId("chat-lobby")).toHaveCount(0);
 
-  await chooseCoordinator(page, /Coordinator cccccc/);
-  await expectSelectedCoordinatorOffline(page);
+  await expect(page.getByTestId(`coordinator-card-status-${remoteCoordinatorPubkey}`)).toHaveAttribute("data-state", "offline", { timeout: 15_000 });
   const remoteRoom = page.getByRole("button", {
-    name: new RegExp(`^Open room ${title}, hosted by .+, on `),
+    name: new RegExp(`^Open room ${title}, hosted by `),
   });
   await expect(remoteRoom).toBeVisible();
   await remoteRoom.click();

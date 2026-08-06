@@ -36,19 +36,21 @@
 - [ ] **PRES-02**: The active presence state is represented by a status dot attached to the user/avatar control and is available to keyboard and screen-reader users.
 - [x] **INVITE-01**: Incoming room invitations appear in a discoverable, actionable personal-notification surface instead of an isolated empty room-invites popover.
 - [ ] **SHELL-01**: Header controls clearly separate personal/user actions from host/coordinator lifecycle actions and avoid duplicate status or settings controls.
+- [x] **SHELL-02**: Every menu, popover, or dialog opened from the clipped sidebar renders in a viewport-level overlay layer, remains fully reachable at supported widths and short heights, and returns focus to its originating control when closed.
 
 ### Notifications
 
 - [x] **NOTF-01**: The existing notification preference control is labeled `Notification settings` and opens a working settings surface with persisted choices.
 - [x] **NOTF-02**: A separate bell control opens an in-app notification feed with unread state, concise grouped entries, and actions for applicable events such as room invitations.
 - [x] **NOTF-03**: Browser notification permission is requested only from an explicit user action, and enabled desktop notifications are delivered on the configured cadence without duplicate bursts.
+- [x] **NOTF-05**: The in-app notification feed provides an accessible clear-all action that removes persisted feed history and unread state without accepting, dismissing, or resolving live room invitations.
 
 ### Conversation Presentation & Reactions
 
-- [ ] **REACT-01**: Each message or message group exposes a compact reaction-add affordance that overlaps the bubble border and opens an inline emoji picker.
-- [ ] **REACT-02**: Reactions are aggregated by emoji across all participants, show total counts, and let the current participant toggle their own reaction on messages authored by other participants without duplicating counts; participants cannot react to their own messages.
-- [ ] **CHAT-01**: Consecutive messages from the same sender are rendered as one sender group with the avatar and display name shown once and individual message bubbles beneath it.
-- [ ] **CHAT-02**: Every message keeps its timestamp and relevant metadata visible in a smaller, lower-contrast treatment without repeating sender chrome.
+- [x] **REACT-01**: Each message or message group exposes a compact reaction-add affordance that overlaps the bubble border and opens an inline emoji picker.
+- [x] **REACT-02**: Reactions are aggregated by emoji across all participants, show total counts, and let the current participant toggle their own reaction on messages authored by other participants without duplicating counts; participants cannot react to their own messages.
+- [x] **CHAT-01**: Consecutive messages from the same sender are rendered as one sender group with the avatar and display name shown once and individual message bubbles beneath it.
+- [x] **CHAT-02**: Every message keeps its timestamp and relevant metadata visible in a smaller, lower-contrast treatment without repeating sender chrome.
 
 ### Delivery Process & Verification
 
@@ -64,6 +66,24 @@
 - [ ] **SETUP-04**: The operator can edit the coordinator name later through settings and a changed name is republished without replacing either the operator identity or coordinator transport identity.
 - [ ] **PROFILE-01**: CAHMLS publishes the selected coordinator name in the coordinator-key-signed kind-0 profile and the ContextVM kind-11316 announcement `name` tag through configured shareable relays, and exposes that same name through MCP initialize so invitees see it as the coordinator name instead of an `npub` fallback.
 - [ ] **PROFILE-02**: Coordinator profile updates preserve existing metadata where possible, surface actionable retry state on publication failure, and never corrupt or prevent an otherwise valid coordinator runtime.
+
+### Coordinator-Grouped Sidebar
+
+- [x] **SIDE-01**: The sidebar keeps `Join from invite` first, followed by a dedicated local coordinator identity/status/control box with the selected local room's invite/admission controls attached as its bottom row, then coordinator-grouped room cards; the local control stack remains visible while browsing another coordinator.
+- [x] **SIDE-02**: Every active coordinator renders as its own lightweight hairline card with its label embedded in the border; the local coordinator is always first and uniquely exposes a `+ Group` action.
+- [x] **SIDE-03**: Each coordinator card shows at most five rooms by default and exposes an accessible show-more/show-less reveal without hiding unread state or the active room.
+- [x] **SIDE-04**: Retired memberships, rotated local coordinator rooms, and explicitly deleted or left rooms appear only in one collapsed `History` section containing non-secret display metadata.
+- [x] **SIDE-05**: Coordinator and room ordering is stable across connection, unread, and message activity changes and persists across browser sessions; newly discovered entries append without reordering existing entries.
+- [x] **SIDE-06**: The reorganized sidebar remains keyboard-operable, screen-reader-labelled, compact-viewport bounded, and preserves exact room open/delete/leave targeting.
+
+### Bounded Gift-Wrap Delivery
+
+- [x] **RELAY-01**: Optional localhost publication is readiness-gated, time-bounded, and cannot block or degrade a healthy remote relay path.
+- [x] **RELAY-02**: Every primary and optional publication has explicit retry and elapsed-time limits and is aborted when its relay handler, owning room session, or coordinator transport closes.
+- [x] **RELAY-03**: Steady-state room polling remains single-flight so an unresolved sync or publication cannot accumulate additional ContextVM gift-wrap requests.
+- [x] **RELAY-04**: Safe publish diagnostics identify relay URL, event ID, event kind, logical operation, attempt, elapsed time, and terminal outcome without exposing encrypted content or secrets.
+- [x] **RELAY-05**: Bounded delivery retains transient-outage recovery, multi-relay success, reconnect behavior, and persistent/ephemeral ContextVM gift-wrap interoperability.
+- [x] **RELAY-06**: Automated coverage proves offline-localhost containment, bounded retry lifetime, lifecycle cancellation, single-flight polling, healthy-remote isolation, and transient recovery.
 
 ## Future Requirements
 
@@ -106,13 +126,15 @@
 | PRES-02 | Phase 18 | Pending |
 | INVITE-01 | Phase 18 | Complete |
 | SHELL-01 | Phase 18 | Pending |
+| SHELL-02 | Phase 18 | Complete |
 | NOTF-01 | Phase 18 | Complete |
 | NOTF-02 | Phase 18 | Complete |
 | NOTF-03 | Phase 18 | Complete |
-| REACT-01 | Phase 19 | Pending |
-| REACT-02 | Phase 19 | Pending |
-| CHAT-01 | Phase 19 | Pending |
-| CHAT-02 | Phase 19 | Pending |
+| NOTF-05 | Phase 18 | Complete |
+| REACT-01 | Phase 19 | Complete |
+| REACT-02 | Phase 19 | Complete |
+| CHAT-01 | Phase 19 | Complete |
+| CHAT-02 | Phase 19 | Complete |
 | DOC-01 | Phase 20 | Pending |
 | TEST-01 | Phase 20 | Pending |
 | INTEROP-01 | Phase 20 | Pending |
@@ -122,13 +144,25 @@
 | SETUP-04 | Phase 21 | Pending |
 | PROFILE-01 | Phase 21 | Pending |
 | PROFILE-02 | Phase 21 | Pending |
+| SIDE-01 | Phase 22 | Complete |
+| SIDE-02 | Phase 22 | Complete |
+| SIDE-03 | Phase 22 | Complete |
+| SIDE-04 | Phase 22 | Complete |
+| SIDE-05 | Phase 22 | Complete |
+| SIDE-06 | Phase 22 | Complete |
+| RELAY-01 | Phase 23 | Complete |
+| RELAY-02 | Phase 23 | Complete |
+| RELAY-03 | Phase 23 | Complete |
+| RELAY-04 | Phase 23 | Complete |
+| RELAY-05 | Phase 23 | Complete |
+| RELAY-06 | Phase 23 | Complete |
 
 **Coverage:**
 
-- v1.1 requirements: 33 total
-- Mapped to phases: 33
+- v1.1 requirements: 47 total
+- Mapped to phases: 47
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-02*
-*Last updated: 2026-08-05 after first-run coordinator identity and profile scope confirmation*
+*Last updated: 2026-08-06 after bounded gift-wrap delivery scope confirmation*

@@ -109,9 +109,11 @@
     left: .75rem;
     bottom: -.72rem;
     display: inline-flex;
+    gap: .3rem;
     min-height: 1.45rem;
     align-items: center;
     isolation: isolate;
+    z-index: 8;
   }
 
   .reaction-add,
@@ -130,7 +132,7 @@
   }
 
   .reaction-add {
-    z-index: 2;
+    flex: 0 0 auto;
     width: 1.35rem;
     min-width: 1.35rem;
     min-height: 1.35rem;
@@ -138,13 +140,18 @@
     padding: 0;
     color: #9fb2a5;
     font-size: .95rem;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(.12rem) scale(.92);
+    transition: opacity 120ms ease, transform 120ms ease;
   }
 
-  .has-reactions .reaction-add {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
+  :global(.message-bubble:hover) .reaction-add,
+  :global(.message-bubble:focus-within) .reaction-add,
+  .picker-open .reaction-add {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
   }
 
   .reaction-add:hover:not(:disabled),
@@ -160,7 +167,7 @@
     display: inline-flex;
     align-items: center;
     gap: .2rem;
-    margin-left: .62rem;
+    margin-left: 0;
   }
 
   .reaction-chip {
@@ -235,5 +242,9 @@
 
   @media (max-width: 520px) {
     .reaction-picker { max-width: min(17rem, calc(100vw - 2rem)); overflow-x: auto; }
+  }
+
+  @media (hover: none) {
+    .reaction-add { opacity: 1; pointer-events: auto; transform: none; }
   }
 </style>

@@ -1,9 +1,9 @@
 ---
 phase: 21
 slug: first-run-coordinator-identity-profile
-status: planned
+status: automated-passed-awaiting-live-interop
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-08-05
 ---
 
@@ -35,12 +35,12 @@ created: 2026-08-05
 
 | Requirement | Observable behavior | Automated evidence | Manual evidence | Status |
 |-------------|---------------------|--------------------|-----------------|--------|
-| SETUP-01 | A fresh install chooses an existing supported signer path or durable anonymous identity before any coordinator start control or side effect is reachable. | `pnpm exec vitest run tests/unit/state-machine.test.ts && pnpm exec playwright test tests/e2e/first-run-coordinator-profile.spec.ts -g "anonymous|identity choices|autostart" --workers=1` | None; automated UI and store evidence is authoritative. | ⬜ pending |
-| SETUP-02 | Identity precedes a normalized non-empty editable name; authenticated profile prefill and anonymous default follow the locked precedence. | `pnpm exec vitest run tests/unit/config-store.test.ts && pnpm exec playwright test tests/e2e/first-run-coordinator-profile.spec.ts -g "invalid name|authenticated prefill|anonymous" --workers=1` | None. | ⬜ pending |
-| SETUP-03 | Completion/name survive reload, meaningful legacy names migrate once, and default/blank/malformed records still require setup. | `pnpm exec vitest run tests/unit/config-store.test.ts tests/unit/state-machine.test.ts && pnpm exec playwright test tests/e2e/first-run-coordinator-profile.spec.ts -g "reload|migration|no flash" --workers=1` | None. | ⬜ pending |
-| SETUP-04 | Settings saves a local rename immediately, republishes without identity replacement, and truthfully requires restart for constructor-static initialize metadata. | `pnpm exec playwright test tests/e2e/coordinator-profile-settings.spec.ts -g "rename publishes|restart applies|invalid name|retry" --workers=1` | Plan 21-05 observes the initial and renamed labels in canonical cordn.net across explicit restart/reconnect. | ⬜ pending |
-| PROFILE-01 | A valid coordinator-key kind-0 is attempted on every configured shareable relay; at least one acknowledgement succeeds, and a fresh transport advertises the configured server name. | `pnpm exec vitest run tests/unit/coordinator-profile.test.ts tests/unit/contextvm-roundtrip.test.ts && pnpm exec playwright test tests/e2e/coordinator-profile-settings.spec.ts -g "rename publishes|relay acknowledgement" --workers=1` | Plan 21-05 verifies canonical cordn.net resolves the selected label over a real shareable relay. | ⬜ pending |
-| PROFILE-02 | Existing safe metadata survives, total relay failure retains the local name/running coordinator and exposes retry, and no secret material enters UI/evidence. | `pnpm exec vitest run tests/unit/coordinator-profile.test.ts tests/unit/state-machine.test.ts && pnpm exec playwright test tests/e2e/coordinator-profile-settings.spec.ts -g "failure|retry|metadata" --workers=1` | Plan 21-05 confirms unchanged public coordinator identity and records only approved public evidence. | ⬜ pending |
+| SETUP-01 | A fresh install chooses an existing supported signer path or durable anonymous identity before any coordinator start control or side effect is reachable. | `pnpm test` and the complete 92-test Playwright suite passed on 2026-08-05 at `803ba77`. | None; automated UI and store evidence is authoritative. | ✅ automated pass |
+| SETUP-02 | Identity precedes a normalized non-empty editable name; authenticated profile prefill and anonymous default follow the locked precedence. | `pnpm test` and the complete 92-test Playwright suite passed on 2026-08-05 at `803ba77`. | None. | ✅ automated pass |
+| SETUP-03 | Completion/name survive reload, meaningful legacy names migrate once, and default/blank/malformed records still require setup. | `pnpm test` and the complete 92-test Playwright suite passed on 2026-08-05 at `803ba77`. | None. | ✅ automated pass |
+| SETUP-04 | Settings saves a local rename immediately, republishes without identity replacement, and truthfully requires restart for constructor-static initialize metadata. | The complete unit and Playwright suites passed on 2026-08-05 at `803ba77`. | Plan 21-05 observes the initial and renamed labels in canonical cordn.net across explicit restart/reconnect. | ⏳ live check pending |
+| PROFILE-01 | A valid coordinator-key kind-0 is attempted on every configured shareable relay; at least one acknowledgement succeeds, and a fresh transport advertises the configured server name. | Unit, Playwright, `pnpm check:upstream`, and `pnpm test:upstream-interop` passed on 2026-08-05 at `803ba77`. | Plan 21-05 verifies canonical cordn.net resolves the selected label over a real shareable relay. | ⏳ live check pending |
+| PROFILE-02 | Existing safe metadata survives, total relay failure retains the local name/running coordinator and exposes retry, and no secret material enters UI/evidence. | The complete unit and Playwright suites passed on 2026-08-05 at `803ba77`. | Plan 21-05 confirms unchanged public coordinator identity and records only approved public evidence. | ⏳ live check pending |
 
 ## Plan Task Mapping
 
@@ -59,12 +59,12 @@ created: 2026-08-05
 
 ## Wave 0 Requirements
 
-- [ ] Extend `tests/unit/config-store.test.ts` for normalization, atomic completion, reset, all legacy classifications, runtime revision, and next-options snapshots.
-- [ ] Extend `tests/unit/state-machine.test.ts` for pre-side-effect setup refusal, persist-first save, all-relay failure, retry, unchanged key/runtime, and current-relay targeting.
-- [ ] Extend `tests/unit/contextvm-roundtrip.test.ts` for a configured non-default initialize name and next-transport rename behavior.
-- [ ] Create `tests/unit/coordinator-profile.test.ts` for defensive merge, coordinator-key signature, every-target invocation, mixed acknowledgement success, total failure, zeroization, and pool cleanup.
-- [ ] Create `tests/e2e/first-run-coordinator-profile.spec.ts` for first-run sequencing, supported identities, authenticated prefill, anonymous continuity, reload/migration, autostart, focus, and responsive shell integration.
-- [ ] Create `tests/e2e/coordinator-profile-settings.spec.ts` and extend `tests/e2e/mock-relay.ts` for explicit rename, multi-relay acknowledgement permutations, retry, restart-required truth, next-transport name, accessibility, and secret-safe observation.
+- [x] Extend `tests/unit/config-store.test.ts` for normalization, atomic completion, reset, all legacy classifications, runtime revision, and next-options snapshots.
+- [x] Extend `tests/unit/state-machine.test.ts` for pre-side-effect setup refusal, persist-first save, all-relay failure, retry, unchanged key/runtime, and current-relay targeting.
+- [x] Extend `tests/unit/contextvm-roundtrip.test.ts` for a configured non-default initialize name and next-transport rename behavior.
+- [x] Create `tests/unit/coordinator-profile.test.ts` for defensive merge, coordinator-key signature, every-target invocation, mixed acknowledgement success, total failure, zeroization, and pool cleanup.
+- [x] Create `tests/e2e/first-run-coordinator-profile.spec.ts` for first-run sequencing, supported identities, authenticated prefill, anonymous continuity, reload/migration, autostart, focus, and responsive shell integration.
+- [x] Create `tests/e2e/coordinator-profile-settings.spec.ts` and extend `tests/e2e/mock-relay.ts` for explicit rename, multi-relay acknowledgement permutations, retry, restart-required truth, next-transport name, accessibility, and secret-safe observation.
 
 ## Manual-Only Verification
 
@@ -78,7 +78,20 @@ Plan 21-05 is intentionally manual because a mocked relay and local ContextVM cl
 - [x] Dirty-worktree sampling protects the independent Phase 21 / in-progress Phase 18 integration boundary.
 - [x] No watch-mode flags are used.
 - [x] `nyquist_compliant: true` is set in frontmatter.
-- [ ] Wave 0 coverage is implemented and green.
+- [x] Wave 0 coverage is implemented and green.
 - [ ] Live canonical-client evidence is approved and recorded.
 
-**Approval:** draft — implementation, automated gates, and live interoperability checkpoint pending.
+## Executed Gate Record
+
+Executed on 2026-08-05 against commit `803ba77`:
+
+- `pnpm lint` — passed.
+- `pnpm exec tsc --noEmit` — passed.
+- `pnpm test` — passed: 25 files and 270 tests; one file and three tests skipped by their declared conditions.
+- `pnpm test:e2e` — passed: 92 Chromium tests.
+- `pnpm build` — passed; only upstream dependency annotation and chunk-size warnings were emitted.
+- `git diff --check` — passed.
+- `pnpm check:upstream` — passed.
+- `pnpm test:upstream-interop` — passed: three pinned upstream transport scenarios.
+
+**Approval:** repository-controlled verification passed; blocking live canonical cordn.net evidence remains pending under Plan 21-05.

@@ -24,6 +24,7 @@ import {
   type ChatReactionMutation,
   type LocalKeyPackage,
 } from "./protocol";
+import { persistRemovedSidebarRoom } from "./sidebar-ledger";
 import {
   ChatCoordinatorClient,
   type ChatCoordinatorClientFactory,
@@ -585,8 +586,14 @@ export class ChatRoomSession {
   private currentInviteRequests(requests: RemoteJoinRequest[]): RemoteJoinRequest[] {
     const inFlight = new Set((this.room.pendingWelcomes ?? [])
       .map((pending) => `${pending.requestPk}:${pending.requestAt}`));
-    return requests.filter((request) => isCurrentInviteRequest(this.room.inviteToken, request)
-      && !inFlight.has(`${request.pk}:${request.at}`));
+    const current = new Map<string, RemoteJoinRequest>();
+    for (const request of requests) {
+      if (!isCurrentInviteRequest(this.room.inviteToken, request)
+        || inFlight.has(`${request.pk}:${request.at}`)) continue;
+      const existing = current.get(request.kp_ref);
+      if (!existing || request.at > existing.at) current.set(request.kp_ref, request);
+    }
+    return [...current.values()];
   }
 
   private async acceptJoinRequests(
@@ -1286,7 +1293,10 @@ export function saveRoom(room: StoredRoom): void {
   }));
 }
 
-export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubkey">): void {
+export function removeStoredRoom(
+  room: Pick<StoredRoom, "id" | "coordinatorPubkey">,
+  history?: { reason: "deleted" | "left"; coordinatorLabel: string },
+): void {
   // Resolve the validated preference while the room still exists. Once storage is
   // removed loadLastOpenRoom can no longer distinguish this exact composite room
   // from a stale/corrupt preference.
@@ -1297,6 +1307,7 @@ export function removeStoredRoom(room: Pick<StoredRoom, "id" | "coordinatorPubke
 
   const currentKey = roomStorageKey(room.coordinatorPubkey, room.id);
   const current = readStoredRoom(localStorage.getItem(currentKey));
+  if (current && history) persistRemovedSidebarRoom(current, history.reason, history.coordinatorLabel);
   if (sameRoomIdentity(current, room)) localStorage.removeItem(currentKey);
 
   const legacyKey = `${ROOM_KEY_PREFIX}${room.id}`;
@@ -1313,13 +1324,15 @@ export function removeHostedRoomsForCoordinator(coordinatorPubkey: string): void
   const normalizedCoordinatorPubkey = coordinatorPubkey.trim().toLowerCase();
   if (!normalizedCoordinatorPubkey) return;
 
-  const targets = new Map<string, Pick<StoredRoom, "id" | "coordinatorPubkey">>();
+  const targets = new Map<string, StoredRoom>();
   for (const { room } of storedRoomEntries()) {
     if (!room.isHost || room.coordinatorPubkey.trim().toLowerCase() !== normalizedCoordinatorPubkey) continue;
     targets.set(roomIdentityKey(room.coordinatorPubkey, room.id), room);
   }
 
-  for (const room of targets.values()) removeStoredRoom(room);
+  for (const room of targets.values()) {
+    removeStoredRoom(room, { reason: "deleted", coordinatorLabel: `Previous local ${room.coordinatorPubkey.slice(0, 6)}` });
+  }
   forgetLastOpenRoom(coordinatorPubkey);
 }
 
@@ -1394,6 +1407,8 @@ function readStoredRoom(raw: string | null): StoredRoom | null {
       || !Array.isArray(room.pending)
       || !room.pending.every(isPendingMessage)) return null;
     const stored = room as unknown as StoredRoom;
+    stored.messages = normalizeStoredMessages(stored.messages);
+    stored.pending = uniqueById(stored.pending);
     if (!Array.isArray(stored.pendingWelcomes)
       || !stored.pendingWelcomes.every(isPendingWelcomeDelivery)) {
       delete stored.pendingWelcomes;
@@ -1523,6 +1538,32 @@ function isStoredMessage(value: unknown): value is StoredMessage {
       && typeof value.auth.sig === "string"))
     && (value.cursor === undefined || (typeof value.cursor === "number" && Number.isFinite(value.cursor)))
     && (value.pending === undefined || typeof value.pending === "boolean");
+}
+
+function normalizeStoredMessages(messages: StoredMessage[]): StoredMessage[] {
+  const normalized = new Map<string, StoredMessage>();
+  for (const message of messages) {
+    const existing = normalized.get(message.id);
+    if (!existing) {
+      normalized.set(message.id, message);
+      continue;
+    }
+    const existingCursor = existing.cursor ?? -1;
+    const nextCursor = message.cursor ?? -1;
+    if (nextCursor > existingCursor || (existing.pending === true && message.pending !== true)) {
+      normalized.set(message.id, message);
+    }
+  }
+  return [...normalized.values()];
+}
+
+function uniqueById<T extends { id: string }>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    if (seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  });
 }
 
 function verifiedCreatorPubkeyFromStoredState(room: StoredRoom): string | undefined {

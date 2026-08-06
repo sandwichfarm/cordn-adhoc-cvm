@@ -24,6 +24,17 @@ test("checking and anonymous setup keep coordinator start unavailable until a va
   await expect(setup.getByRole("heading", { name: "Choose your operator identity" })).toBeVisible();
   await expect(setup.getByTestId("setup-anonymous")).toBeEnabled();
   await expect(page.getByRole("button", { name: "Start", exact: true })).toHaveCount(0);
+  const viewportWidth = page.viewportSize()?.width ?? 1280;
+  await expect.poll(() => page.evaluate(() => {
+    const viewportWidth = document.documentElement.clientWidth;
+    const host = document.querySelector<HTMLElement>('[data-testid="host-chat"]')?.getBoundingClientRect();
+    const card = document.querySelector<HTMLElement>('[data-testid="coordinator-setup"]')?.getBoundingClientRect();
+    return {
+      hostLeft: Math.round(host?.left ?? -1),
+      hostWidth: Math.round(host?.width ?? -1),
+      cardCenterOffset: Math.round(Math.abs(((card?.left ?? 0) + (card?.width ?? 0) / 2) - viewportWidth / 2)),
+    };
+  })).toEqual({ hostLeft: 0, hostWidth: viewportWidth, cardCenterOffset: 0 });
 
   await setup.getByTestId("setup-anonymous").click();
   const name = setup.getByTestId("setup-coordinator-name");

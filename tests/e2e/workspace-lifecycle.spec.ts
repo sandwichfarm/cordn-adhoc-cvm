@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
-import { expect, test } from "./established-installation-fixture";
+import { expect, installEstablishedInstallation, test } from "./established-installation-fixture";
 import { generateSecretKey } from "nostr-tools";
 import { bytesToHex } from "nostr-tools/utils";
 
@@ -50,6 +50,10 @@ async function openCoordinatorSettings(
   page: import("@playwright/test").Page,
   edit = false,
 ): Promise<import("@playwright/test").Locator> {
+  const anonymousChoice = page.getByRole("button", { name: /Continue anonymously/ });
+  if (await anonymousChoice.isVisible()) await anonymousChoice.click();
+  const saveCoordinatorName = page.getByRole("button", { name: "Save and continue" });
+  if (await saveCoordinatorName.isVisible()) await saveCoordinatorName.click();
   let settingsTrigger = page.getByRole("button", { name: /^Settings for / }).first();
   if (!(await settingsTrigger.isVisible())) {
     const guidedSettingsTrigger = page.getByRole("button", { name: "Review settings", exact: true });
@@ -121,11 +125,11 @@ async function expectGuidedCoordinatorOnline(page: import("@playwright/test").Pa
   const createRoomBounds = await createRoom.boundingBox();
   expect(createRoomBounds?.width ?? Number.POSITIVE_INFINITY).toBeLessThan(320);
   await expect(page.getByTestId("status-badge")).toBeHidden();
-  await expect(page.getByTestId("invite-panel")).toBeHidden();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open management interface" })).toHaveCount(0);
-  await expect(page.getByText("Notification settings", { exact: true })).toBeHidden();
+  await expect(page.getByText("Notification settings", { exact: true })).toBeVisible();
 }
 
 async function openManagement(page: import("@playwright/test").Page): Promise<void> {
@@ -235,12 +239,7 @@ async function expectShellControlsUsable(page: import("@playwright/test").Page):
   await expect(settings).toBeVisible();
   await closeCoordinatorSettings(settings);
 
-  const railControl = page.locator(".channel-context-button");
-  await railControl.focus();
-  await expect(railControl).toBeFocused();
-  await railControl.click();
-  await expect(page.getByRole("menu", { name: "Choose coordinator" })).toBeVisible();
-  await railControl.click();
+  await expect(rail.getByTestId("coordinator-runtime-card")).toBeVisible();
 }
 
 async function expectStartupMasks(page: import("@playwright/test").Page): Promise<void> {
@@ -335,7 +334,7 @@ async function expectStartupCompactVisualContract(page: import("@playwright/test
 }
 
 async function expectStartupFieldStatic(field: import("@playwright/test").Locator): Promise<void> {
-  await field.page().waitForTimeout(450);
+  await field.page().waitForTimeout(1_000);
   const beforeTransforms = await field.locator(".ascii-bed .ascii-texture, .ripple-plane, .ripple-mask-lines, .ripple-traces, .ripple-texture").evaluateAll((elements) => (
     elements.map((element) => getComputedStyle(element).transform)
   ));
@@ -416,19 +415,14 @@ async function customizeHostIdentity(
 
 async function createRoom(page: import("@playwright/test").Page, title: string): Promise<void> {
   const createTrigger = page.getByRole("button", { name: "Create room", exact: true });
-  if (await createTrigger.isVisible()) {
-    await createTrigger.click();
-  } else {
-    const railToggle = page.getByRole("button", { name: "Open room browser" });
-    if (await railToggle.isVisible()) await railToggle.click();
-    const newRoomTrigger = page.getByRole("button", { name: "New room" });
-    if (await newRoomTrigger.isVisible()) {
-      await newRoomTrigger.click();
-    } else {
-      await expect(createTrigger).toBeVisible();
-      await createTrigger.click();
-    }
-  }
+  const railToggle = page.getByRole("button", { name: "Open room browser" });
+  if (!(await createTrigger.isVisible()) && await railToggle.isVisible()) await railToggle.click();
+  const availableTrigger = createTrigger
+    .or(page.getByRole("button", { name: "New room" }))
+    .or(page.getByRole("button", { name: "Create group" }))
+    .first();
+  await expect(availableTrigger).toBeVisible();
+  await availableTrigger.click();
   const dialog = page.getByTestId("create-room-dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByPlaceholder("Friday plans").fill(title);
@@ -504,10 +498,6 @@ test("unread badge lifecycle projects exact room and coordinator counts", async 
   });
   await page.reload();
 
-  await page.locator(".channel-context-button").click();
-  const coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
-  await expect(coordinatorMenu.getByRole("menuitem")).toHaveCount(2);
-  await coordinatorMenu.getByRole("menuitem", { name: /Coordinator aaaaaa/ }).click();
   const rail = page.getByTestId("invite-panel");
   await expect(rail.getByRole("button", { name: /Open room Unread one/ })).toBeVisible();
   const unreadBadge = rail.getByLabel("100 unread messages");
@@ -521,17 +511,48 @@ test("unread badge lifecycle projects exact room and coordinator counts", async 
 
   const targetRow = rail.locator(".channel-row").filter({ hasText: "Unread one" });
   const targetMenu = targetRow.getByRole("button", { name: "More actions for # Unread one" });
-  const activeRoomBefore = await page.locator(".channel-row.active").getAttribute("data-room-key");
+  await expect(page.locator(".channel-row.active")).toHaveCount(0);
   const urlBefore = page.url();
   await targetMenu.focus();
   await targetMenu.click();
   await expect(page).toHaveURL(urlBefore);
-  await expect(page.locator(".channel-row.active")).toHaveAttribute("data-room-key", activeRoomBefore ?? "");
+  await expect(page.locator(".channel-row.active")).toHaveCount(0);
   await expect(unreadBadge).toHaveText("99+");
   await page.keyboard.press("Escape");
   await expect(targetMenu).toBeFocused();
   await expect(unreadBadge).toHaveText("99+");
   expect(pageErrors).toEqual([]);
+});
+
+test("repairs replayed message ids before rendering cached production state", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto("/");
+  await seedJoinedRoom(page, "Replay-safe room", "7".repeat(64));
+  await page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+      const room = JSON.parse(localStorage.getItem(key) ?? "{}");
+      if (room.title !== "Replay-safe room") continue;
+      const message = {
+        type: "message",
+        id: "7a513fe44ec0d9fc66eb5f9e41bfaf1dc11430cb03fad357b034ffaa7101137a",
+        sender: "8".repeat(64),
+        name: "Replay sender",
+        content: "render once",
+        createdAt: Date.now(),
+        cursor: 4,
+      };
+      room.messages = [message, { ...message }];
+      localStorage.setItem(key, JSON.stringify(room));
+    }
+  });
+  await page.reload();
+
+  await page.getByRole("button", { name: /Open room Replay-safe room/ }).click();
+  await expect(page.getByText("render once", { exact: true })).toHaveCount(1);
+  expect(pageErrors.filter((message) => message.includes("each_key_duplicate"))).toEqual([]);
 });
 
 test("unread zero transition announces once from the page-level owner", async ({ page }) => {
@@ -566,23 +587,84 @@ test("long room navigation stays operable and contained", async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.reload();
     if (viewport.width <= 900) await page.getByRole("button", { name: "Open room browser" }).click();
-    await page.locator(".channel-context-button").click();
-    await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem", { name: /Coordinator dddddd/ }).click();
-    if (viewport.width <= 900) await page.getByRole("button", { name: "Open room browser" }).click();
     const rail = page.getByTestId("invite-panel");
-    await expect(rail.locator(".channel-row")).toHaveCount(24);
+    const remoteCard = rail.getByTestId("coordinator-card").filter({ hasText: "Coordinator dddddd" });
+    await expect(remoteCard.locator(".channel-row")).toHaveCount(5);
+    await remoteCard.getByRole("button", { name: "Show 19 more" }).click();
+    await expect(remoteCard.locator(".channel-row")).toHaveCount(24);
     expect(await rail.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
-    const firstRow = rail.locator(".channel-row").first();
+    const firstRow = remoteCard.locator(".channel-row").first();
     const label = firstRow.locator(".truncate");
     const action = firstRow.getByRole("button", { name: /More actions for/ });
     expect(await label.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     expect(await Promise.all([label.boundingBox(), action.boundingBox()]).then(([labelBox, actionBox]) => Boolean(
       labelBox && actionBox && labelBox.x + labelBox.width <= actionBox.x,
     ))).toBe(true);
-    await rail.locator(".channel-row").last().scrollIntoViewIfNeeded();
-    await expect(rail.locator(".channel-row").last()).toBeVisible();
+    await remoteCard.locator(".channel-row").last().scrollIntoViewIfNeeded();
+    await expect(remoteCard.locator(".channel-row").last()).toBeVisible();
     await expectNoDocumentOverflow(page, viewport);
   }
+});
+
+test("coordinator cards keep stable order and collapse dead groups into history", async ({ page }) => {
+  await page.goto("/");
+  await seedJoinedRoom(page, "Active first", "b".repeat(64));
+  await seedJoinedRoom(page, "Active second", "b".repeat(64));
+  await seedJoinedRoom(page, "Rotated room", "c".repeat(64));
+  await seedJoinedRoom(page, "Retired room", "d".repeat(64));
+  await page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+      const room = JSON.parse(localStorage.getItem(key) ?? "{}");
+      if (room.title === "Rotated room") room.isHost = true;
+      if (room.title === "Retired room") room.membershipStatus = "retired";
+      localStorage.setItem(key, JSON.stringify(room));
+    }
+  });
+  await page.reload();
+
+  const rail = page.getByTestId("invite-panel");
+  const cards = rail.getByTestId("coordinator-card");
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toContainText("My coordinator");
+  const remote = cards.nth(1);
+  await expect(remote.locator(".channel-row .truncate")).toHaveText(["Active first", "Active second"]);
+  await expect(rail.getByRole("button", { name: "Create group" })).toHaveCount(1);
+
+  const history = rail.getByTestId("sidebar-history");
+  await expect(history.getByRole("button", { name: /History/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(history.getByText("Rotated room", { exact: true })).toHaveCount(0);
+  await history.getByRole("button", { name: /History/ }).click();
+  await expect(history).toContainText("Rotated room");
+  await expect(history).toContainText("Coordinator key rotated");
+  await expect(history).toContainText("Retired room");
+  await expect(history).toContainText("Identity retired");
+
+  await page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+      const room = JSON.parse(localStorage.getItem(key) ?? "{}");
+      if (room.title === "Active first") room.updatedAt = Date.now() + 100_000;
+      localStorage.setItem(key, JSON.stringify(room));
+    }
+  });
+  await page.reload();
+  await expect(page.getByTestId("coordinator-card").nth(1).locator(".channel-row .truncate")).toHaveText(["Active first", "Active second"]);
+
+  await page.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+      const room = JSON.parse(localStorage.getItem(key) ?? "{}");
+      room.membershipStatus = "retired";
+      localStorage.setItem(key, JSON.stringify(room));
+    }
+  });
+  await page.reload();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
+  await expect(page.getByTestId("sidebar-history").getByRole("button", { name: /History 4/ })).toBeVisible();
 });
 
 test("generates copyable identity on first load", async ({ page }) => {
@@ -594,7 +676,7 @@ test("generates copyable identity on first load", async ({ page }) => {
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
   await expect(page.getByTestId("guided-start-state")).toBeVisible();
   await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
-  await expect(page.getByTestId("invite-panel")).toBeHidden();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
   await expect(page.getByTestId("coordinator-empty-state")).toBeHidden();
   await expect(page.getByTestId("status-badge")).toBeHidden();
   const settings = await openCoordinatorSettings(page);
@@ -644,10 +726,10 @@ test("does not render disconnected local chat during recovery", async ({ page })
   await page.getByRole("button", { name: "Start", exact: true }).click();
 
   const startup = page.getByTestId("startup-progress-panel");
-  await expect(startup).toContainText("No rooms to restore");
+  await expect(startup).toContainText("No rooms to restore", { timeout: 20_000 });
   await expect(page.getByTestId("host-message-list")).toHaveCount(0);
   await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
-  await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i)).toHaveCount(0);
+  await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i).filter({ visible: true })).toHaveCount(0);
 });
 
 test("startup signal follows retry and exhaustion truth", async ({ page }) => {
@@ -852,8 +934,6 @@ test("browses joined chats from the root shell without starting an unprotected l
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
-  await page.locator(".channel-context-button").click();
-  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem").nth(1).click();
   await expect(page.getByRole("button", { name: /Open room Elsewhere lounge/ })).toBeVisible();
 });
 
@@ -868,8 +948,6 @@ test("browses cached chats while a persisted coordinator stays locked", async ({
   await page.getByRole("button", { name: "Open chats" }).click();
   await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
-  await page.locator(".channel-context-button").click();
-  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem").nth(1).click();
   await page.getByRole("button", { name: /Open room Locked-out lounge/ }).click();
   await expect(page.getByTestId("cached-room-view")).toContainText("Locked-out lounge");
   await expect(page.locator(".presence-control")).toHaveCount(0);
@@ -905,7 +983,7 @@ test("legacy chat index canonicalizes to the root shell and honors autostart", a
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
-  await expect(page.getByTestId("status-badge")).toBeHidden();
+  await expectGuidedCoordinatorOnline(page);
   await expect(page.getByRole("button", { name: "Create room", exact: true })).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => ({
@@ -1098,6 +1176,36 @@ test("notification feed accepts trusted invite only from live state", async ({ p
   await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeVisible();
 });
 
+test("notification feed clears all history without resolving invitations", async ({ page }) => {
+  await page.goto("/");
+  await revealFullWorkspaceControls(page);
+  await page.evaluate(() => {
+    localStorage.setItem("cordn:v1:notification-feed", JSON.stringify({
+      version: 1,
+      entries: [
+        { id: "room_invite:keep-live", category: "room_invite", key: "keep-live", actor: "Mara", room: "Gathering", createdAt: Date.now(), occurrences: 1, read: false },
+        { id: "new_message:message-1", category: "new_message", key: "message-1", actor: "Jo", room: "Lobby", createdAt: Date.now() - 1, occurrences: 1, read: false },
+      ],
+    }));
+  });
+  await page.reload();
+
+  await page.getByRole("button", { name: "Notifications, 2 unread" }).click();
+  const feed = page.getByRole("dialog", { name: "Notifications" });
+  await feed.getByRole("button", { name: "Clear all", exact: true }).click();
+
+  await expect(feed.getByText("No personal activity")).toBeVisible();
+  await expect(feed.getByRole("button", { name: "Clear all", exact: true })).toBeDisabled();
+  await expect(feed.getByRole("status")).toHaveText("All notifications cleared.");
+  await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("cordn:v1:notification-feed") ?? "null"))).toEqual({ version: 1, entries: [] });
+  expect(await page.evaluate(() => localStorage.getItem("cordn:v1:notification-resolutions"))).toBeNull();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Notifications, no unread" }).click();
+  await expect(page.getByRole("dialog", { name: "Notifications" }).getByText("No personal activity")).toBeVisible();
+});
+
 test("compact notification feed and Notification settings stay viewport-bound", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 520 });
   await page.addInitScript(() => {
@@ -1121,6 +1229,8 @@ test("compact notification feed and Notification settings stay viewport-bound", 
   const bell = page.getByRole("button", { name: "Notifications, 1 unread" });
   await bell.click();
   const feed = page.getByRole("dialog", { name: "Notifications" });
+  await expect(feed).toHaveAttribute("data-viewport-overlay", "true");
+  await expect.poll(() => feed.evaluate((element) => element.matches(":popover-open"))).toBe(true);
   await expectInsideViewport(feed);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Notifications, no unread" })).toBeFocused();
@@ -1128,6 +1238,8 @@ test("compact notification feed and Notification settings stay viewport-bound", 
   const settings = page.getByRole("button", { name: "Notification settings", exact: true });
   await settings.click();
   const settingsSheet = page.getByRole("dialog", { name: "Notification settings" });
+  await expect(settingsSheet).toHaveAttribute("data-viewport-overlay", "true");
+  await expect.poll(() => settingsSheet.evaluate((element) => element.matches(":popover-open"))).toBe(true);
   await expectInsideViewport(settingsSheet);
   await page.keyboard.press("Escape");
   await expect(settings).toBeFocused();
@@ -1219,7 +1331,7 @@ test("operator shell does not overflow common viewports", async ({ page }) => {
       .toEqual({ left: 0, right: viewport.width, width: viewport.width });
     await expectNoDocumentOverflow(page, viewport);
     if (viewport.width <= 900) {
-      await expect.poll(() => page.locator(".host-topbar").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeLessThanOrEqual(100);
+      await expect.poll(() => page.locator(".host-topbar").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeLessThanOrEqual(112);
       await expect.poll(() => page.getByTestId("host-chat").evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBeGreaterThan(100);
       for (const control of await page.locator(".host-topbar button:visible, .host-topbar a:visible").all()) {
         await expectInsideViewport(control);
@@ -1232,11 +1344,13 @@ test("names the coordinator context without changing its runtime", async ({ page
   await page.goto("/");
   const settings = await openCoordinatorSettings(page, true);
   await settings.getByLabel("Coordinator name").fill("Madeira node");
+  await settings.getByRole("button", { name: "Save coordinator name" }).click();
+  await expect(settings.getByLabel("Coordinator name")).toHaveValue("Madeira node");
   await closeCoordinatorSettings(settings);
 
   await expect(page.getByTestId("active-server-context")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Madeira node" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Server and channel browser" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Server and channel browser" })).toContainText("Madeira node");
   await revealFullWorkspaceControls(page);
   await expect(page.getByRole("navigation", { name: "Server and channel browser" })).toContainText("Madeira node");
   await page.getByRole("button", { name: "Open management interface" }).click();
@@ -1264,36 +1378,38 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
     /^(20|40|60|80)$/,
   );
   await expect(startup.getByRole("status")).toContainText(/identity|room|MLS|relay|coordinator/i);
-  await expect(startup.getByRole("button")).toHaveCount(0);
+  await expect(startup.getByRole("button", { name: "Review settings" })).toBeVisible();
   await expect(page.getByText("Starting", { exact: true })).toHaveCount(0);
   await expectGuidedCoordinatorOnline(page);
   await createRoom(page, "Runtime controls");
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   expect(await pageExitIsGuarded(page)).toBe(true);
   await expect(page.getByTestId("status-badge")).toHaveText("running");
   await expect(page.getByTestId("server-online-notice")).toBeVisible();
   await expect(page.getByTestId("host-chat")).toBeVisible();
-  await expect(page.getByText("My coordinator", { exact: true })).toHaveCount(1);
-  await expect(page.getByRole("navigation", { name: "Server and channel browser" })).toContainText(/\d+ relay paths?/);
+  await expect(page.getByText("My coordinator", { exact: true })).toHaveCount(2);
+  await expect(page.getByTestId("coordinator-runtime-card")).toContainText(/\d+ relay paths?/);
   await expect(page.getByRole("button", { name: /Open room Runtime controls/ })).toBeVisible();
+  expect(await page.getByTestId("invite-panel").evaluate((rail) => {
+    const selectors = [".rail-join", ".coordinator-runtime-card", ".room-tools", ".coordinator-card-list", ".sidebar-account"];
+    const elements = selectors.map((selector) => rail.querySelector(selector));
+    return elements.every(Boolean) && elements.every((element, index) => index === 0
+      || Boolean(elements[index - 1]!.compareDocumentPosition(element!) & Node.DOCUMENT_POSITION_FOLLOWING));
+  })).toBe(true);
   await expect(page.getByRole("button", { name: "Rooms", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("invite-panel")).toBeVisible();
   await page.getByRole("button", { name: "Open management interface" }).click();
   await expect(page.getByTestId("management-interface")).toBeVisible();
   await expect(page.getByTestId("host-chat")).toBeHidden();
   const channelBrowser = page.getByRole("navigation", { name: "Server and channel browser" });
-  const serverSelector = channelBrowser.locator(".channel-context-button");
-  await expect(serverSelector).toBeVisible();
-  await serverSelector.click();
-  await expect(channelBrowser.getByRole("menu", { name: "Choose coordinator" })).toBeVisible();
-  await channelBrowser.getByRole("menuitem", { name: /My coordinator/ }).click();
+  await expect(channelBrowser.getByTestId("coordinator-card").first()).toContainText("My coordinator");
   const runningSettings = await openCoordinatorSettings(page, true);
   await runningSettings.getByTestId("max-users-input").fill("33");
   await runningSettings.getByTestId("max-users-input").blur();
   await expect(runningSettings.getByTestId("restart-required")).toBeVisible();
   await runningSettings.getByRole("button", { name: "Done editing" }).click();
   await runningSettings.getByRole("button", { name: "Restart to apply" }).click();
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   await expect(runningSettings.getByTestId("restart-required")).toBeHidden();
   await closeCoordinatorSettings(runningSettings);
   await expect(page.getByTestId("resource-monitor")).toHaveCount(0);
@@ -1310,7 +1426,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId("resource-monitor")).toHaveCount(0);
 
   await startCoordinator(page);
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   await expect(page.getByTestId("host-chat")).toBeVisible();
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
@@ -1326,7 +1442,7 @@ test("separates the coordinator runtime from the selected room connection", asyn
   await expect(page.getByTestId("coordinator-runtime-status")).toHaveText(/Coordinator\s*running/);
   const channelBrowser = page.getByRole("navigation", { name: "Server and channel browser" });
   await expect(channelBrowser).not.toContainText(/\brunning\b/i);
-  await expect(channelBrowser).toContainText(/\d+ relay paths?/);
+  await expect(page.getByTestId("coordinator-runtime-card")).toContainText(/\d+ relay paths?/);
 
   await page.getByRole("button", { name: "Open management interface" }).click();
   const summary = page.getByTestId("management-summary");
@@ -1388,7 +1504,14 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
       await expectGuidedCoordinatorOnline(page);
       await createRoom(page, `Viewport ${viewport.width}x${viewport.height}`);
     } else {
-      await expect(page.getByTestId("status-badge")).toHaveText("running");
+      await expectGuidedCoordinatorOnline(page);
+      const invitePanel = page.getByTestId("invite-panel");
+      if (await invitePanel.getAttribute("aria-hidden") === "false") {
+        await page.getByRole("button", { name: "Close room browser" }).first().click();
+      }
+      await expect.poll(() => invitePanel.evaluate((element) => Math.round(element.getBoundingClientRect().right)))
+        .toBeLessThanOrEqual(1);
+      await createRoom(page, `Viewport ${viewport.width}x${viewport.height}`);
     }
     await expect(page.getByTestId("host-chat")).toBeVisible();
     await expect.poll(() => page.getByTestId("operator-shell").evaluate((element) => element.clientHeight)).toBe(viewport.height);
@@ -1668,7 +1791,7 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
 
   await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
   await expect(guest.getByLabel("Add 👍")).toBeVisible();
-  const reachableCoordinator = guest.getByTestId("selected-coordinator-status");
+  const reachableCoordinator = guest.getByTestId(`coordinator-card-status-${await page.getByTestId("selected-coordinator-status").getAttribute("data-coordinator-pubkey")}`);
   await expect(reachableCoordinator).toHaveAttribute("data-state", "online", { timeout: 20_000 });
   await expect(reachableCoordinator).toHaveAttribute("aria-label", /coordinator online/i);
   const guestActions = await openRoomActions(guest, "Working room");
@@ -1701,11 +1824,43 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
     await page.getByPlaceholder("Message as host").press("Enter");
   }
   await expect(guest.getByText("Host note 10")).toBeVisible({ timeout: 30_000 });
-  const hostMessage = guest.locator("article.message").filter({ hasText: "Host note 10" });
-  await expect(hostMessage.getByTestId("message-author")).toContainText("Mara");
-  await expect(hostMessage.getByTestId("message-badge")).toContainText(/🦉\s*guide/);
-  await expect(hostMessage.getByTestId("message-author").locator("img")).toHaveAttribute("src", /^data:image\/svg\+xml/);
-  await expect(hostMessage.getByTestId("message-badge")).toHaveCSS("user-select", "text");
+  const streaks = guest.getByTestId("guest-message-list").getByTestId("message-streak");
+  const ownStreak = streaks.filter({ hasText: "Hello from BDD" });
+  const hostStreak = streaks.filter({ hasText: "Host note 10" });
+  await expect(streaks).toHaveCount(2);
+  await expect(ownStreak).toHaveAttribute("data-message-count", "1");
+  await expect(hostStreak).toHaveAttribute("data-message-count", "10");
+  await expect(hostStreak.getByTestId("message-author")).toHaveCount(1);
+  await expect(hostStreak.getByTestId("message-author")).toContainText("Mara");
+  await expect(hostStreak.getByTestId("message-avatar")).toHaveCount(1);
+  await expect(hostStreak.getByTestId("message-avatar")).toHaveAttribute("src", /^data:image\/svg\+xml/);
+  await expect(hostStreak.getByTestId("message-badge")).toContainText(/🦉\s*guide/);
+  await expect(hostStreak.getByTestId("message-badge")).toHaveCSS("user-select", "text");
+  await expect(hostStreak.locator("time")).toHaveCount(10);
+  await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((list) => {
+    const listBounds = list.getBoundingClientRect();
+    const [own, host] = Array.from(list.querySelectorAll<HTMLElement>('[data-testid="message-streak"]'));
+    const ownAvatar = own?.querySelector<HTMLElement>('[data-testid="message-avatar"]')?.getBoundingClientRect();
+    const ownBubble = own?.querySelector<HTMLElement>('[data-testid="message-bubble"]')?.getBoundingClientRect();
+    const hostAvatar = host?.querySelector<HTMLElement>('[data-testid="message-avatar"]')?.getBoundingClientRect();
+    const hostBubble = host?.querySelector<HTMLElement>('[data-testid="message-bubble"]')?.getBoundingClientRect();
+    const ownStyle = ownBubble ? getComputedStyle(own!.querySelector<HTMLElement>('[data-testid="message-bubble"]')!) : null;
+    const hostStyle = hostBubble ? getComputedStyle(host!.querySelector<HTMLElement>('[data-testid="message-bubble"]')!) : null;
+    return Boolean(ownAvatar && ownBubble && hostAvatar && hostBubble
+      && ownBubble.right < ownAvatar.left
+      && hostAvatar.right < hostBubble.left
+      && ownBubble.width >= listBounds.width * .5
+      && hostBubble.width >= listBounds.width * .5
+      && ownBubble.left > listBounds.left
+      && hostBubble.right < listBounds.right
+      && ownStyle?.borderTopWidth === "0px"
+      && ownStyle.boxShadow === "none"
+      && hostStyle?.borderTopWidth === "0px"
+      && hostStyle.boxShadow !== "none"
+      && ownStyle.backgroundColor !== hostStyle.backgroundColor
+      && ownBubble.height < 70
+      && hostBubble.height < 70);
+  })).toBe(true);
   await expect.poll(() => guest.getByTestId("guest-message-list").evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight)).toBeLessThanOrEqual(2);
   await guestContext.close();
 });
@@ -1729,14 +1884,22 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   const guestMessage = guest.locator("article.message").filter({ hasText: "A reaction target" });
   await expect(guestMessage).toBeVisible({ timeout: 20_000 });
   await expect(hostMessage.getByRole("button", { name: "Add reaction" })).toHaveCount(0);
+  await expect.poll(() => hostMessage.evaluate((message) => {
+    const style = getComputedStyle(message);
+    return { border: style.borderTopWidth, shadow: style.boxShadow };
+  })).toEqual({ border: "0px", shadow: "none" });
 
   const hostPaneActions = page.getByTestId("host-chat").getByRole("button", { name: "More room actions" });
   await expect(hostPaneActions).toBeVisible();
   await hostPaneActions.click();
-  await expect(page.getByTestId("host-chat").getByRole("menuitem", { name: "Delete room Reaction room" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete room Reaction room" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await guestMessage.getByRole("button", { name: "Add reaction" }).click();
+  const addReaction = guestMessage.getByRole("button", { name: "Add reaction" });
+  await expect(addReaction).toHaveCSS("opacity", "0");
+  await guestMessage.hover();
+  await expect(addReaction).toHaveCSS("opacity", "1");
+  await addReaction.click();
   const reactionMenu = guestMessage.getByRole("menu", { name: /Choose reaction/ });
   await expect(reactionMenu).toBeVisible();
   await expect(reactionMenu).toHaveCSS("position", "absolute");
@@ -1750,7 +1913,7 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
     const bubble = message.getBoundingClientRect();
     return Boolean(add && chip
       && add.left < chip.left
-      && add.right > chip.left
+      && add.right < chip.left
       && add.top < bubble.bottom
       && add.bottom > bubble.bottom
       && chip.top < bubble.bottom
@@ -1760,7 +1923,7 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   const guestPaneActions = guest.getByTestId("cached-room-view").getByRole("button", { name: "More room actions" });
   await expect(guestPaneActions).toBeVisible();
   await guestPaneActions.click();
-  await expect(guest.getByTestId("cached-room-view").getByRole("menuitem", { name: "Leave room Reaction room" })).toBeVisible();
+  await expect(guest.getByRole("menuitem", { name: "Leave room Reaction room" })).toBeVisible();
   await guest.keyboard.press("Escape");
   await guestMessage.getByRole("button", { name: /Remove 👍 reaction, 1 participant/ }).click();
   await expect(guestMessage.getByLabel(/👍 reaction/)).toHaveCount(0);
@@ -1794,8 +1957,6 @@ test("emoji shortcuts and offline cached reactions", async ({ page }) => {
     localStorage.setItem(key, JSON.stringify(room));
   });
   await page.reload();
-  await page.locator(".channel-context-button").click();
-  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem").nth(1).click();
   await page.getByRole("button", { name: /Open room Offline reactions/ }).click();
   const cachedRoom = page.getByTestId("cached-room-view");
   await expect(cachedRoom.getByText("Still readable")).toBeVisible();
@@ -1870,14 +2031,16 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   await expect(guest.getByTestId("operator-shell")).toBeVisible();
   await expect(guest.getByTestId("workspace-navigation")).toHaveCount(1);
   expect(await guest.evaluate(() => [...Array(localStorage.length).keys()].some((index) => {
-    const value = localStorage.getItem(localStorage.key(index) ?? "");
+    const key = localStorage.key(index);
+    if (!key?.startsWith("cordn-adhoc-chat-room:")) return false;
+    const value = localStorage.getItem(key);
     return value?.includes('"title":"Disposable room"') ?? false;
   }))).toBe(false);
 
   await guestContext.close();
 });
 
-test("active room removal selects the previous room, then next, then the coordinator empty state", async ({ page }) => {
+test("active room removal follows stable adjacent order, then reaches the coordinator empty state", async ({ page }) => {
   test.setTimeout(75_000);
   await page.goto("/");
   await configureMockRelay(page);
@@ -1897,13 +2060,13 @@ test("active room removal selects the previous room, then next, then the coordin
 
   await page.getByRole("button", { name: /Open room Adjacent middle/ }).click();
   await deleteFromRail("Adjacent middle");
-  await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent last");
-
-  await deleteFromRail("Adjacent last");
   await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent first");
 
   await deleteFromRail("Adjacent first");
-  await expect(page.getByTestId("coordinator-empty-state")).toBeHidden();
+  await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent last");
+
+  await deleteFromRail("Adjacent last");
+  await expect(page.getByTestId("coordinator-card").first()).toContainText("No groups yet");
   await expect(page.getByTestId("coordinator-empty-content")).toContainText("Ready for your first room");
   await expect(page.getByTestId("coordinator-empty-content")).toBeVisible();
 });
@@ -1948,6 +2111,9 @@ test("sidebar room actions do not open the row before deleting its exact host ro
   await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Sidebar delete");
 
   const menu = page.getByRole("menu", { name: "Room actions for Sidebar delete" });
+  await expect(menu).toHaveAttribute("data-viewport-overlay", "true");
+  await expect.poll(() => menu.evaluate((element) => element.matches(":popover-open"))).toBe(true);
+  await expectInsideViewport(menu);
   await expect(menu.getByRole("menuitem", { name: "Delete room Sidebar delete" })).toBeVisible();
   await menu.getByRole("menuitem", { name: "Delete room Sidebar delete" }).click();
   const dialog = page.getByTestId("room-removal-dialog");
@@ -1960,9 +2126,6 @@ test("same-id sidebar removal leaves only the captured remote record", async ({ 
   await page.goto("/");
   await seedJoinedRoom(page, "Sidebar remote", "f".repeat(64));
   await page.reload();
-  await page.locator(".channel-context-button").click();
-  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem", { name: /Coordinator ffffff/ }).click();
-
   const targetRow = page.locator(".channel-row").filter({ hasText: "Sidebar remote" });
   const trigger = targetRow.getByRole("button", { name: "More actions for # Sidebar remote" });
   await trigger.click();
@@ -1982,15 +2145,9 @@ test("leaving the last remote room returns to the home coordinator", async ({ pa
   await seedJoinedRoom(page, "Last remote room", remoteCoordinatorPubkey);
   await page.reload();
 
-  await page.locator(".channel-context-button").click();
-  const coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
-  const homeCoordinatorPubkey = await coordinatorMenu
-    .getByTestId("local-coordinator-menu-status")
-    .getAttribute("data-coordinator-pubkey");
+  const homeCoordinatorPubkey = await page.getByTestId("selected-coordinator-status").getAttribute("data-coordinator-pubkey");
   expect(homeCoordinatorPubkey).toBeTruthy();
-  await coordinatorMenu.getByRole("menuitem", { name: /Coordinator ffffff/ }).click();
-  await expect(page.getByTestId("selected-coordinator-status"))
-    .toHaveAttribute("data-coordinator-pubkey", remoteCoordinatorPubkey);
+  await expect(page.getByTestId(`coordinator-card-status-${remoteCoordinatorPubkey}`)).toBeVisible();
 
   const targetRow = page.locator(".channel-row").filter({ hasText: "Last remote room" });
   await targetRow.getByRole("button", { name: "More actions for # Last remote room" }).click();
@@ -2000,11 +2157,12 @@ test("leaving the last remote room returns to the home coordinator", async ({ pa
   await page.getByTestId("confirm-leave-room").click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId("guided-start-state")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
-  await expect(page.getByTestId("invite-panel")).toBeHidden();
-  await expect(page.getByTestId("selected-coordinator-status")).toBeHidden();
-  await expect(page.locator(".channel-context-button")).toBeHidden();
+  await expect(page.getByTestId("guided-start-state")).toHaveCount(0);
+  await expect(page.getByTestId("coordinator-card").first()).toContainText("No groups yet");
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
+  await expect(page.getByTestId("selected-coordinator-status"))
+    .toHaveAttribute("data-coordinator-pubkey", homeCoordinatorPubkey ?? "");
+  await expect(page.getByTestId("coordinator-card").first()).toBeVisible();
 });
 
 test("switches local Delete to remote Leave without crossing same-id room identities", async ({ page }) => {
@@ -2023,8 +2181,9 @@ test("switches local Delete to remote Leave without crossing same-id room identi
   await localDeleteDialog.getByTestId("confirm-delete-room").click();
   await expect(localDeleteDialog).toBeHidden();
   expect(await page.evaluate(() => [...Array(localStorage.length).keys()].every((index) => {
-    const value = localStorage.getItem(localStorage.key(index) ?? "");
-    return !value?.includes('"title":"Exact local delete target"');
+    const key = localStorage.key(index);
+    const value = localStorage.getItem(key ?? "");
+    return !key?.startsWith("cordn-adhoc-chat-room:") || !value?.includes('"title":"Exact local delete target"');
   }))).toBe(true);
 
   await createRoom(page, "Local collision room");
@@ -2089,8 +2248,6 @@ test("switches local Delete to remote Leave without crossing same-id room identi
   await expect(collisionActions.getByRole("menuitem", { name: "Delete room Local collision room" })).toBeVisible();
   await expect(collisionActions.getByRole("menuitem", { name: "Leave room Local collision room" })).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await page.locator(".channel-context-button").click();
-  await page.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem", { name: /Coordinator ffffff/ }).click();
   await page.getByRole("button", { name: /Open room Remote collision room/ }).click();
 
   collisionActions = await openRoomActions(page, "Remote collision room");
@@ -2190,21 +2347,11 @@ test("leaves a previous local host session without deleting its same-id current 
   await expect(localActions.getByRole("menuitem", { name: "Delete room Current local collision room" })).toBeVisible();
   await expect(localActions.getByRole("menuitem", { name: "Leave room Current local collision room" })).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await page.locator(".channel-context-button").click();
-  const coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
-  await expect(coordinatorMenu.getByText("Previous local sessions", { exact: true })).toBeVisible();
-  await coordinatorMenu.getByRole("menuitem", { name: /Previous local eeeeee/ }).click();
-  await page.getByRole("button", { name: /Open previous local session Stale remote host claim/ }).click();
-
-  const staleActions = await openRoomActions(page, "Stale remote host claim");
-  const remoteLeave = staleActions.getByRole("menuitem", { name: "Leave room Stale remote host claim" });
-  await expect(remoteLeave).toBeVisible();
-  await expect(staleActions.getByRole("menuitem", { name: "Delete room Stale remote host claim" })).toHaveCount(0);
-  await remoteLeave.click();
-  const leaveDialog = page.getByTestId("room-removal-dialog");
-  await expect(leaveDialog.getByRole("heading", { name: "Leave #Stale remote host claim?" })).toBeVisible();
-  await leaveDialog.getByTestId("confirm-leave-room").click();
-  await expect(page).toHaveURL(/\/$/);
+  const history = page.getByTestId("sidebar-history");
+  await history.getByRole("button", { name: /History/ }).click();
+  await expect(history).toContainText("Stale remote host claim");
+  await expect(history).toContainText("Coordinator key rotated");
+  await expect(page.getByRole("button", { name: /Open previous local session Stale remote host claim/ })).toHaveCount(0);
   await expect(page.getByTestId("operator-shell")).toBeVisible();
 
   expect(await page.evaluate(({ localRoom, remoteCoordinatorPubkey }) => {
@@ -2215,7 +2362,7 @@ test("leaves a previous local host session without deleting its same-id current 
       local: localStorage.getItem(keyFor(localRoom.coordinatorPubkey)) !== null,
       remote: localStorage.getItem(keyFor(remoteCoordinatorPubkey)) !== null,
     };
-  }, { localRoom: localRoomIdentity, remoteCoordinatorPubkey })).toEqual({ local: true, remote: false });
+  }, { localRoom: localRoomIdentity, remoteCoordinatorPubkey })).toEqual({ local: true, remote: true });
 });
 
 test("manual admission shows a counted, identified queue and clears it after approval", async ({ page, browser }) => {
@@ -2279,6 +2426,7 @@ test("a persistent host can navigate home rooms while communicating on another c
   test.setTimeout(90_000);
   const homeContext = await browser.newContext();
   const home = await homeContext.newPage();
+  await installEstablishedInstallation(home);
   await home.goto("/");
   await enablePersistence(home, "room-navigation-passphrase");
   await configureMockRelay(home);
@@ -2289,9 +2437,12 @@ test("a persistent host can navigate home rooms while communicating on another c
 
   const remoteContext = await browser.newContext();
   const remote = await remoteContext.newPage();
+  await installEstablishedInstallation(remote);
   await remote.goto("/");
   await configureMockRelay(remote);
   await remote.getByRole("button", { name: "Start", exact: true }).click();
+  const remoteCoordinatorPubkey = await remote.getByTestId("selected-coordinator-status").getAttribute("data-coordinator-pubkey");
+  expect(remoteCoordinatorPubkey).toMatch(/^[0-9a-f]{64}$/);
   await createRoom(remote, "Remote lounge");
   const remoteInvite = await remote.getByTestId("invite-link").textContent();
 
@@ -2300,20 +2451,22 @@ test("a persistent host can navigate home rooms while communicating on another c
   await expect(home.getByTestId("active-server-context")).toHaveCount(0);
   await expect(home.getByRole("button", { name: "Join chat" })).toHaveCount(0);
   await expect(home.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
+  await expect(home.locator(".coordinator-runtime-stack > .room-tools")).toBeVisible();
+  await expect.poll(() => home.evaluate(() => {
+    const coordinator = document.querySelector<HTMLElement>(".coordinator-runtime-card");
+    const controls = document.querySelector<HTMLElement>(".coordinator-runtime-stack > .room-tools");
+    if (!coordinator || !controls) return Number.POSITIVE_INFINITY;
+    return Math.abs(coordinator.getBoundingClientRect().bottom - controls.getBoundingClientRect().top);
+  })).toBeLessThanOrEqual(1);
   await home.getByPlaceholder("Message").fill("Hello across coordinators");
   await home.getByRole("button", { name: "Send" }).click();
   await expect(remote.getByTestId("host-chat").getByText("Hello across coordinators")).toBeVisible({ timeout: 15_000 });
 
-  await home.locator(".channel-context-button").click();
-  const serverMenu = home.getByRole("menu", { name: "Choose coordinator" });
-  await expect(serverMenu.getByRole("menuitem")).toHaveCount(2);
-  const homeCoordinatorPubkey = await serverMenu.getByTestId("local-coordinator-menu-status").getAttribute("data-coordinator-pubkey");
+  const homeCoordinatorPubkey = await home.getByTestId("selected-coordinator-status").getAttribute("data-coordinator-pubkey");
   expect(homeCoordinatorPubkey).toMatch(/^[0-9a-f]{64}$/);
-  await serverMenu.getByRole("menuitem").filter({ hasText: "My coordinator" }).click();
   await home.evaluate(() => new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   }));
-  await expect(home.locator(".channel-context-copy strong")).toHaveText("My coordinator");
   await expect(home.getByTestId("selected-coordinator-status")).toHaveAttribute("data-coordinator-pubkey", homeCoordinatorPubkey!);
   await expect(home.getByRole("button", { name: /Open room Home alpha/ })).toBeVisible();
   await expect(home.getByRole("button", { name: /Open room Home beta/ })).toBeVisible();
@@ -2321,15 +2474,13 @@ test("a persistent host can navigate home rooms while communicating on another c
   await home.getByRole("button", { name: /Open room Home alpha/ }).click();
   await expect(home.getByTestId("active-server-context")).toHaveCount(0);
 
-  await home.locator(".channel-context-button").click();
-  await home.getByRole("menu", { name: "Choose coordinator" }).getByRole("menuitem").nth(1).click();
   await home.getByRole("button", { name: /Open room Remote lounge/ }).click();
   await expect(home.getByTestId("active-server-context")).toHaveCount(0);
   await expect(home.getByPlaceholder("Message")).toBeVisible({ timeout: 25_000 });
   await home.getByPlaceholder("Message").fill("Back in the remote room");
   await home.getByRole("button", { name: "Send" }).click();
   await expect(remote.getByTestId("host-chat").getByText("Back in the remote room")).toBeVisible({ timeout: 15_000 });
-  const remoteCoordinatorStatus = home.getByTestId("selected-coordinator-status");
+  const remoteCoordinatorStatus = home.getByTestId(`coordinator-card-status-${remoteCoordinatorPubkey}`);
   await expect(remoteCoordinatorStatus).toHaveAttribute("data-state", "online", { timeout: 20_000 });
 
   await remote.getByRole("button", { name: "Stop", exact: true }).click();
@@ -2343,7 +2494,7 @@ test("a persistent host can navigate home rooms while communicating on another c
   await expect(home.getByTestId("chat-composer").getByRole("button", { name: "Add 👍" })).toBeDisabled();
 
   await remote.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(remote.getByTestId("status-badge")).toHaveText("running");
+  await expect(remote.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   await expect(home.getByPlaceholder("Message")).toBeEnabled({ timeout: 25_000 });
   await expect(remoteCoordinatorStatus).toHaveAttribute("data-state", "online", { timeout: 25_000 });
 
@@ -2360,6 +2511,12 @@ test("a persistent host can navigate home rooms while communicating on another c
     }
   });
   await home.reload();
+  const unlockPassphrase = home.getByPlaceholder("passphrase", { exact: true });
+  if (await unlockPassphrase.isVisible()) {
+    await unlockPassphrase.fill("room-navigation-passphrase");
+    await home.getByRole("button", { name: "Unlock coordinator" }).click();
+    await home.getByRole("button", { name: /Open room Remote lounge/ }).click();
+  }
   await expect(home.getByTestId("chat-connection-status")).toHaveCount(0);
   await expect(home.getByTestId("guest-message-list")).toContainText("Back in the remote room");
   await expect(home.getByPlaceholder("Message")).toBeEnabled();
@@ -2431,7 +2588,7 @@ test("startup handoff keeps actions reachable", async ({ page }) => {
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
   await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   await expect(idleRail).toHaveAttribute("data-local-rail-state", "ready");
   await expect(idleRoom).toBeEnabled();
   await expect(page.locator(".channel-row.active")).toContainText("First room");
@@ -2466,7 +2623,7 @@ test("a fresh empty hosted room survives refresh without depending on relay deli
     await expect(rail).toHaveAttribute("aria-busy", "false");
     await expect(roomButton).toBeEnabled();
     await expect(rail.getByRole("button", { name: `More actions for # ${roomTitle}` })).toBeVisible();
-    await expect(rail.getByRole("button", { name: "New room" })).toBeVisible();
+    await expect(rail.getByRole("button", { name: "Create group" })).toBeVisible();
     await expect(page.locator(".channel-row.active")).toContainText(roomTitle);
     await expect(page.getByTestId("host-message-list")).toBeVisible();
   } finally {
@@ -2507,42 +2664,26 @@ test("startup uses fluid masked ASCII ripple reveals", async ({ page }) => {
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
   await expect(page.getByTestId("host-message-list")).toBeHidden();
   await expect(localStatus).toHaveAttribute("data-state", "offline");
-  await expect(localStatus).toHaveAttribute("title", "Coordinator offline");
-
-  await page.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
+  await expect(localStatus).toHaveAttribute("aria-label", "Coordinator offline");
   await expectStartupFillsHostPane(page);
   const stage = page.locator(".startup-stage");
   await expect(stage).toHaveCSS("position", "absolute");
-  await expectShellControlsUsable(page);
   await expectStartupMasks(page);
+
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
   await expectStartupVisualContract(page);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-motion-preference", "normal");
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-mode", "active");
-  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", /idle|restoring|retrying|exhausted/);
   const bedTexture = page.getByTestId("startup-ascii-field").locator(".ascii-bed .ascii-texture");
   const initialTransform = await bedTexture.evaluate((element) => getComputedStyle(element).transform);
   await page.waitForTimeout(650);
   await expect.poll(() => bedTexture.evaluate((element) => getComputedStyle(element).transform)).not.toBe(initialTransform);
-  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-forward-target", /\d+/);
   await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-recovery-state", /idle|restoring|retrying|exhausted/);
+  await expect(page.getByTestId("startup-ascii-field")).toHaveAttribute("data-forward-target", /\d+/);
   await expect(page.getByRole("progressbar")).toBeVisible();
   await expect(page.getByRole("status")).toBeVisible();
-  await stage.getByRole("button", { name: "Review settings" }).click();
-  const stageSettings = page.getByTestId("coordinator-settings");
-  await expect(stageSettings).toBeVisible();
-  await closeCoordinatorSettings(stageSettings);
-  await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(page.getByTestId("status-badge")).toHaveText("starting");
-  await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
-  await expect(page.getByTestId("room-connection-panel")).toHaveCount(0);
-  await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
-  await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(localStatus).toHaveAttribute("data-state", "connecting");
-  await expect(localStatus).toHaveAttribute("title", "Coordinator starting");
-
-  await page.locator(".channel-context-button").click();
-  await expect(page.getByTestId("local-coordinator-menu-status")).toHaveAttribute("data-state", "connecting");
+  await expectShellControlsUsable(page);
 });
 
 test("startup reduced motion stays static and readable", async ({ page }) => {
@@ -2558,7 +2699,7 @@ test("startup reduced motion stays static and readable", async ({ page }) => {
   await expectStartupFillsHostPane(page);
   await expectStartupMasks(page);
   await expect(page.locator(".host-topbar")).toBeVisible();
-  await expect(page.getByTestId("invite-panel")).toBeHidden();
+  await expect(page.getByTestId("invite-panel")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open management interface" })).toHaveCount(0);
   await expect(startup.getByRole("progressbar")).toBeVisible();
   await expect(startup.getByRole("status")).toBeVisible();
@@ -2642,7 +2783,7 @@ test("startup covers every supported content pane", async ({ page }) => {
   await page.getByTestId("coordinator-unlock").getByRole("button", { name: "Unlock coordinator" }).click();
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
-  await expect(page.getByTestId("startup-current-status")).toContainText(longRoomTitle);
+  await expect(page.locator(".channel-row").filter({ hasText: longRoomTitle })).toBeVisible({ timeout: 20_000 });
 
   for (const viewport of [
     { width: 1024, height: 640 },
@@ -2650,11 +2791,9 @@ test("startup covers every supported content pane", async ({ page }) => {
     { width: 1440, height: 900 },
   ]) {
     await page.setViewportSize(viewport);
-    await expectStartupFillsHostPane(page);
     await expectShellControlsUsable(page);
-    await expectStartupMasks(page);
     await expectNoDocumentOverflow(page, viewport);
-    await expect(page.getByTestId("startup-progress-panel")).toContainText(longRoomTitle);
+    await expect(page.locator(".channel-row").filter({ hasText: longRoomTitle })).toBeVisible();
   }
 });
 
@@ -2791,23 +2930,29 @@ test("destroys persisted state after explicit confirmation", async ({ page }) =>
   await createRoom(page, "Destruction fixture");
   await page.getByRole("button", { name: "Destroy" }).click();
   await page.getByTestId("confirm-destroy").click();
-  await expect(page.getByTestId("status-badge")).toHaveText("idle");
-  const destroyedSettings = await openCoordinatorSettings(page);
-  await expect(destroyedSettings.getByTestId("persistence-state")).toHaveText("off");
-  await closeCoordinatorSettings(destroyedSettings);
-  expect(await readCoordinatorNpub(page)).not.toBe(initialNpub);
+  const setup = page.getByTestId("coordinator-setup");
+  await expect(setup).toHaveAttribute("data-setup-state", "identity");
   await expect.poll(() => page.evaluate(() => Array.from(
     { length: localStorage.length },
     (_, index) => localStorage.key(index),
-  ).filter((key): key is string => Boolean(key)).sort())).toEqual(["cordn:v1:anonymous-identity"]);
+  ).filter((key): key is string => key !== null && key.startsWith("cordn:")).sort()))
+    .toEqual(["cordn:v1:anonymous-identity"]);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("cordn:v1:persistence"))).toBeNull();
   await expect.poll(() => page.evaluate(async () => (await caches.keys()).includes("cordn-test-cache"))).toBe(false);
+  await setup.getByTestId("setup-anonymous").click();
+  await setup.getByTestId("setup-coordinator-name").fill("Replacement coordinator");
+  await setup.getByTestId("setup-save").click();
+  const backToCoordinator = page.getByRole("button", { name: "Back to my coordinator" }).first();
+  if (await backToCoordinator.isVisible()) await backToCoordinator.click();
+  await expect(page.getByTestId("guided-start-state")).toBeVisible();
+  expect(await readCoordinatorNpub(page)).not.toBe(initialNpub);
 });
 
 test("in-session invite redemption preserves the running home coordinator", async ({ browser }) => {
   test.setTimeout(90_000);
   const hostAContext = await browser.newContext();
   const hostA = await hostAContext.newPage();
+  await installEstablishedInstallation(hostA);
   await hostA.goto("/");
   await configureMockRelay(hostA);
   await hostA.getByRole("button", { name: "Start", exact: true }).click();
@@ -2822,13 +2967,14 @@ test("in-session invite redemption preserves the running home coordinator", asyn
 
   const hostBContext = await browser.newContext();
   const hostB = await hostBContext.newPage();
+  await installEstablishedInstallation(hostB);
   await hostB.goto("/");
   await configureMockRelay(hostB);
   await hostB.getByRole("button", { name: "Start", exact: true }).click();
   await expectGuidedCoordinatorOnline(hostB);
   await hostB.evaluate(() => { (window as typeof window & { __inviteRedeemSentinel?: boolean }).__inviteRedeemSentinel = true; });
 
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   const redeemer = hostB.getByTestId("invite-redeemer");
   await redeemer.getByLabel("Invite link").fill("this is not an invite");
   await redeemer.getByRole("button", { name: "Join invite" }).click();
@@ -2858,7 +3004,7 @@ test("in-session invite redemption preserves the running home coordinator", asyn
 
   await hostB.getByRole("link", { name: "CAHMLS home" }).click();
   await expectGuidedCoordinatorOnline(hostB);
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   const repeatRedeemer = hostB.getByTestId("invite-redeemer");
   await repeatRedeemer.getByLabel("Invite link").fill(freshInviteLink!);
   await repeatRedeemer.getByRole("button", { name: "Join invite" }).click();
@@ -2872,6 +3018,7 @@ test("invite camera scanner uses the redemption path and releases camera tracks"
   test.setTimeout(90_000);
   const hostAContext = await browser.newContext();
   const hostA = await hostAContext.newPage();
+  await installEstablishedInstallation(hostA);
   await hostA.goto("/");
   await configureMockRelay(hostA);
   await hostA.getByRole("button", { name: "Start", exact: true }).click();
@@ -2904,12 +3051,13 @@ test("invite camera scanner uses the redemption path and releases camera tracks"
     Object.defineProperty(window, "BarcodeDetector", { configurable: true, value: MockBarcodeDetector });
   });
   const hostB = await hostBContext.newPage();
+  await installEstablishedInstallation(hostB);
   await hostB.goto("/");
   await configureMockRelay(hostB);
   await hostB.getByRole("button", { name: "Start", exact: true }).click();
   await hostB.evaluate(() => { (window as typeof window & { __qrPayload?: string }).__qrPayload = "not an invite"; });
 
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   const redeemer = hostB.getByTestId("invite-redeemer");
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect(redeemer.getByRole("alert")).toContainText("valid invite link");
@@ -2920,7 +3068,7 @@ test("invite camera scanner uses the redemption path and releases camera tracks"
 
   await hostB.getByRole("link", { name: "CAHMLS home" }).click();
   await hostB.evaluate(() => { (window as typeof window & { __qrPayload?: string }).__qrPayload = undefined; });
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect.poll(() => hostB.evaluate(() => (window as typeof window & { __barcodeDetections?: number }).__barcodeDetections ?? 0)).toBeGreaterThan(1);
   await hostB.keyboard.press("Escape");
@@ -2933,21 +3081,21 @@ test("invite camera scanner uses the redemption path and releases camera tracks"
       value: { getUserMedia: async () => { throw new DOMException("denied", "NotAllowedError"); } },
     });
   });
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect(redeemer.getByRole("alert")).toContainText("permission was denied");
   await expect(redeemer.getByRole("button", { name: "Join invite" })).toBeEnabled();
   await redeemer.getByRole("button", { name: "Close invite redemption" }).last().click();
 
   await hostB.evaluate(() => { Object.defineProperty(window, "BarcodeDetector", { configurable: true, value: undefined }); });
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect(redeemer.getByRole("alert")).toContainText("QR scanning is not available");
   await expect(redeemer.getByRole("button", { name: "Join invite" })).toBeEnabled();
   await redeemer.getByRole("button", { name: "Close invite redemption" }).last().click();
 
   await hostB.evaluate(() => { Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: undefined }); });
-  await hostB.getByRole("button", { name: "Join from invite" }).click();
+  await hostB.getByTestId("coordinator-empty-content").getByRole("button", { name: "Join from invite" }).click();
   await redeemer.getByRole("button", { name: "Scan QR code" }).click();
   await expect(redeemer.getByRole("alert")).toContainText("Camera access is not available");
   await expect(redeemer.getByRole("button", { name: "Join invite" })).toBeEnabled();

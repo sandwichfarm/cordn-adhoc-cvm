@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { viewportOverlay } from "../lib/viewport-overlay";
 
   interface Props {
     roomTitle: string;
@@ -64,7 +65,7 @@
 
   {#if open}
     <button class="room-actions-scrim" type="button" aria-label="Close room actions" onclick={() => close(true)}></button>
-    <div class="room-actions-menu" role="menu" aria-label={`Room actions for ${roomTitle}`}>
+    <div use:viewportOverlay={{ anchor: trigger, preferredSide: "below", align: "end", compactSheetBelow: 520 }} class="room-actions-menu" role="menu" aria-label={`Room actions for ${roomTitle}`}>
       <header><span>Room actions</span><strong># {roomTitle}</strong></header>
       <div class="room-connection-details">
         <button

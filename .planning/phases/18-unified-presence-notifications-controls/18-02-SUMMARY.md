@@ -75,6 +75,8 @@ status: complete
 
 ## Accomplishments
 
+- Added a persistent, accessible `Clear all` feed action that resets history and unread state without accepting, dismissing, or resolving live invitations (NOTF-05).
+
 - Replaced the invite inbox with a bell feed that groups Now, Today, and Earlier activity, shows an unread badge, and marks only visible entries read when opened.
 - Kept invitation capabilities in live memory: stale feed entries are informative but cannot fabricate a redeemable invite, while trusted live entries can use the existing root-shell redemption route.
 - Added inline dismissal confirmation without revealing invite data, and preserve seven-day resolution replay protection from the notification store.

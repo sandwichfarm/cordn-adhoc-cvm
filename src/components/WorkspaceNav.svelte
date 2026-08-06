@@ -296,7 +296,7 @@
         if (!coordinator) return false;
         await coordinator.deleteHostedRoom({ id: target.roomId, coordinatorPubkey: target.coordinatorPubkey });
       }
-      removeStoredRoom({ id: target.roomId, coordinatorPubkey: target.coordinatorPubkey });
+      removeStoredRoom(latest, { reason: mode === "delete" ? "deleted" : "left", coordinatorLabel: coordinatorLabelFor(latest) });
       if (isActive(snapshot)) navigate("/");
       return true;
     } catch {

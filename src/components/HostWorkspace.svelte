@@ -11,19 +11,21 @@
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { emptySidebarLedger, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
+  import { groupMessageStreaks } from "../chat/message-presentation";
   import {
     type ChatCoordinatorClientFactory,
     type RemoteJoinRequest,
   } from "../chat/coordinator-client";
   import { SimplePoolNostrInstanceNetwork } from "../coordinator/single-instance-guard";
   import CoordinatorSettings from "./CoordinatorSettings.svelte";
+  import CoordinatorRoomCard from "./CoordinatorRoomCard.svelte";
   import CoordinatorSetup from "./CoordinatorSetup.svelte";
   import ChatRoute from "./ChatRoute.svelte";
   import PassphrasePrompt from "./PassphrasePrompt.svelte";
   import LifecyclePanel from "./LifecyclePanel.svelte";
-  import MessageAuthor from "./MessageAuthor.svelte";
-  import MessageReactions from "./MessageReactions.svelte";
+  import MessageGroup from "./MessageGroup.svelte";
   import NotificationCenter from "./NotificationCenter.svelte";
   import NotificationFeed from "./NotificationFeed.svelte";
   import InviteRedeemer from "./InviteRedeemer.svelte";
@@ -33,6 +35,7 @@
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
+  import SidebarHistory from "./SidebarHistory.svelte";
   import StartupSignalField from "./StartupSignalField.svelte";
   import StartupProgressMeter from "./StartupProgressMeter.svelte";
   import { projectStartupSignal } from "./startup-signal-presentation";
@@ -80,6 +83,8 @@
   let homeJoinedRooms = $state<StoredRoom[]>([]);
   let remoteRooms = $state<StoredRoom[]>([]);
   let previousLocalRooms = $state<StoredRoom[]>([]);
+  let sidebarLedger = $state<SidebarLedger>(emptySidebarLedger());
+  let sidebarHistory = $state<SidebarHistoryEntry[]>([]);
   let composer = $state("");
   let revision = $state(0);
   let roomConnection = $state<"connecting" | "connected" | "offline">("connecting");
@@ -182,7 +187,7 @@
     remoteServers[0]?.pubkey ?? previousLocalServers[0]?.pubkey,
   );
   const hasAnySavedRooms = $derived(
-    hostedRooms.length + homeJoinedRooms.length + remoteRooms.length + previousLocalRooms.length > 0,
+    hostedRooms.length + homeJoinedRooms.length + remoteRooms.length + previousLocalRooms.length + sidebarHistory.length > 0,
   );
   const activeIntentInvite = $derived(parseInviteUrl(currentUrl));
   const activeIntentHost = $derived(activeIntentInvite?.host
@@ -197,6 +202,10 @@
     intentStoredRoom?.isHost && intentStoredRoom.coordinatorPubkey === coordinatorPubkey,
   ));
   const embeddedChatActive = $derived(hasChatIntent && !intentTargetsCurrentHostedRoom);
+  const activeSidebarRoomKey = $derived(roomIdentityKey(
+    embeddedChatActive ? activeIntentInvite?.coordinatorPubkey ?? "" : room?.coordinatorPubkey ?? "",
+    embeddedChatActive ? activeIntentInvite?.groupId ?? "" : room?.id ?? "",
+  ));
   const setupState = $derived<"checking" | "identity">(
     !identityReady ? "checking" : "identity",
   );
@@ -693,13 +702,31 @@
 
   function refreshRemoteRooms() {
     const rooms = listRooms();
-    homeJoinedRooms = rooms.filter((storedRoom) =>
+    let storedLedger: SidebarLedger;
+    try {
+      storedLedger = parseSidebarLedger(localStorage.getItem(SIDEBAR_LEDGER_KEY));
+    } catch {
+      storedLedger = sidebarLedger;
+    }
+    const projection = reconcileSidebarLedger(storedLedger, rooms, coordinatorPubkey, config.coordinatorName || "My coordinator");
+    sidebarLedger = projection.ledger;
+    sidebarHistory = projection.history;
+    try {
+      const ledgerHasContent = projection.ledger.coordinatorOrder.length > 0
+        || projection.ledger.history.length > 0
+        || Object.values(projection.ledger.roomOrder).some((order) => order.length > 0);
+      if (ledgerHasContent) localStorage.setItem(SIDEBAR_LEDGER_KEY, serializeSidebarLedger(projection.ledger));
+      else localStorage.removeItem(SIDEBAR_LEDGER_KEY);
+    } catch { /* presentation order remains in memory */ }
+    const activeRooms = projection.activeRooms;
+    hostedRooms = activeRooms
+      .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
+      .map(buildHostedRoomEntry);
+    homeJoinedRooms = activeRooms.filter((storedRoom) =>
       storedRoom.coordinatorPubkey === coordinatorPubkey && !storedRoom.isHost
     );
-    previousLocalRooms = rooms.filter((storedRoom) =>
-      storedRoom.isHost && storedRoom.coordinatorPubkey !== coordinatorPubkey
-    );
-    remoteRooms = rooms.filter((storedRoom) =>
+    previousLocalRooms = [];
+    remoteRooms = activeRooms.filter((storedRoom) =>
       !storedRoom.isHost && storedRoom.coordinatorPubkey !== coordinatorPubkey
     );
     probeRemoteCoordinatorsIfTargetsChanged();
@@ -728,9 +755,6 @@
       roomConnectionDetail = undefined;
     }
 
-    hostedRooms = listRooms()
-      .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
-      .map(buildHostedRoomEntry);
     refreshRemoteRooms();
   }
 
@@ -795,7 +819,7 @@
       });
       const entry = buildHostedRoomEntry(created);
       await openHostChat(created);
-      hostedRooms = [entry, ...hostedRooms.filter((candidate) => !sameRoomIdentity(candidate.room, created))];
+      refreshRemoteRooms();
       inviteUrl = entry.inviteUrl;
       qrUrl = entry.qrUrl;
       createDialogOpen = false;
@@ -1067,7 +1091,10 @@
         session?.discard();
         session = null;
       }
-      removeStoredRoom(latest);
+      removeStoredRoom(latest, {
+        reason: frozenMode === "delete" ? "deleted" : "left",
+        coordinatorLabel: coordinatorLabelFor(latest.coordinatorPubkey),
+      });
       hostedRooms = hostedRooms.filter((entry) => !sameRoomIdentity(entry.room, target));
       homeJoinedRooms = homeJoinedRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
       remoteRooms = remoteRooms.filter((candidate) => !sameRoomIdentity(candidate, target));
@@ -1172,9 +1199,6 @@
       if (createDialogOpen) closeCreateDialog();
       settingsDialogOpen = false;
     };
-    hostedRooms = listRooms()
-      .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
-      .map(buildHostedRoomEntry);
     refreshRemoteRooms();
     const compactQuery = window.matchMedia("(max-width: 900px)");
     const markCoordinatorOnline = (event: Event) => handleCoordinatorReachabilityEvent(event, "online");
@@ -1258,7 +1282,7 @@
         {onNavigate}
       />
       <div class:guided-setup={guidedSetupMode} class="host-commandbar">
-        {#if !guidedSetupMode && !setupRequired}
+        {#if !setupRequired}
           <button
             class:active={mobileRailOpen}
             class="mobile-rail-toggle"
@@ -1290,6 +1314,7 @@
       class:management-open={managementOpen}
       class:startup-mode={coordinator.status === "starting" || coordinator.status === "stopping"}
       class:guided-setup={guidedSetupMode}
+      class:setup-required={setupRequired}
       class="host-layout grid min-h-0 min-w-0"
     >
       {#if mobileRailOpen && compactViewport}
@@ -1309,6 +1334,7 @@
         <span class="sr-only" aria-live="polite">{unreadAnnouncement}</span>
         <div class="flex min-h-full flex-col gap-4">
             <div class="rail-join"><InviteRedeemer onNavigate={navigateFromRail} /></div>
+            {#if false}
             <nav class="channel-browser" aria-label="Server and channel browser">
               <div class="channel-context">
                 <div class="channel-context-row">
@@ -1368,7 +1394,9 @@
                   </button>
                   {#if selectedServerIsHome && !locked}
                     <div class="coordinator-actions" role="group" aria-label="Coordinator controls">
-                      <LifecyclePanel {coordinator} compact minimal onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+                      {#if !guidedSetupMode}
+                        <LifecyclePanel {coordinator} compact minimal onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+                      {/if}
                       <button
                         class:pending={coordinator.restartRequired}
                         class="channel-settings"
@@ -1587,7 +1615,87 @@
               {/if}
               {#if error}<p class="text-sm text-[#ffaaa3]">{error}</p>{/if}
             {/if}
-          <div class="sidebar-account" role="group" aria-label="Personal controls">
+            {/if}
+
+            <div class="coordinator-runtime-stack">
+            <section class="coordinator-runtime-card" data-testid="coordinator-runtime-card" aria-label={`Local coordinator ${config.coordinatorName || "My coordinator"}`}>
+              <div class="coordinator-runtime-copy">
+                <span
+                  class:online={localCoordinatorStatus === "online"}
+                  class:connecting={localCoordinatorStatus === "connecting"}
+                  class:offline={localCoordinatorStatus === "offline"}
+                  class="channel-server-dot"
+                  data-testid="selected-coordinator-status"
+                  data-coordinator-pubkey={coordinatorPubkey}
+                  data-state={localCoordinatorStatus}
+                  role="img"
+                  aria-label={localCoordinatorStatusLabel}
+                ></span>
+                <span><strong>{config.coordinatorName || "My coordinator"}</strong><small>{localCoordinatorStatusLabel} · {relayUrls.length} relay {relayUrls.length === 1 ? "path" : "paths"}</small></span>
+              </div>
+              {#if !locked}
+                <div class="coordinator-actions" role="group" aria-label="Coordinator controls">
+                  {#if !guidedSetupMode}
+                    <LifecyclePanel {coordinator} compact minimal onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+                  {/if}
+                  <button class:pending={coordinator.restartRequired} class="channel-settings" type="button" aria-label={`Settings for ${config.coordinatorName || "My coordinator"}`} onclick={openSettings}>
+                    <span aria-hidden="true">⚙</span>
+                    {#if coordinator.restartRequired}<span class="channel-settings-pip" aria-label="Restart required"></span>{/if}
+                  </button>
+                </div>
+              {/if}
+            </section>
+
+            {#if room && localRailActionable}
+              <div class="room-tools rail-ready-control rail-ready-tools" aria-label={`Controls for ${room.title}`}>
+                <button class="share-trigger" type="button" aria-label="Invite" aria-haspopup="dialog" onclick={openInviteDialog}><span>Invite</span><span aria-hidden="true">↗</span></button>
+                <button class:enabled={autoApprove} class="room-access-toggle" type="button" aria-pressed={autoApprove} aria-label={`Auto-approve invitees for ${room.title}: ${autoApprove ? "on" : "off"}`} onclick={() => void setAutoApprove(!autoApprove)}><span>Auto-approve</span><strong>{autoApprove ? "On" : "Off"}</strong></button>
+              </div>
+              <span class="sr-only" data-testid="invite-link">{inviteUrl}</span>
+              {#if !autoApprove}<PendingInvitees requests={pendingJoinRequests} onApprove={approveWaitingInvitees} />{/if}
+              {#if error}<p class="text-sm text-[#ffaaa3]">{error}</p>{/if}
+            {/if}
+            </div>
+
+            <nav class="coordinator-card-list" aria-label="Server and channel browser">
+              <CoordinatorRoomCard
+                pubkey={coordinatorPubkey}
+                label={config.coordinatorName || "My coordinator"}
+                status={localCoordinatorStatus}
+                statusLabel={localCoordinatorStatusLabel}
+                local
+                rooms={[
+                  ...hostedRooms.map((entry) => ({ room: entry.room, inviteUrl: entry.inviteUrl, removalMode: "delete" as const })),
+                  ...homeJoinedRooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const })),
+                ]}
+                unreadCount={coordinatorUnreadCount(coordinatorPubkey)}
+                activeRoomKey={activeSidebarRoomKey}
+                disabled={localRailUnavailable}
+                busy={localRailBusy}
+                {soundsEnabled}
+                onCreate={() => void openCreateDialog()}
+                onOpen={openCoordinatorRoom}
+                onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
+                onToggleSounds={toggleSounds}
+              />
+              {#each remoteServers as server (server.pubkey)}
+                <CoordinatorRoomCard
+                  pubkey={server.pubkey}
+                  label={`Coordinator ${shortKey(server.pubkey)}`}
+                  status={externalCoordinatorReachability(server.pubkey)}
+                  statusLabel={reachabilityLabel(externalCoordinatorReachability(server.pubkey))}
+                  rooms={server.rooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const }))}
+                  unreadCount={coordinatorUnreadCount(server.pubkey)}
+                  activeRoomKey={activeSidebarRoomKey}
+                  {soundsEnabled}
+                  onOpen={openCoordinatorRoom}
+                  onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
+                  onToggleSounds={toggleSounds}
+                />
+              {/each}
+            </nav>
+            <SidebarHistory entries={sidebarHistory} />
+          {#if !locked}<div class="sidebar-account" role="group" aria-label="Personal controls">
             <UserProfile
               {config}
               {coordinatorPubkey}
@@ -1600,13 +1708,13 @@
               <NotificationFeed onNavigate={navigateFromRail} />
               <NotificationCenter />
             </div>
-          </div>
+          </div>{/if}
         </div>
       </aside>
       {/if}
 
       <section class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
-        {#if locked}
+        {#if locked && !embeddedChatActive}
           <PassphrasePrompt embedded {coordinator} />
         {:else if setupRequired}
           <div class="startup-stage coordinator-setup-stage">
@@ -1642,27 +1750,21 @@
             />
             <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">
               {#if room.messages.length === 0}<div class="flex h-full items-center justify-center"><p class="max-w-sm text-center text-sm leading-6 text-[#82958a]">Your room is ready. Invite someone from the left to begin.</p></div>{/if}
-              {#each room.messages as message (message.id)}
-                {@const reactions = reactionSummary(room, message.id, room.stablePubkey)}
-                <article class:mine={message.sender === room.stablePubkey} class="host-message">
-                  <MessageAuthor sender={message.sender} name={message.name} avatar={message.avatar} badgeLabel={message.badgeLabel} badgeEmoji={message.badgeEmoji} createdAt={message.createdAt} pending={message.pending} />
-                  <p>{message.content}</p>
-                  <MessageReactions
-                    messageId={message.id}
-                    authorName={message.name}
-                    {reactions}
-                    pickerOpen={reactionPickerMessageId === message.id}
-                    canReact={message.sender !== room.stablePubkey}
-                    disabled={!composerEnabled}
-                    idPrefix="host"
-                    onTogglePicker={() => reactionPickerMessageId = reactionPickerMessageId === message.id ? null : message.id}
-                    onClosePicker={() => {
-                      if (reactionPickerMessageId === message.id) reactionPickerMessageId = null;
-                    }}
-                    onToggleReaction={(emoji) => toggleReaction(message.id, emoji)}
-                    onSetReaction={(emoji) => setReaction(message.id, emoji, true)}
-                  />
-                </article>
+              {#each groupMessageStreaks(room.messages) as streak (`${streak.sender}:${streak.messages[0].id}`)}
+                <MessageGroup
+                  messages={streak.messages}
+                  viewerPubkey={room.stablePubkey}
+                  reactionsFor={(messageId) => reactionSummary(room, messageId, room.stablePubkey)}
+                  pickerOpenMessageId={reactionPickerMessageId}
+                  disabled={!composerEnabled}
+                  idPrefix="host"
+                  onTogglePicker={(messageId) => reactionPickerMessageId = reactionPickerMessageId === messageId ? null : messageId}
+                  onClosePicker={(messageId) => {
+                    if (reactionPickerMessageId === messageId) reactionPickerMessageId = null;
+                  }}
+                  onToggleReaction={toggleReaction}
+                  onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+                />
               {/each}
             </div>
             <form class="shrink-0 border-t border-[#293832] p-3 sm:p-4" onsubmit={(event) => { event.preventDefault(); void send(); }}><div class="mb-2 flex gap-1 overflow-x-auto pb-1">{#each CHAT_EMOJI_SHORTCUTS as emoji (emoji)}<button type="button" class="emoji-button" aria-label={`Add ${emoji}`} disabled={!composerEnabled} onclick={() => addEmoji(emoji)}>{emoji}</button>{/each}</div><div class="flex gap-2"><input bind:this={composerInput} bind:value={composer} class="host-input min-w-0 flex-1" disabled={!composerEnabled} placeholder={roomConnection === "offline" ? "Room offline" : roomConnection === "connecting" ? "Connecting…" : "Message as host"} /><button class="host-primary px-4 sm:px-5" disabled={!composerEnabled || !composer.trim()}>Send</button></div><p class:unavailable={!composerEnabled} class="host-composer-status">{roomConnection === "offline" ? "Cached messages are read-only while this room is offline." : roomConnection === "connecting" ? "Connecting this room…" : "Connected. Messages are end-to-end encrypted."}</p>{#if reactionError}<p class="reaction-error" role="status">{reactionError}</p>{/if}</form>
@@ -2019,8 +2121,7 @@
   .host-commandbar :global(.compact-controls) { height: 2.65rem; gap: .08rem; border: 0; background: transparent; padding: .2rem .16rem; }
   .host-commandbar :global(.lifecycle-status) { border: 0; padding-inline: .55rem; }
   .host-layout { position: relative; width: 100%; max-width: 100%; overflow: hidden; grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .host-layout.guided-setup { grid-template-columns: minmax(0, 1fr); }
-  .host-layout.guided-setup .host-rail { display: none; }
+  .host-layout.setup-required { grid-template-columns: minmax(0, 1fr); }
   .host-chat { position: relative; width: 100%; height: 100%; max-width: 100%; }
   .host-layout:not(.management-open) .management-main { display: none; }
   .host-layout.management-open { grid-template-columns: minmax(21rem, 28rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
@@ -2032,7 +2133,16 @@
   .settings-button:hover, .settings-button.pending { background: #101713; color: #dfffe7; }
   .settings-pip { position: absolute; top: .35rem; right: .35rem; width: .4rem; height: .4rem; border-radius: 999px; background: #e4e78d; box-shadow: 0 0 8px rgb(228 231 141 / .4); }
   .host-rail { background: #0d1310; }
+  .host-rail > div { gap: .75rem; }
   .rail-join { flex: 0 0 auto; border: 1px solid #293832; }
+  .coordinator-runtime-stack { display: grid; gap: 0; }
+  .coordinator-runtime-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; border: 1px solid #293832; background: #0b120d; }
+  .coordinator-runtime-stack > .room-tools { margin-top: -1px; }
+  .coordinator-runtime-copy { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .6rem; padding: .65rem .7rem; }
+  .coordinator-runtime-copy > span:last-child, .coordinator-runtime-copy strong, .coordinator-runtime-copy small { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .coordinator-runtime-copy strong { color: #dfffe7; font-size: .7rem; font-weight: 650; }
+  .coordinator-runtime-copy small { margin-top: .18rem; color: #718277; font-size: .5rem; text-transform: capitalize; }
+  .coordinator-card-list { display: grid; gap: .5rem; }
   .host-input { width: 100%; border: 1px solid #34433b; background: #090d0b; padding: .7rem .8rem; color: #effff2; outline: none; }
   .host-input:focus { border-color: #7cf59d; box-shadow: 0 0 0 2px rgb(124 245 157 / .11); }
   .host-input:disabled { cursor: not-allowed; border-color: #26322c; color: #64766b; opacity: .72; }
@@ -2219,9 +2329,6 @@
   .host-connection-banner.offline { border-bottom-color: #604326; background: #21170f; color: #ffc17d; }
   .host-composer-status { margin-top: .5rem; color: #7ca087; text-align: center; font-size: .65rem; }
   .host-composer-status.unavailable { color: #a98b69; }
-  .host-message { position: relative; max-width: min(78%, 42rem); margin-bottom: 1rem; border: 1px solid #293832; background: #161e1a; padding: .7rem .85rem 1rem; color: #e4f2e7; }
-  .host-message.mine { margin-left: auto; border-color: #2e553b; background: #173323; }
-  .host-message p { margin-top: .48rem; white-space: pre-wrap; word-break: break-word; }
   .room-pane { position: relative; }
   .reaction-error { margin-top: .45rem; color: #ffaaa3; font-size: .65rem; }
   .startup-stage { position: absolute; z-index: 1; inset: 0; display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; padding: 16px; background: #101614; }
@@ -2341,7 +2448,6 @@
     .host-commandbar :global(.destroy-action) { width: 2.75rem; height: 2.75rem; }
     .manage-toggle { padding-inline: .58rem; }
     .host-layout, .host-layout:not(.management-open), .host-layout.management-open { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-    .host-layout.guided-setup .host-rail { display: none !important; }
     .host-rail { position: absolute; z-index: 30; inset: 0 auto 0 0; display: block !important; width: min(22rem, calc(100% - 2.65rem)); max-width: 100%; transform: translateX(-102%); border-right: 1px solid #3c5544; border-bottom: 0; padding: .65rem; box-shadow: 18px 0 42px rgb(0 0 0 / .52); opacity: 0; pointer-events: none; overscroll-behavior: contain; transition: transform .18s ease, opacity .18s ease; }
     .host-rail.mobile-open { transform: translateX(0); opacity: 1; pointer-events: auto; }
     .mobile-rail-scrim { position: absolute; z-index: 25; inset: 0; display: block; width: 100%; height: 100%; border: 0; background: rgb(0 0 0 / .46); cursor: default; backdrop-filter: blur(1px); }

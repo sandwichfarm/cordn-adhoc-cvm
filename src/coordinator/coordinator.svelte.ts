@@ -11,7 +11,8 @@ import {
   type CoordinatorKeyBackup,
 } from "../crypto/key-storage";
 import { transportFactory, type RunningTransport, type TransportDiagnostics } from "../lib/transport";
-import { removeHostedRoomsForCoordinator } from "../chat/room-store";
+import { removeHostedRoomsForCoordinator, ROOMS_CHANGED_EVENT } from "../chat/room-store";
+import { SIDEBAR_LEDGER_KEY } from "../chat/sidebar-ledger";
 import {
   CHAT_COORDINATOR_CONNECT_TIMEOUT_MS,
   CHAT_COORDINATOR_REQUEST_TIMEOUT_MS,
@@ -514,6 +515,13 @@ export class CoordinatorStore {
           onNostrPublish: ({ phase, summary }) => {
             this.addDebugLog("info", phase === "attempt" ? "publishing nostr response event" : "nostr response event accepted", summary);
           },
+          onRelayPublish: ({ relayUrl, eventId, eventKind, operation, attempt, elapsedMs, outcome }) => {
+            this.addDebugLog(
+              outcome === "failed" || outcome === "aborted" ? "warn" : "info",
+              `relay publish ${outcome}`,
+              `${operation} relay=${relayUrl} event=${abbreviateHex(eventId)} kind=${eventKind} attempt=${attempt} elapsed=${elapsedMs}ms`,
+            );
+          },
           onOutboundMessage: ({ type, summary, error }) => {
             this.addDebugLog(
               error ? "warn" : "info",
@@ -771,6 +779,8 @@ export class CoordinatorStore {
     }
 
     removeHostedRoomsForCoordinator(destroyedCoordinatorPubkey);
+    localStorage.removeItem(SIDEBAR_LEDGER_KEY);
+    window.dispatchEvent(new CustomEvent(ROOMS_CHANGED_EVENT, { detail: { action: "destroyed" } }));
     this.destroyStateSynchronously();
     await clearPersistedCoordinatorState();
     await this.clearBrowserCaches();

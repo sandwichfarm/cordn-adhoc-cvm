@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./established-installation-fixture";
+import { expect, installEstablishedInstallation, test, type Locator, type Page } from "./established-installation-fixture";
 import { finalizeEvent, generateSecretKey, getPublicKey, nip19, nip44 } from "nostr-tools";
 
 import { startMockRelay, type MockRelay } from "./mock-relay";
@@ -323,10 +323,11 @@ test("restores NIP-07 before a legacy invite is consumed in the unified root she
 
   const hostContext = await browser.newContext();
   const host = await hostContext.newPage();
+  await installEstablishedInstallation(host);
   await host.goto("/");
   await configureMockRelay(host);
   await host.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible();
+  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
   await expect(host.getByTestId("status-badge")).toBeHidden();
   const roomTitle = "NIP-07 restored signer room";
   const invite = await createRoom(host, roomTitle);

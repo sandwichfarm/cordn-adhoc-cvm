@@ -25,6 +25,7 @@ Unify personal presence, notification settings, in-app notifications, and incomi
 - **D-07:** The in-app feed records relevant events independently of browser permission and desktop-category settings. Browser notifications are an optional projection of the same event stream.
 - **D-08:** Desktop permission is requested only by an explicit `Enable desktop notifications` action inside settings. Existing validated cadence values and event-ID/category de-duplication remain authoritative.
 - **D-09:** Desktop notifications are concise and grouped per cadence. Online-status notifications are enabled by default; message and invitation desktop categories are opt-in. The in-app feed can still show all relevant personal events.
+- **D-19:** The notification feed exposes an accessible `Clear all` action. It clears persisted feed entries and unread state only; it never accepts, dismisses, or writes resolution state for a live invitation.
 
 ### Invitation consolidation and privacy
 - **D-10:** Incoming private room invitations are actionable entries in the bell feed and reuse the existing trusted-sender validation plus same-shell accept/dismiss navigation path.
