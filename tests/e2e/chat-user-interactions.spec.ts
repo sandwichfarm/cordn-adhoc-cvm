@@ -12,6 +12,39 @@ interface SeedMessage {
   auth?: { id: string; sig: string };
 }
 
+interface FixtureInteraction {
+  pane: "host" | "guest";
+  operation: "invite" | "follow";
+  recipientPubkeys?: string[];
+  participant?: string;
+  roomId?: string;
+}
+
+async function openMessageGroupFixture(page: Page, pane: "host" | "guest"): Promise<void> {
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & { __messageGroupFixtureEvents?: FixtureInteraction[] };
+    testWindow.__messageGroupFixtureEvents = [];
+    window.addEventListener("cahmls-test-interaction-started", (event) => {
+      testWindow.__messageGroupFixtureEvents?.push((event as CustomEvent<FixtureInteraction>).detail);
+    });
+  });
+  await page.goto(`/?__message-group-test-harness=1&pane=${pane}`);
+  await expect(page.getByTestId("message-group-test-harness")).toBeVisible();
+}
+
+async function latestFixtureInteraction(page: Page): Promise<FixtureInteraction | undefined> {
+  return page.evaluate(() => {
+    const testWindow = window as typeof window & { __messageGroupFixtureEvents?: FixtureInteraction[] };
+    return testWindow.__messageGroupFixtureEvents?.at(-1);
+  });
+}
+
+async function settleFixtureInteraction(page: Page, operation: "invite" | "follow", outcome: "resolve" | "reject"): Promise<void> {
+  await page.evaluate(({ operation, outcome }) => {
+    window.dispatchEvent(new CustomEvent("cahmls-test-interaction-settle", { detail: { operation, outcome } }));
+  }, { operation, outcome });
+}
+
 async function seedGuestMessages(page: Page, recipientPubkey: string, messages: SeedMessage[]): Promise<void> {
   await page.evaluate(({ recipient, seededMessages }) => {
     const coordinatorPubkey = "c".repeat(64);
@@ -109,6 +142,51 @@ test("targeted invite projection removes non-target layout artifacts before grou
   await expect(log.locator('[data-message-id="hidden-targeted-invite"]')).toHaveCount(0);
   await expect(log.getByRole("button", { name: /Join Projection room/ })).toHaveCount(1);
   await expect(log.getByTestId("message-streak").filter({ hasText: "Before targeted invite" })).toHaveAttribute("data-message-count", "2");
+});
+
+test("host and guest participant fixtures deterministically cover targeted invite and authenticated follow UI", async ({ page }) => {
+  const participant = "d".repeat(64);
+  for (const pane of ["guest", "host"] as const) {
+    await openMessageGroupFixture(page, pane);
+    const trigger = page.getByRole("button", { name: "Actions for Participant" });
+    await trigger.click();
+    const menu = page.getByRole("dialog", { name: "Actions for Participant" });
+    await menu.getByRole("button", { name: "Invite to room" }).click();
+    const chooser = page.getByRole("dialog", { name: "Invite Participant to a room" });
+    const room = chooser.getByRole("button", { name: /Fixture room/ });
+    await room.click();
+    await expect(chooser.getByRole("button", { name: "Sending invite…" })).toBeVisible();
+    await expect.poll(() => latestFixtureInteraction(page)).toEqual({
+      pane,
+      operation: "invite",
+      recipientPubkeys: [participant],
+      roomId: "fixture-room",
+    });
+    await settleFixtureInteraction(page, "invite", "resolve");
+    await expect(chooser).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(page.getByText("Invite sent to Participant.")).toBeAttached();
+
+    await trigger.click();
+    await menu.getByRole("button", { name: "Invite to room" }).click();
+    await chooser.getByRole("button", { name: /Fixture room/ }).click();
+    await settleFixtureInteraction(page, "invite", "reject");
+    await expect(chooser.getByRole("status")).toContainText("Couldn’t send the invite");
+
+    await page.keyboard.press("Escape");
+    await trigger.click();
+    const follow = menu.getByRole("button", { name: "Follow on Nostr" });
+    await follow.click();
+    await expect(menu.getByRole("button", { name: "Following Participant…" })).toHaveAttribute("aria-busy", "true");
+    await expect.poll(() => latestFixtureInteraction(page)).toEqual({ pane, operation: "follow", participant });
+    await settleFixtureInteraction(page, "follow", "resolve");
+    await expect(page.getByText("Now following Participant.")).toBeAttached();
+
+    await follow.click();
+    await expect(menu.getByRole("button", { name: "Following Participant…" })).toHaveAttribute("aria-busy", "true");
+    await settleFixtureInteraction(page, "follow", "reject");
+    await expect(menu.getByRole("status")).toContainText("Couldn’t complete that action. Check your connection and try again.");
+  }
 });
 
 test("participant menu opens from a non-self author, mentions through the composer, and offers only other active rooms", async ({ page }) => {

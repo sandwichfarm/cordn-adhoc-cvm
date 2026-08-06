@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import HostWorkspace from "./components/HostWorkspace.svelte";
+  import MessageGroupTestHarness from "./components/MessageGroupTestHarness.svelte";
   import PassphrasePrompt from "./components/PassphrasePrompt.svelte";
   import { configStore } from "./config/config.svelte";
   import { coordinatorStore } from "./coordinator/coordinator.svelte";
@@ -14,6 +15,9 @@
   } from "./navigation/workspace-route";
 
   const shellOrigin = window.location.origin;
+  const initialSearchParams = new URL(window.location.href).searchParams;
+  const messageGroupTestHarness = initialSearchParams.has("__message-group-test-harness");
+  const messageGroupTestHarnessPane = initialSearchParams.get("pane") === "host" ? "host" : "guest";
   const rootUrl = new URL("/", shellOrigin).href;
   const initialIntent = initialWorkspaceIntent(window.location.href, window.history.state, shellOrigin);
   let currentUrl = $state(initialIntent ?? rootUrl);
@@ -84,7 +88,9 @@
   });
 </script>
 
-{#if coordinatorStore.loadState === "prompting" && !lockedWorkspaceOpen && !hasWorkspaceIntent}
+{#if messageGroupTestHarness}
+  <MessageGroupTestHarness pane={messageGroupTestHarnessPane} />
+{:else if coordinatorStore.loadState === "prompting" && !lockedWorkspaceOpen && !hasWorkspaceIntent}
   <PassphrasePrompt
     coordinator={coordinatorStore}
     onOpenChats={() => lockedWorkspaceOpen = true}
