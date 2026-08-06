@@ -1,6 +1,7 @@
 import { expect, installEstablishedInstallation, test, type Page } from "./established-installation-fixture";
 import { getEventHash } from "nostr-tools";
 import { createInviteUrl } from "../../src/chat/invite";
+import { roomIdentity, waitForStoredMessage } from "./chat-user-interactions-fixture";
 
 interface SeedMessage {
   id: string;
@@ -391,6 +392,87 @@ test("host renders the shared participant menu and mention flow for an admitted 
     await expect(page.getByPlaceholder("Message as host")).toHaveValue(/^@/);
   } finally {
     await guestContext.close();
+  }
+});
+
+test("real targeted message and room invite cross production transport", async ({ page: host, browser }) => {
+  test.setTimeout(150_000);
+  const sourceTitle = "Production transport source";
+  const targetRoomTitle = "Production transport target";
+  await host.goto("/");
+  await host.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
+  await host.getByRole("button", { name: "Create room", exact: true }).click();
+  const createSource = host.getByTestId("create-room-dialog");
+  await createSource.getByPlaceholder("Friday plans").fill(sourceTitle);
+  await createSource.getByRole("button", { name: "Create room", exact: true }).click();
+  await expect(createSource).toBeHidden();
+  const sourceInvite = await host.getByTestId("invite-link").textContent();
+  expect(sourceInvite).toBeTruthy();
+
+  const targetContext = await browser.newContext();
+  const nonTargetContext = await browser.newContext();
+  const target = await targetContext.newPage();
+  const nonTarget = await nonTargetContext.newPage();
+  try {
+    await Promise.all([installEstablishedInstallation(target), installEstablishedInstallation(nonTarget)]);
+    await Promise.all([target.goto(sourceInvite!), nonTarget.goto(sourceInvite!)]);
+    await Promise.all([
+      expect(target.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 }),
+      expect(nonTarget.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 }),
+    ]);
+
+    await host.getByPlaceholder("Message as host").fill("Host author for a structured mention");
+    await host.getByRole("button", { name: "Send" }).click();
+    await expect(target.getByTestId("guest-message-list").getByText("Host author for a structured mention")).toBeVisible({ timeout: 20_000 });
+    await expect(nonTarget.getByTestId("guest-message-list").getByText("Host author for a structured mention")).toBeVisible({ timeout: 20_000 });
+
+    const hostAuthorActions = target.getByTestId("guest-message-list").getByRole("button", { name: /^Actions for / }).first();
+    await hostAuthorActions.click();
+    await target.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Mention" }).click();
+    const targetComposer = target.getByTestId("chat-composer").locator("input");
+    await targetComposer.fill("Visible text deliberately differs from the selected name");
+    await target.getByRole("button", { name: "Send" }).click();
+
+    const hostLog = host.getByTestId("host-message-list");
+    await expect(hostLog.getByText("Visible text deliberately differs from the selected name")).toBeVisible({ timeout: 20_000 });
+    await expect(hostLog.getByTestId("mentioned-you")).toHaveCount(1);
+    await expect(target.getByTestId("guest-message-list").getByTestId("mentioned-you")).toHaveCount(0);
+    await expect(nonTarget.getByTestId("guest-message-list").getByTestId("mentioned-you")).toHaveCount(0);
+
+    const hostIdentity = await roomIdentity(host, sourceTitle);
+    const mention = await waitForStoredMessage(host, sourceTitle, (message) => message.content === "Visible text deliberately differs from the selected name");
+    expect(mention.recipientPubkeys).toEqual([hostIdentity.stablePubkey]);
+    expect(mention.auth).toBeTruthy();
+
+    await host.getByRole("button", { name: "Create room", exact: true }).click();
+    const createTarget = host.getByTestId("create-room-dialog");
+    await createTarget.getByPlaceholder("Friday plans").fill(targetRoomTitle);
+    await createTarget.getByRole("button", { name: "Create room", exact: true }).click();
+    await expect(createTarget).toBeHidden();
+    const targetIdentity = await roomIdentity(host, targetRoomTitle);
+    await host.getByRole("button", { name: new RegExp(`^Open room ${sourceTitle}, hosted by`) }).click();
+    await expect(hostLog.getByText("Visible text deliberately differs from the selected name")).toBeVisible({ timeout: 20_000 });
+
+    const targetMessageActions = hostLog.locator("[data-testid=message-streak]")
+      .filter({ hasText: "Visible text deliberately differs from the selected name" })
+      .getByRole("button", { name: /^Actions for / });
+    await targetMessageActions.click();
+    await host.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Invite to room" }).click();
+    const chooser = host.getByRole("dialog", { name: /^Invite .+ to a room$/ });
+    await chooser.getByRole("button", { name: new RegExp(targetRoomTitle) }).click();
+    await expect(chooser).toBeHidden({ timeout: 20_000 });
+
+    const deliveredInvite = await waitForStoredMessage(target, sourceTitle, (message) => message.recipientPubkeys?.length === 1 && message.recipientPubkeys[0] !== undefined && message.content?.includes(targetRoomTitle) === true);
+    expect(deliveredInvite.recipientPubkeys).toEqual([(await roomIdentity(target, sourceTitle)).stablePubkey]);
+    expect(deliveredInvite.auth).toBeTruthy();
+    const deliveredUrl = new URL(deliveredInvite.content ?? "", host.url());
+    expect(deliveredUrl.pathname).toContain(targetIdentity.id);
+    await expect(target.getByRole("button", { name: new RegExp(`Join ${targetRoomTitle}`) })).toBeVisible({ timeout: 20_000 });
+    await expect(host.getByRole("button", { name: new RegExp(`Join ${targetRoomTitle}`) })).toHaveCount(0);
+    await expect(nonTarget.getByRole("button", { name: new RegExp(`Join ${targetRoomTitle}`) })).toHaveCount(0);
+  } finally {
+    await Promise.all([targetContext.close(), nonTargetContext.close()]);
   }
 });
 
