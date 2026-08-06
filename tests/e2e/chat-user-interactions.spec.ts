@@ -321,6 +321,43 @@ test("participant surfaces keep invite controls contained at 320px and disable i
   await expect(page.getByRole("button", { name: /Join Motion safe room/ })).toHaveCSS("transition-duration", "0s");
 });
 
+test("participant visual contract preserves token roles and compact gutters", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 480 });
+
+  for (const pane of ["host", "guest"] as const) {
+    await openMessageGroupFixture(page, pane);
+    const trigger = page.getByRole("button", { name: "Actions for Participant" });
+    await expect(trigger).toHaveCSS("min-height", "44px");
+    await expect(trigger).toHaveCSS("min-width", "44px");
+    await trigger.click();
+
+    const menu = page.getByRole("dialog", { name: "Actions for Participant" });
+    const mention = menu.getByRole("button", { name: "Mention" });
+    const highlightAction = menu.locator(`#${pane}-participant-highlight`);
+    const defaultHighlight = menu.getByTestId("participant-highlight-default");
+    await expect(menu).toHaveCSS("background-color", "rgb(16, 22, 20)");
+    await expect(mention).toHaveCSS("font-size", "14px");
+    await highlightAction.click();
+    await expect(defaultHighlight).toHaveAttribute("aria-pressed", "true");
+    await expect(defaultHighlight).toHaveClass(/highlight-selected/);
+    await expect(defaultHighlight).toHaveCSS("border-left-color", "rgb(124, 245, 157)");
+    await expect.poll(() => menu.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: window.innerWidth - rect.right, width: rect.width };
+    })).toEqual({ left: 16, right: 16, width: 288 });
+
+    await menu.getByRole("button", { name: "Invite to room" }).click();
+    const chooser = page.getByRole("dialog", { name: "Invite Participant to a room" });
+    await expect(chooser.getByRole("heading")).toHaveCSS("font-size", "20px");
+    await expect(chooser.getByRole("heading")).toHaveCSS("font-weight", "600");
+    await expect(chooser.getByRole("button", { name: /Fixture room/ })).toHaveCSS("font-size", "14px");
+    await expect.poll(() => chooser.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: window.innerWidth - rect.right, width: rect.width };
+    })).toEqual({ left: 16, right: 16, width: 288 });
+  }
+});
+
 test("host renders the shared participant menu and mention flow for an admitted guest", async ({ page, browser }) => {
   test.setTimeout(90_000);
   await page.goto("/");

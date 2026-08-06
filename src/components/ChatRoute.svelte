@@ -876,7 +876,7 @@
 </section>
 
 <style>
-  .ignored-streak-disclosure { width: 100%; border: 1px solid #293832; background: #111814; padding: .65rem; color: #82958a; font-size: .66rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .ignored-streak-disclosure { width: 100%; border: 1px solid #293832; background: #101614; padding: 8px 16px; color: #82958a; font-size: 14px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; }
   .ignored-streak-disclosure:hover, .ignored-streak-disclosure:focus-visible { border-color: #7cf59d; color: #dfffe7; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .chat-page { width: 100%; height: 100dvh; max-height: 100dvh; }
   .chat-page.embedded { position: static; inset: auto; width: 100%; min-width: 0; height: 100%; max-width: none; max-height: 100%; background: #101614; }

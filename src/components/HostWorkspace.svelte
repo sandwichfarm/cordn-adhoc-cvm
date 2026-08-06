@@ -2271,7 +2271,7 @@
 </main>
 
 <style>
-  .ignored-streak-disclosure { width: 100%; border: 1px solid #293832; background: #111814; padding: .65rem; color: #82958a; font-size: .66rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .ignored-streak-disclosure { width: 100%; border: 1px solid #293832; background: #101614; padding: 8px 16px; color: #82958a; font-size: 14px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; }
   .ignored-streak-disclosure:hover, .ignored-streak-disclosure:focus-visible { border-color: #7cf59d; color: #dfffe7; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .host-workspace { max-width: 100vw; overflow: hidden; background: rgb(7 12 9 / .8); }
   .host-workspace > .host-topbar, .host-workspace > .host-layout { transition: filter .18s ease, opacity .18s ease; }

@@ -321,7 +321,7 @@
       role="dialog"
       tabindex="-1"
       aria-label={`Actions for ${participantName}`}
-      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520 }}
+      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520, gutter: 16 }}
       onkeydown={handleSurfaceKeydown}
     >
       <button id={`${idPrefix}-participant-mention`} type="button" onclick={() => void mentionParticipant()}>Mention</button>
@@ -350,7 +350,7 @@
       role="dialog"
       tabindex="-1"
       aria-label={`Invite ${participantName} to a room`}
-      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520 }}
+      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520, gutter: 16 }}
       onkeydown={handleSurfaceKeydown}
     >
       <h2>Invite {participantName} to a room</h2>
@@ -390,26 +390,26 @@
   .streak-author strong { overflow: hidden; color: #b9fac8; font-size: .7rem; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
   .mine .streak-author strong { color: #7f9387; }
   .message-badge { display: inline-flex; user-select: text; align-items: center; gap: .22rem; border: 1px solid #41664b; background: rgb(124 245 157 / .07); padding: .12rem .32rem; color: #93dba4; font-size: .48rem; font-weight: 680; letter-spacing: .09em; line-height: 1.15; text-transform: uppercase; }
-  .participant-trigger { box-sizing: border-box; display: inline-flex; min-width: 44px; min-height: 44px; max-width: 100%; align-items: center; gap: .4rem; border: 1px solid transparent; padding: .18rem .26rem; color: inherit; text-align: left; }
-  .participant-trigger:hover, .participant-trigger:focus-visible, .participant-trigger[aria-expanded="true"] { border-color: #7cf59d; background: #101a13; outline: 2px solid transparent; outline-offset: 2px; }
+  .participant-trigger { box-sizing: border-box; display: inline-flex; min-width: 44px; min-height: 44px; max-width: 100%; align-items: center; gap: 4px; border: 1px solid transparent; padding: 4px 8px; color: inherit; text-align: left; }
+  .participant-trigger:hover, .participant-trigger:focus-visible, .participant-trigger[aria-expanded="true"] { border-color: #7cf59d; background: #101614; outline: 2px solid transparent; outline-offset: 2px; }
   .participant-trigger:focus-visible { outline-color: #7cf59d; }
-  .participant-menu, .participant-chooser { box-sizing: border-box; display: grid; width: min(18rem, calc(100vw - 1rem)); gap: .5rem; border: 1px solid #405348; background: #0c120f; padding: .5rem; color: #dfffe7; box-shadow: 0 .75rem 2rem rgb(0 0 0 / .38); }
-  .participant-menu > button, .participant-room-list > button { display: grid; min-height: 2.75rem; width: 100%; align-items: center; border: 1px solid transparent; padding: .55rem .65rem; color: #dfffe7; text-align: left; }
-  .participant-menu > button:hover:not(:disabled), .participant-menu > button:focus-visible, .participant-room-list > button:hover:not(:disabled), .participant-room-list > button:focus-visible { border-color: #7cf59d; background: #14241a; outline: 2px solid #7cf59d; outline-offset: 2px; }
+  .participant-menu, .participant-chooser { box-sizing: border-box; display: grid; width: min(288px, calc(100vw - 32px)); gap: 8px; border: 1px solid #293832; background: #101614; padding: 16px; color: #dfffe7; box-shadow: 0 8px 32px rgb(0 0 0 / .38); }
+  .participant-menu > button, .participant-room-list > button { display: grid; min-height: 44px; width: 100%; align-items: center; border: 1px solid transparent; padding: 8px 16px; color: #dfffe7; font-size: 14px; font-weight: 400; line-height: 1.5; text-align: left; }
+  .participant-menu > button:hover:not(:disabled), .participant-menu > button:focus-visible, .participant-room-list > button:hover:not(:disabled), .participant-room-list > button:focus-visible { border-color: #7cf59d; background: #101614; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .participant-menu > button:disabled { cursor: not-allowed; color: #82958a; opacity: .8; }
-  .participant-guidance, .participant-chooser p { margin: -.25rem .65rem .15rem; color: #82958a; font-size: .62rem; line-height: 1.45; }
-  .participant-divider { height: 1px; margin: .1rem 0; background: #293832; }
-  .participant-highlights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; padding: .15rem; }
-  .participant-highlights button { min-height: 2.75rem; border: 1px solid #293832; color: #cfe8d5; font-size: .62rem; }
-  .participant-highlights button.highlight-selected { border-color: #7cf59d; box-shadow: inset 3px 0 #7cf59d; }
-  .highlight-selected-marker { margin-left: .35rem; font-weight: 700; }
-  .participant-highlights button:hover, .participant-highlights button:focus-visible { border-color: #7cf59d; background: #14241a; outline: 2px solid #7cf59d; outline-offset: 2px; }
-  .participant-chooser h2 { color: #effff2; font-size: .78rem; font-weight: 700; }
-  .participant-chooser > strong { color: #b9fac8; font-size: .72rem; }
-  .participant-room-list { display: grid; max-height: 16rem; gap: .35rem; overflow-y: auto; overscroll-behavior: contain; }
-  .participant-room-list > button { gap: .16rem; border-color: #293832; }
-  .participant-room-list small { color: #82958a; font-size: .58rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .participant-action-error { margin: 0; color: #ffaaa3; font-size: .62rem; line-height: 1.45; }
+  .participant-guidance, .participant-chooser p { margin: 0; color: #82958a; font-size: 12px; font-weight: 400; line-height: 1.5; }
+  .participant-divider { height: 1px; margin: 0; background: #293832; }
+  .participant-highlights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; }
+  .participant-highlights button { min-height: 44px; border: 1px solid #293832; color: #dfffe7; font-size: 14px; font-weight: 400; line-height: 1.5; }
+  .participant-highlights button.highlight-selected { border-color: #7cf59d; box-shadow: inset 2px 0 #7cf59d; }
+  .highlight-selected-marker { margin-left: 4px; font-weight: 600; }
+  .participant-highlights button:hover, .participant-highlights button:focus-visible { border-color: #7cf59d; background: #101614; outline: 2px solid #7cf59d; outline-offset: 2px; }
+  .participant-chooser h2 { margin: 0; color: #dfffe7; font-size: 20px; font-weight: 600; line-height: 1.2; }
+  .participant-chooser > strong { color: #dfffe7; font-size: 16px; font-weight: 600; line-height: 1.2; }
+  .participant-room-list { display: grid; max-height: 256px; gap: 8px; overflow-y: auto; overscroll-behavior: contain; }
+  .participant-room-list > button { gap: 4px; border-color: #293832; }
+  .participant-room-list small { color: #82958a; font-size: 12px; font-weight: 400; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .participant-action-error { margin: 0; color: #ffaaa3; font-size: 12px; font-weight: 400; line-height: 1.5; }
   .participant-action-status { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .streak-messages { display: grid; gap: .18rem; }
   .message-bubble { position: relative; z-index: 0; min-width: 5rem; border: 0; background: #1a241e; padding: .48rem .72rem .72rem; color: #dce8df; }
@@ -421,7 +421,7 @@
   .mine .message-bubble.host { background: #162019; box-shadow: none; }
   .message-bubble p { white-space: pre-wrap; overflow-wrap: anywhere; }
   .message-bubble.mentioned { box-shadow: inset 2px 0 #f1f58f; }
-  .mentioned-you { display: block; margin: -.05rem 0 .3rem; color: #f1f58f; font-size: .58rem; font-weight: 760; letter-spacing: .08em; line-height: 1.2; text-transform: uppercase; }
+  .mentioned-you { display: block; margin: 0 0 4px; color: #f1f58f; font-size: 16px; font-weight: 600; letter-spacing: .08em; line-height: 1.2; text-transform: uppercase; }
   .shared-invite-action { display: flex; width: 100%; min-height: 3.25rem; align-items: center; justify-content: space-between; gap: .8rem; border: 1px solid rgb(124 245 157 / .2); background: #101a13; padding: .65rem .7rem; color: #cfe8d5; text-align: left; transition: border-color .15s ease, background .15s ease, color .15s ease; }
   .shared-invite-action:hover, .shared-invite-action:focus-visible { border-color: #7cf59d; outline: none; background: #14241a; color: #effff2; }
   .shared-invite-copy { min-width: 0; line-height: 1.45; }
