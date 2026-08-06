@@ -19,6 +19,7 @@ export interface OverlayPositionInput {
   gutter?: number;
   gap?: number;
   compactSheet?: boolean;
+  forcePreferredSide?: boolean;
 }
 
 export interface OverlayPosition {
@@ -36,6 +37,7 @@ export interface ViewportOverlayOptions {
   gutter?: number;
   gap?: number;
   compactSheetBelow?: number;
+  forcePreferredSide?: boolean;
 }
 
 export function calculateOverlayPosition(input: OverlayPositionInput): OverlayPosition {
@@ -62,7 +64,9 @@ export function calculateOverlayPosition(input: OverlayPositionInput): OverlayPo
   const preferred = input.preferredSide ?? "below";
   const preferredSpace = preferred === "above" ? availableAbove : availableBelow;
   const alternateSpace = preferred === "above" ? availableBelow : availableAbove;
-  const side: OverlaySide = input.overlayHeight <= preferredSpace || preferredSpace >= alternateSpace
+  const side: OverlaySide = input.forcePreferredSide
+    ? preferred
+    : input.overlayHeight <= preferredSpace || preferredSpace >= alternateSpace
     ? preferred
     : preferred === "above" ? "below" : "above";
   const maxHeight = side === "above" ? availableAbove : availableBelow;
@@ -117,6 +121,7 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
       gutter: options.gutter,
       gap: options.gap,
       compactSheet,
+      forcePreferredSide: options.forcePreferredSide,
     });
 
     node.style.left = `${result.left}px`;
