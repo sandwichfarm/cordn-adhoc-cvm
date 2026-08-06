@@ -1,7 +1,7 @@
 import { expect, installEstablishedInstallation, test, type Page } from "./established-installation-fixture";
 import { getEventHash } from "nostr-tools";
 import { createInviteUrl } from "../../src/chat/invite";
-import { installControllableNip07, roomIdentity, waitForStoredMessage } from "./chat-user-interactions-fixture";
+import { emitSocialContactEvent, installControllableNip07, installSocialRelayControl, roomIdentity, waitForStoredMessage } from "./chat-user-interactions-fixture";
 
 interface SeedMessage {
   id: string;
@@ -550,8 +550,83 @@ test("both composers restore edited mentions after signer failure", async ({ pag
   }
 });
 
+test("authenticated host expands filtered ignored streaks", async ({ page: host, browser }) => {
+  test.setTimeout(150_000);
+  const roomTitle = "Host ignore projection";
+  await installControllableNip07(host);
+  await host.goto("/");
+  await authenticateNip07(host);
+  await host.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
+  await host.getByRole("button", { name: "Create room", exact: true }).click();
+  const dialog = host.getByTestId("create-room-dialog");
+  await dialog.getByPlaceholder("Friday plans").fill(roomTitle);
+  await dialog.getByRole("button", { name: "Create room", exact: true }).click();
+  const invite = await host.getByTestId("invite-link").textContent();
+  expect(invite).toBeTruthy();
+  const aContext = await browser.newContext();
+  const bContext = await browser.newContext();
+  const a = await aContext.newPage();
+  const b = await bContext.newPage();
+  try {
+    await Promise.all([installEstablishedInstallation(a), installEstablishedInstallation(b)]);
+    await Promise.all([a.goto(invite!), b.goto(invite!)]);
+    await Promise.all([expect(a.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 }), expect(b.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 })]);
+    await host.getByPlaceholder("Message as host").fill("Host author for ignore mention");
+    await host.getByRole("button", { name: "Send" }).click();
+    await expect(a.getByText("Host author for ignore mention")).toBeVisible({ timeout: 20_000 });
+    await a.getByTestId("guest-message-list").getByRole("button", { name: /^Actions for / }).first().click();
+    await a.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Mention" }).click();
+    await a.getByPlaceholder("Message").fill("A target host stays visible");
+    await a.getByRole("button", { name: "Send" }).click();
+    await expect(host.getByText("A target host stays visible")).toBeVisible({ timeout: 20_000 });
+    await b.getByPlaceholder("Message").fill("B separates ignored streaks");
+    await b.getByRole("button", { name: "Send" }).click();
+    await expect(host.getByText("B separates ignored streaks")).toBeVisible({ timeout: 20_000 });
+    await a.getByPlaceholder("Message").fill("A second visible message");
+    await a.getByRole("button", { name: "Send" }).click();
+    await expect(host.getByText("A second visible message")).toBeVisible({ timeout: 20_000 });
+
+    const aIdentity = await roomIdentity(a, roomTitle);
+    const bIdentity = await roomIdentity(b, roomTitle);
+    await host.evaluate(({ title, sender, target }) => {
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
+        const room = JSON.parse(localStorage.getItem(key) ?? "null") as { title?: string; messages?: unknown[] };
+        if (room.title !== title || !room.messages) continue;
+        room.messages.splice(2, 0, {
+          type: "message", id: "filtered-targeted-invite", sender, name: "anon", content: "https://chat.example/chat/filtered-targeted-invite",
+          createdAt: Date.now(), recipientPubkeys: [target], auth: { id: "filtered-targeted-invite", sig: "fixture" },
+        });
+        localStorage.setItem(key, JSON.stringify(room));
+        return;
+      }
+    }, { title: roomTitle, sender: aIdentity.stablePubkey, target: bIdentity.stablePubkey });
+    await host.reload();
+    const log = host.getByTestId("host-message-list");
+    await expect(log.getByText("A second visible message")).toBeVisible({ timeout: 35_000 });
+    await expect(log.locator('[data-message-id="filtered-targeted-invite"]')).toHaveCount(0);
+    const firstActions = log.locator("[data-testid=message-streak]").filter({ hasText: "A target host stays visible" }).getByRole("button", { name: /^Actions for / });
+    await firstActions.click();
+    await host.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Ignore" }).click();
+    const disclosures = host.getByRole("button", { name: /anon posted 1 message/ });
+    await expect(disclosures).toHaveCount(2);
+    await disclosures.nth(0).click();
+    await expect(disclosures.nth(0)).toHaveAttribute("aria-expanded", "true");
+    await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "false");
+    await expect(log.getByTestId("mentioned-you")).toHaveCount(1);
+    await disclosures.nth(1).click();
+    await expect(disclosures.nth(1)).toHaveAttribute("aria-expanded", "true");
+    await expect(log.locator('[data-message-id="filtered-targeted-invite"]')).toHaveCount(0);
+  } finally {
+    await Promise.all([aContext.close(), bContext.close()]);
+  }
+});
+
 test("App owns one current kind-3 lifecycle across logout and replacement", async ({ page }) => {
   const signer = await installControllableNip07(page);
+  await installSocialRelayControl(page);
   const firstPubkey = signer.pubkey;
   await page.goto("/");
   const probe = page.getByTestId("contact-lifecycle-probe");
@@ -559,6 +634,7 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   await authenticateNip07(page);
   await expect(probe).toHaveAttribute("data-contact-pubkey", firstPubkey, { timeout: 20_000 });
   await expect(probe).toHaveAttribute("data-owner-ready", "true");
+  const staleAEvent = signer.signedContactList(["c".repeat(64)]);
 
   const profile = page.getByTestId("user-profile");
   await profile.getByRole("button", { name: /^Open profile for / }).click();
@@ -571,6 +647,14 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   await authenticateNip07(page);
   await expect(probe).toHaveAttribute("data-contact-pubkey", secondPubkey, { timeout: 20_000 });
   await expect(probe).toHaveAttribute("data-owner-ready", "true");
+  const followingB = "b".repeat(64);
+  await emitSocialContactEvent(page, signer.signedContactList([followingB]));
+  await expect(probe).toHaveAttribute("data-following", followingB);
+  // This valid A event is delivered through the retained, already-closed A callback.
+  // The mounted store must reject it because the current owner is B.
+  await emitSocialContactEvent(page, staleAEvent);
+  await expect(probe).toHaveAttribute("data-contact-pubkey", secondPubkey);
+  await expect(probe).toHaveAttribute("data-following", followingB);
   await expect(probe).not.toHaveAttribute("data-contact-pubkey", firstPubkey);
 
   await profile.getByRole("button", { name: /^Open profile for / }).click();

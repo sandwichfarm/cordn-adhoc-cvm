@@ -1,5 +1,5 @@
 import { expect, type Page } from "./established-installation-fixture";
-import { finalizeEvent, generateSecretKey, getPublicKey, nip44 } from "nostr-tools";
+import { finalizeEvent, generateSecretKey, getPublicKey, nip44, type Event as NostrEvent } from "nostr-tools";
 
 interface TestNip07Identity {
   secretKey: Uint8Array;
@@ -10,6 +10,7 @@ export interface ControllableNip07 {
   pubkey: string;
   rejectNextSignature: () => void;
   replaceIdentity: () => string;
+  signedContactList: (targets: string[]) => NostrEvent;
 }
 
 /** A page-lifetime NIP-07 bridge. Generated key material never enters the page's DOM or storage. */
@@ -56,7 +57,84 @@ export async function installControllableNip07(page: Page): Promise<Controllable
       identity = { secretKey: nextSecret, pubkey: getPublicKey(nextSecret) };
       return identity.pubkey;
     },
+    signedContactList: (targets) => finalizeEvent({
+      kind: 3,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: targets.map((target) => ["p", target]),
+      content: "",
+    }, identity.secretKey),
   };
+}
+
+/** Routes only the public profile relays and leaves coordinator transport untouched. */
+export async function installSocialRelayControl(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & {
+      __phase24SocialSockets?: Array<{ closed: boolean; ids: string[]; filters: Array<{ authors?: string[]; kinds?: number[] }>; onmessage: ((event: MessageEvent<string>) => void) | null }>;
+      __phase24SocialEmit?: (event: unknown) => void;
+      __phase24NativeWebSocket?: typeof WebSocket;
+    };
+    testWindow.__phase24NativeWebSocket = window.WebSocket;
+    testWindow.__phase24SocialSockets = [];
+    const matches = (event: { kind?: number; pubkey?: string }, filter: { authors?: string[]; kinds?: number[] }) =>
+      (!filter.kinds || filter.kinds.includes(event.kind ?? -1))
+      && (!filter.authors || filter.authors.includes(event.pubkey ?? ""));
+
+    class ProfileRelayWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      readonly CONNECTING = ProfileRelayWebSocket.CONNECTING;
+      readonly OPEN = ProfileRelayWebSocket.OPEN;
+      readonly CLOSING = ProfileRelayWebSocket.CLOSING;
+      readonly CLOSED = ProfileRelayWebSocket.CLOSED;
+      readyState = ProfileRelayWebSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      onmessage: ((event: MessageEvent<string>) => void) | null = null;
+      readonly record = { closed: false, ids: [] as string[], filters: [] as Array<{ authors?: string[]; kinds?: number[] }>, onmessage: null as ((event: MessageEvent<string>) => void) | null };
+      constructor(_url: string) {
+        void _url;
+        testWindow.__phase24SocialSockets?.push(this.record);
+        queueMicrotask(() => { this.readyState = ProfileRelayWebSocket.OPEN; this.onopen?.(new Event("open")); });
+      }
+      send(payload: string): void {
+        const message = JSON.parse(payload) as unknown[];
+        if (message[0] !== "REQ" || typeof message[1] !== "string") return;
+        const id = message[1];
+        this.record.ids.push(id);
+        this.record.filters.push(...message.slice(2).filter((value): value is { authors?: string[]; kinds?: number[] } => typeof value === "object" && value !== null));
+        this.record.onmessage = this.onmessage;
+        queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(["EOSE", id]) } as MessageEvent<string>));
+      }
+      close(): void { this.record.closed = true; this.readyState = ProfileRelayWebSocket.CLOSED; this.onclose?.({} as CloseEvent); }
+    }
+    testWindow.__phase24SocialEmit = (event) => {
+      for (const socket of testWindow.__phase24SocialSockets ?? []) {
+        if (socket.filters.some((filter) => matches(event as { kind?: number; pubkey?: string }, filter))) {
+          for (const id of socket.ids) socket.onmessage?.({ data: JSON.stringify(["EVENT", id, event]) } as MessageEvent<string>);
+        }
+      }
+    };
+    Object.defineProperty(window, "WebSocket", {
+      configurable: true,
+      value: new Proxy(testWindow.__phase24NativeWebSocket, {
+        construct(Target, args) {
+          const url = String(args[0] ?? "");
+          if (url.startsWith("wss://purplepag.es") || url.startsWith("wss://relay.damus.io")) return new ProfileRelayWebSocket(url);
+          return Reflect.construct(Target, args);
+        },
+      }),
+    });
+  });
+}
+
+export async function emitSocialContactEvent(page: Page, event: NostrEvent): Promise<void> {
+  await page.evaluate((signed) => {
+    (window as typeof window & { __phase24SocialEmit?: (event: unknown) => void }).__phase24SocialEmit?.(signed);
+  }, event);
 }
 
 interface StoredMessageView {
