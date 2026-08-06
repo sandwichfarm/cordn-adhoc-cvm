@@ -1,4 +1,63 @@
 import { expect, type Page } from "./established-installation-fixture";
+import { finalizeEvent, generateSecretKey, getPublicKey, nip44 } from "nostr-tools";
+
+interface TestNip07Identity {
+  secretKey: Uint8Array;
+  pubkey: string;
+}
+
+export interface ControllableNip07 {
+  pubkey: string;
+  rejectNextSignature: () => void;
+  replaceIdentity: () => string;
+}
+
+/** A page-lifetime NIP-07 bridge. Generated key material never enters the page's DOM or storage. */
+export async function installControllableNip07(page: Page): Promise<ControllableNip07> {
+  const secretKey = generateSecretKey();
+  let identity: TestNip07Identity = { secretKey, pubkey: getPublicKey(secretKey) };
+  let rejectNextSignature = false;
+  await page.exposeFunction("__phase24Nip07Bridge", (operation: string, peerOrEvent: unknown, plaintext?: string) => {
+    if (operation === "getPublicKey") return identity.pubkey;
+    if (operation === "sign") {
+      if (rejectNextSignature) {
+        rejectNextSignature = false;
+        throw new Error("Test signer rejected this envelope");
+      }
+      return finalizeEvent(peerOrEvent as Parameters<typeof finalizeEvent>[0], identity.secretKey);
+    }
+    const peer = String(peerOrEvent);
+    const key = nip44.v2.utils.getConversationKey(identity.secretKey, peer);
+    if (operation === "encrypt") return nip44.v2.encrypt(String(plaintext), key);
+    if (operation === "decrypt") return nip44.v2.decrypt(String(plaintext), key);
+    throw new Error("Unsupported NIP-07 bridge operation");
+  });
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & {
+      __phase24Nip07Bridge?: (operation: string, peerOrEvent: unknown, plaintext?: string) => Promise<unknown>;
+    };
+    Object.defineProperty(window, "nostr", {
+      configurable: true,
+      value: {
+        getPublicKey: async () => testWindow.__phase24Nip07Bridge?.("getPublicKey", ""),
+        signEvent: async (event: unknown) => testWindow.__phase24Nip07Bridge?.("sign", event),
+        nip44: {
+          encrypt: async (peer: string, plaintext: string) => testWindow.__phase24Nip07Bridge?.("encrypt", peer, plaintext),
+          decrypt: async (peer: string, ciphertext: string) => testWindow.__phase24Nip07Bridge?.("decrypt", peer, ciphertext),
+        },
+      },
+    });
+  });
+  return {
+    get pubkey() { return identity.pubkey; },
+    rejectNextSignature: () => { rejectNextSignature = true; },
+    replaceIdentity: () => {
+      const nextSecret = generateSecretKey();
+      identity = { secretKey: nextSecret, pubkey: getPublicKey(nextSecret) };
+      return identity.pubkey;
+    },
+  };
+}
 
 interface StoredMessageView {
   id: string;

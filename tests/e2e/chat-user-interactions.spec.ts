@@ -1,7 +1,7 @@
 import { expect, installEstablishedInstallation, test, type Page } from "./established-installation-fixture";
 import { getEventHash } from "nostr-tools";
 import { createInviteUrl } from "../../src/chat/invite";
-import { roomIdentity, waitForStoredMessage } from "./chat-user-interactions-fixture";
+import { installControllableNip07, roomIdentity, waitForStoredMessage } from "./chat-user-interactions-fixture";
 
 interface SeedMessage {
   id: string;
@@ -84,6 +84,17 @@ async function openSeededGuestRoom(page: Page): Promise<void> {
     if (await roomBrowser.isVisible()) await roomBrowser.click();
   }
   await room.click();
+}
+
+async function authenticateNip07(page: Page): Promise<void> {
+  const profile = page.getByTestId("user-profile");
+  const menu = page.getByRole("dialog", { name: "User profile" });
+  if (!(await menu.isVisible())) {
+    await profile.getByRole("button", { name: /^(Open|Close) profile for / }).click();
+  }
+  await menu.getByRole("button", { name: /NIP-07 browser signer/ }).evaluate((button) => (button as HTMLElement).click());
+  await expect(menu).toBeHidden();
+  await expect(profile).toContainText("NIP-07");
 }
 
 test("signed recipient tracer renders Mentioned you in the shared invitee presentation", async ({ page }) => {
@@ -474,6 +485,99 @@ test("real targeted message and room invite cross production transport", async (
   } finally {
     await Promise.all([targetContext.close(), nonTargetContext.close()]);
   }
+});
+
+test("both composers restore edited mentions after signer failure", async ({ page: host, browser }) => {
+  test.setTimeout(150_000);
+  const roomTitle = "Signer rollback transport";
+  const hostSigner = await installControllableNip07(host);
+  await host.goto("/");
+  await authenticateNip07(host);
+  await host.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
+  await host.getByRole("button", { name: "Create room", exact: true }).click();
+  const dialog = host.getByTestId("create-room-dialog");
+  await dialog.getByPlaceholder("Friday plans").fill(roomTitle);
+  await dialog.getByRole("button", { name: "Create room", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const invite = await host.getByTestId("invite-link").textContent();
+  expect(invite).toBeTruthy();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  try {
+    const guestSigner = await installControllableNip07(guest);
+    await installEstablishedInstallation(guest);
+    await guest.goto("/");
+    await authenticateNip07(guest);
+    await guest.goto(invite!);
+    await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
+
+    await guest.getByPlaceholder("Message").fill("Guest author available for host mention");
+    await guest.getByRole("button", { name: "Send" }).click();
+    await expect(host.getByTestId("host-message-list").getByText("Guest author available for host mention")).toBeVisible({ timeout: 20_000 });
+    await host.getByPlaceholder("Message as host").fill("Host author available for guest mention");
+    await host.getByRole("button", { name: "Send" }).click();
+    await expect(guest.getByTestId("guest-message-list").getByText("Host author available for guest mention")).toBeVisible({ timeout: 20_000 });
+
+    const hostGuestActions = host.getByTestId("host-message-list").locator("[data-testid=message-streak]")
+      .filter({ hasText: "Guest author available for host mention" }).getByRole("button", { name: /^Actions for / });
+    await hostGuestActions.click();
+    await host.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Mention" }).click();
+    const hostComposer = host.getByPlaceholder("Message as host");
+    await hostComposer.fill("host keeps this exact edited text");
+    hostSigner.rejectNextSignature();
+    await host.getByRole("button", { name: "Send" }).click();
+    await expect(hostComposer).toHaveValue("host keeps this exact edited text");
+    await host.getByRole("button", { name: "Send" }).click();
+    const hostRetry = await waitForStoredMessage(guest, roomTitle, (message) => message.content === "host keeps this exact edited text");
+    expect(hostRetry.recipientPubkeys).toEqual([guestSigner.pubkey]);
+
+    const guestHostActions = guest.getByTestId("guest-message-list").locator("[data-testid=message-streak]")
+      .filter({ hasText: "Host author available for guest mention" }).getByRole("button", { name: /^Actions for / });
+    await guestHostActions.click();
+    await guest.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Mention" }).click();
+    const guestComposer = guest.getByPlaceholder("Message");
+    await guestComposer.fill("guest keeps this exact edited text");
+    guestSigner.rejectNextSignature();
+    await guest.getByRole("button", { name: "Send" }).click();
+    await expect(guestComposer).toHaveValue("guest keeps this exact edited text");
+    await guest.getByRole("button", { name: "Send" }).click();
+    const guestRetry = await waitForStoredMessage(host, roomTitle, (message) => message.content === "guest keeps this exact edited text");
+    expect(guestRetry.recipientPubkeys).toEqual([hostSigner.pubkey]);
+  } finally {
+    await guestContext.close();
+  }
+});
+
+test("App owns one current kind-3 lifecycle across logout and replacement", async ({ page }) => {
+  const signer = await installControllableNip07(page);
+  const firstPubkey = signer.pubkey;
+  await page.goto("/");
+  const probe = page.getByTestId("contact-lifecycle-probe");
+  await expect(probe).toHaveAttribute("data-owner-ready", "false");
+  await authenticateNip07(page);
+  await expect(probe).toHaveAttribute("data-contact-pubkey", firstPubkey, { timeout: 20_000 });
+  await expect(probe).toHaveAttribute("data-owner-ready", "true");
+
+  const profile = page.getByTestId("user-profile");
+  await profile.getByRole("button", { name: /^Open profile for / }).click();
+  const firstMenu = page.getByRole("dialog", { name: "User profile" });
+  await firstMenu.getByRole("button", { name: "Disconnect" }).click();
+  await expect(probe).toHaveAttribute("data-contact-pubkey", "");
+  await expect(probe).toHaveAttribute("data-owner-ready", "false");
+
+  const secondPubkey = signer.replaceIdentity();
+  await authenticateNip07(page);
+  await expect(probe).toHaveAttribute("data-contact-pubkey", secondPubkey, { timeout: 20_000 });
+  await expect(probe).toHaveAttribute("data-owner-ready", "true");
+  await expect(probe).not.toHaveAttribute("data-contact-pubkey", firstPubkey);
+
+  await profile.getByRole("button", { name: /^Open profile for / }).click();
+  const secondMenu = page.getByRole("dialog", { name: "User profile" });
+  await secondMenu.getByRole("button", { name: "Disconnect" }).click();
+  await expect(probe).toHaveAttribute("data-contact-pubkey", "");
+  await expect(probe).toHaveAttribute("data-owner-ready", "false");
 });
 
 test("participant feedback remains visible and persistent in host and guest renderers", async ({ page }) => {
