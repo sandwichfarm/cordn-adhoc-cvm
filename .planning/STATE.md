@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Quality of Life & Polish
-current_phase: 18
-current_phase_name: Unified Presence, Notifications & Controls
-status: "Phase 18 shipped — PR #8"
-stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-08-06T15:03:51.570Z"
+current_phase: 24
+current_phase_name: chat-user-interactions
+status: executing
+stopped_at: Phase 24 context captured
+last_updated: "2026-08-06T18:03:03.852Z"
 last_activity: 2026-08-06
+last_activity_desc: Phase 24 execution started
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 7
-  total_plans: 25
-  completed_plans: 24
-last_activity_desc: Phase 18 execution started
+  total_plans: 31
+  completed_plans: 25
 ---
 
 # Project State
@@ -23,14 +23,14 @@ last_activity_desc: Phase 18 execution started
 See: .planning/PROJECT.md (updated 2026-08-02)
 
 **Core value:** A single browser tab acts as a fully functional, self-sovereign Cordn coordinator reachable over Nostr relays — no backend, no account, no installation.
-**Current focus:** Phase 18 — Unified Presence, Notifications & Controls
+**Current focus:** Phase 24 — chat-user-interactions
 
 ## Current Position
 
-Phase: 18 (Unified Presence, Notifications & Controls) — EXECUTING
-Plan: 3 of 3
-Status: Phase 18 shipped — PR #8
-Last activity: 2026-08-06
+Phase: 24 (chat-user-interactions) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 24
+Last activity: 2026-08-06 — Phase 24 execution started
 Pull request: [#7 — maximize room QR codes](https://github.com/sandwichfarm/CAHMLS/pull/7) — open, CI in progress. [#6](https://github.com/sandwichfarm/CAHMLS/pull/6) merged 2026-08-06.
 
 Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 93%)

@@ -358,17 +358,13 @@ try {
 | A2 | A generation token plus subscription-before/alongside-refresh is the appropriate local race barrier. | Pattern 5 | A different existing lifecycle coordinator may be available during planning; invariant remains no stale identity/race overwrite. |
 | A3 | Suppressing an outgoing event’s subscription echo until relay acceptance is required to honor the product’s local-state-after-acceptance rule. | Pattern 5 | Implementation detail may differ if the relay callback itself is treated as acceptance, but the UI cannot report success early. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exact component split for participant UI**
-   - What we know: `MessageGroup` is shared and local overlay primitives exist. [VERIFIED: src/components/MessageGroup.svelte] [VERIFIED: src/lib/viewport-overlay.ts]
-   - What's unclear: Whether planner prefers inline local markup or a small `ParticipantMenu.svelte` child.
-   - Recommendation: Extract a child only if it keeps `MessageGroup` focused and can receive all callbacks without host/guest branching. [ASSUMED]
+1. **Exact component split for participant UI — resolved**
+   - Decision: Keep the participant interaction UI within the shared `MessageGroup.svelte` surface for this phase. Do not add a host/guest branch or a new child component; extract later only if the shared component becomes independently reusable. [VERIFIED: 24-04-PLAN.md]
 
-2. **Contact-list ownership refactor breadth**
-   - What we know: `NostrSocialStore` currently owns `following` and current social presence/invite consumers read it. [VERIFIED: src/invites/nostr-social.svelte.ts]
-   - What's unclear: Whether its refactor can remain internal or merits a pure controller module for unit injection.
-   - Recommendation: Retain one public source of `following`; favor a pure injected controller if it materially simplifies relay/signature race tests. [ASSUMED]
+2. **Contact-list ownership refactor breadth — resolved**
+   - Decision: Retain `NostrSocialStore` as the single public owner of `following` and follow mutation. Any injected controller, pool, signer, or clock seams remain internal implementation details used to prove relay/signature race behavior. [VERIFIED: 24-03-PLAN.md]
 
 ## Environment Availability
 

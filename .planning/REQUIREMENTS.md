@@ -91,6 +91,18 @@
 - [x] **RELAY-05**: Bounded delivery retains transient-outage recovery, multi-relay success, reconnect behavior, and persistent/ephemeral ContextVM gift-wrap interoperability.
 - [x] **RELAY-06**: Automated coverage proves offline-localhost containment, bounded retry lifetime, lifecycle cancellation, single-flight polling, healthy-remote isolation, and transient recovery.
 
+### Chat User Interactions
+
+- [ ] **USER-01**: Every other participant's author identity exposes one keyboard-accessible context menu with Mention, Ignore, Invite, Follow, and Highlight actions; the current user's own identity does not expose self-directed actions.
+- [ ] **MENTION-01**: Mentioning a participant inserts an editable human-readable mention into either chat composer and sends the participant pubkey as a signed canonical kind-9 `p` tag without breaking legacy message decoding.
+- [ ] **MENTION-02**: A message that explicitly mentions the current room identity is visibly emphasized and accessibly identified in both host and invitee chat views, while mentions of other participants remain ordinary messages.
+- [ ] **INVMSG-01**: A room-invite message with no participant tags renders a join action for everyone; a tagged room invite renders only for a tagged viewer, renders nothing for other viewers, and never displays its mention tokens as chat text.
+- [ ] **IGNORE-01**: Ignoring a participant is persisted per exact room and collapses each consecutive streak from that participant into one centered “posted N messages” disclosure that the viewer can expand without changing what other participants receive.
+- [ ] **INVUSER-01**: Inviting a participant from their context menu lets the viewer choose another active room and sends that room's current invite as a tagged in-room message addressed to the selected participant.
+- [ ] **FOLLOW-01**: The active signed-in identity's kind-3 list is fetched at the earliest identity-ready lifecycle point, accepts only valid signatures from the active pubkey, selects the newest event deterministically, and stays current from live relay events.
+- [ ] **FOLLOW-02**: Following a participant serially merges a new `p` tag into the newest validated kind-3 event, preserves unrelated tags and content, signs a strictly newer replacement, publishes it to the configured social relays, and does not report success until publication succeeds.
+- [ ] **HILITE-01**: A viewer can choose or clear a participant highlight color; the preference persists between browser sessions and is rendered consistently in both host and invitee chat views without reducing text contrast.
+
 ## Future Requirements
 
 ### Notification Expansion
@@ -166,11 +178,20 @@
 | RELAY-04 | Phase 23 | Complete |
 | RELAY-05 | Phase 23 | Complete |
 | RELAY-06 | Phase 23 | Complete |
+| USER-01 | Phase 24 | Pending |
+| MENTION-01 | Phase 24 | Pending |
+| MENTION-02 | Phase 24 | Pending |
+| INVMSG-01 | Phase 24 | Pending |
+| IGNORE-01 | Phase 24 | Pending |
+| INVUSER-01 | Phase 24 | Pending |
+| FOLLOW-01 | Phase 24 | Pending |
+| FOLLOW-02 | Phase 24 | Pending |
+| HILITE-01 | Phase 24 | Pending |
 
 **Coverage:**
 
-- v1.1 requirements: 47 total
-- Mapped to phases: 47
+- v1.1 requirements: 56 total
+- Mapped to phases: 56
 - Unmapped: 0 ✓
 
 ---
