@@ -101,3 +101,68 @@ test("targeted invite projection removes non-target layout artifacts before grou
   await expect(log.getByRole("button", { name: /Join Projection room/ })).toHaveCount(1);
   await expect(log.getByTestId("message-streak").filter({ hasText: "Before targeted invite" })).toHaveAttribute("data-message-count", "2");
 });
+
+test("participant menu opens from a non-self author, mentions through the composer, and offers only other active rooms", async ({ page }) => {
+  const viewer = "e".repeat(64);
+  const participant = "d".repeat(64);
+  await page.goto("/");
+  await seedGuestMessages(page, viewer, [{
+    id: "participant-menu-message",
+    sender: participant,
+    name: "Participant",
+    content: "Open my actions",
+    createdAt: Date.now(),
+  }, {
+    id: "self-message",
+    sender: viewer,
+    name: "Guest",
+    content: "Do not offer self actions",
+    createdAt: Date.now() + 1,
+  }]);
+  await page.evaluate(() => {
+    const activeRoom = {
+      version: 1,
+      id: "other-active-room",
+      title: "Other active room",
+      coordinatorPubkey: "a".repeat(64),
+      coordinatorOrigin: window.location.origin,
+      coordinatorName: "Other coordinator",
+      relayUrls: ["ws://127.0.0.1:1"],
+      name: "Guest",
+      stablePubkey: "e".repeat(64),
+      isHost: false,
+      stateBase64: "",
+      keyPackage: { reference: "other-room", publicBase64: "public", privateBase64: "private" },
+      lastCursor: 0,
+      messages: [],
+      pending: [],
+      membershipStatus: "active",
+      createdAt: Date.now(),
+    };
+    const retiredRoom = { ...activeRoom, id: "retired-room", title: "History room", membershipStatus: "retired" };
+    localStorage.setItem(`cordn-adhoc-chat-room:v2:${encodeURIComponent(activeRoom.coordinatorPubkey)}:${encodeURIComponent(activeRoom.id)}`, JSON.stringify(activeRoom));
+    localStorage.setItem(`cordn-adhoc-chat-room:v2:${encodeURIComponent(retiredRoom.coordinatorPubkey)}:${encodeURIComponent(retiredRoom.id)}`, JSON.stringify(retiredRoom));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: /^Open room Recipient tracer guest/ }).click();
+
+  const trigger = page.getByRole("button", { name: "Actions for Participant" });
+  await expect(trigger).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Actions for Guest" })).toHaveCount(0);
+  await trigger.press("Enter");
+  const menu = page.getByRole("dialog", { name: "Actions for Participant" });
+  await expect(menu.getByRole("button", { name: "Mention" })).toBeFocused();
+  await expect(menu.getByRole("button").allTextContents()).resolves.toEqual(["Mention", "Invite to room", "Follow on Nostr", "Highlight", "Ignore"]);
+  await menu.getByRole("button", { name: "Mention" }).click();
+  await expect(page.getByTestId("chat-composer").locator("input")).toBeFocused();
+  await expect(page.getByTestId("chat-composer").locator("input")).toHaveValue("@Participant ");
+
+  await trigger.click();
+  await menu.getByRole("button", { name: "Invite to room" }).click();
+  const chooser = page.getByRole("dialog", { name: "Invite Participant to a room" });
+  await expect(chooser.getByRole("button", { name: /Other active room/ })).toBeVisible();
+  await expect(chooser).not.toContainText("Recipient tracer guest");
+  await expect(chooser).not.toContainText("History room");
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+});
