@@ -28,6 +28,10 @@
     coordinatorStore.loadState === "ready" ? coordinatorStore.identity.publicKeyHex : undefined,
   );
   const identityReady = $derived(userProfileStore.initialized);
+  const e2eContactFollowing = $derived([...nostrSocialStore.following].sort());
+  const e2eContactOwnerReady = $derived(
+    nostrSocialStore.contactPubkey.length > 0 && nostrSocialStore.contactStatus !== "idle",
+  );
   const emptyIdentity = { publicKeyHex: "", npub: "" };
 
   canonicalize(initialIntent);
@@ -111,4 +115,16 @@
       onNavigate={navigate}
     />
   {/key}
+{/if}
+
+{#if e2eBuild}
+  <output
+    hidden
+    aria-hidden="true"
+    data-testid="contact-lifecycle-probe"
+    data-contact-pubkey={nostrSocialStore.contactPubkey}
+    data-contact-status={nostrSocialStore.contactStatus}
+    data-following={e2eContactFollowing.join(",")}
+    data-owner-ready={e2eContactOwnerReady ? "true" : "false"}
+  >contact-lifecycle-probe</output>
 {/if}
