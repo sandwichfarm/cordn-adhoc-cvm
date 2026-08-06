@@ -31,6 +31,7 @@ Phase: 18 (Unified Presence, Notifications & Controls) — EXECUTING
 Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-03 — Phase 18 execution started
+Pull request: [#6 — stabilize coordinator delivery and workspace flows](https://github.com/sandwichfarm/cahmls/pull/6) — open, CI in progress
 
 Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 93%)
 
