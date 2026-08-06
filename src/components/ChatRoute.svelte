@@ -83,6 +83,7 @@
   let followLatest = true;
   let roomRemovalTarget = $state<RoomRemovalTarget | null>(null);
   let reactionPickerMessageId = $state<string | null>(null);
+  let activeParticipantSurfaceKey = $state<string | null>(null);
   let reactionError = $state("");
   let routeInitialized = false;
   let routeInitializing = $state(true);
@@ -822,6 +823,8 @@
                 viewerPubkey={currentRoom.stablePubkey}
                 reactionsFor={(messageId) => reactionSummary(currentRoom, messageId, currentRoom.stablePubkey)}
                 pickerOpenMessageId={reactionPickerMessageId}
+                participantSurfaceKey={`guest:${streak.instanceKey}`}
+                {activeParticipantSurfaceKey}
                 disabled={!composerEnabled}
                 idPrefix="guest"
                 highlight={chatParticipantPreferences.highlightFor(streak.sender)}
@@ -831,6 +834,8 @@
                 onClosePicker={(messageId) => { if (reactionPickerMessageId === messageId) reactionPickerMessageId = null; }}
                 onToggleReaction={toggleReaction}
                 onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+                onActivateParticipantSurface={(key) => activeParticipantSurfaceKey = key}
+                onDismissParticipantSurface={(key) => { if (activeParticipantSurfaceKey === key) activeParticipantSurfaceKey = null; }}
                 onJoinInvite={(sharedInvite) => navigate(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
                 participantRooms={participantRoomChoices()}
                 onMention={mentionParticipant}

@@ -21,12 +21,16 @@
     viewerPubkey: string;
     reactionsFor: (messageId: string) => ReactionSummary[];
     pickerOpenMessageId: string | null;
+    participantSurfaceKey: string;
+    activeParticipantSurfaceKey: string | null;
     disabled?: boolean;
     idPrefix: "host" | "guest";
     onTogglePicker: (messageId: string) => void;
     onClosePicker: (messageId: string) => void;
     onToggleReaction: (messageId: string, emoji: ChatEmojiShortcut) => void | Promise<void>;
     onSetReaction: (messageId: string, emoji: ChatEmojiShortcut) => void | Promise<void>;
+    onActivateParticipantSurface: (key: string) => void;
+    onDismissParticipantSurface: (key: string) => void;
     onJoinInvite: (invite: ChatInvite) => void;
     participantRooms?: ParticipantRoomChoice[];
     onMention?: (participantPubkey: string, displayName: string) => void;
@@ -44,12 +48,16 @@
     viewerPubkey,
     reactionsFor,
     pickerOpenMessageId,
+    participantSurfaceKey,
+    activeParticipantSurfaceKey,
     disabled = false,
     idPrefix,
     onTogglePicker,
     onClosePicker,
     onToggleReaction,
     onSetReaction,
+    onActivateParticipantSurface,
+    onDismissParticipantSurface,
     onJoinInvite,
     participantRooms = [],
     onMention,
@@ -67,6 +75,8 @@
   const host = $derived(Boolean(first?.badgeLabel || first?.badgeEmoji));
   const fallbackAvatar = $derived(first ? createPubkeyAvatar(first.sender) : "");
   let actionTrigger = $state<HTMLButtonElement>();
+  let menuSurface = $state<HTMLDivElement>();
+  let chooserSurface = $state<HTMLDivElement>();
   let menuOpen = $state(false);
   let chooserOpen = $state(false);
   let invitePendingRoom = $state<string | null>(null);
@@ -75,6 +85,9 @@
   let highlightOpen = $state(false);
 
   const participantName = $derived(first?.name || "anon");
+  const participantSurfaceOpen = $derived(
+    activeParticipantSurfaceKey === participantSurfaceKey && (menuOpen || chooserOpen),
+  );
 
   async function openMenu(): Promise<void> {
     if (mine || !first) return;
@@ -83,6 +96,7 @@
     actionStatus = "";
     highlightOpen = false;
     menuOpen = true;
+    onActivateParticipantSurface(participantSurfaceKey);
     await tick();
     document.getElementById(`${idPrefix}-participant-mention-${first.sender}`)?.focus();
   }
@@ -91,19 +105,20 @@
     menuOpen = false;
     chooserOpen = false;
     invitePendingRoom = null;
+    onDismissParticipantSurface(participantSurfaceKey);
     if (restoreFocus) void tick().then(() => actionTrigger?.focus());
   }
 
   async function mentionParticipant(): Promise<void> {
     if (!first || !onMention) return;
-    menuOpen = false;
+    closeSurface(false);
     onMention(first.sender, participantName);
   }
 
   function ignoreParticipant(): void {
     if (!first || !onIgnore) return;
     onIgnore(first.sender);
-    closeSurface();
+    closeSurface(false);
   }
 
   function chooseHighlight(name: ParticipantHighlightName | undefined): void {
@@ -144,8 +159,6 @@
       await onInviteToRoom(first.sender, room);
       actionStatus = `Invite sent to ${participantName}.`;
       closeSurface(false);
-      await tick();
-      actionTrigger?.focus();
     } catch {
       actionError = "Couldn’t send the invite. Check the room connection and try again.";
       invitePendingRoom = null;
@@ -157,6 +170,23 @@
     event.preventDefault();
     closeSurface();
   }
+
+  $effect(() => {
+    if (!participantSurfaceOpen) return;
+    const isInsideSurface = (target: EventTarget | null): boolean => target instanceof Node
+      && (actionTrigger?.contains(target) === true
+        || menuSurface?.contains(target) === true
+        || chooserSurface?.contains(target) === true);
+    const dismissOnOutsideInteraction = (event: Event) => {
+      if (!isInsideSurface(event.target)) closeSurface(false);
+    };
+    document.addEventListener("pointerdown", dismissOnOutsideInteraction, true);
+    document.addEventListener("focusin", dismissOnOutsideInteraction, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOnOutsideInteraction, true);
+      document.removeEventListener("focusin", dismissOnOutsideInteraction, true);
+    };
+  });
 
   function useFallback(event: Event): void {
     (event.currentTarget as HTMLImageElement).src = fallbackAvatar;
@@ -208,7 +238,7 @@
             class="participant-trigger"
             type="button"
             aria-haspopup="dialog"
-            aria-expanded={menuOpen || chooserOpen}
+            aria-expanded={participantSurfaceOpen}
             aria-label={`Actions for ${participantName}`}
             title={participantName}
             onclick={() => void openMenu()}
@@ -270,8 +300,9 @@
     </div>
   </section>
 
-  {#if menuOpen && !mine}
+  {#if participantSurfaceOpen && menuOpen && !mine}
     <div
+      bind:this={menuSurface}
       class="participant-menu"
       role="dialog"
       tabindex="-1"
@@ -298,8 +329,9 @@
     </div>
   {/if}
 
-  {#if chooserOpen && !mine}
+  {#if participantSurfaceOpen && chooserOpen && !mine}
     <div
+      bind:this={chooserSurface}
       class="participant-chooser"
       role="dialog"
       tabindex="-1"

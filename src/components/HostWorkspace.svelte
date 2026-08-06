@@ -123,6 +123,7 @@
   let roomRemovalMode = $state<"delete" | "leave">("delete");
   let roomRemovalOrigin = $state<HTMLButtonElement | null>(null);
   let reactionPickerMessageId = $state<string | null>(null);
+  let activeParticipantSurfaceKey = $state<string | null>(null);
   let reactionError = $state("");
   let embeddedChatContext = $state<ChatPaneContext | null>(null);
   let remoteCoordinatorReachability = $state<Record<string, CoordinatorReachability>>({});
@@ -1900,6 +1901,8 @@
                     viewerPubkey={room.stablePubkey}
                     reactionsFor={(messageId) => reactionSummary(room, messageId, room.stablePubkey)}
                     pickerOpenMessageId={reactionPickerMessageId}
+                    participantSurfaceKey={`host:${streak.instanceKey}`}
+                    {activeParticipantSurfaceKey}
                     disabled={!composerEnabled}
                     idPrefix="host"
                     highlight={chatParticipantPreferences.highlightFor(streak.sender)}
@@ -1909,6 +1912,8 @@
                     onClosePicker={(messageId) => { if (reactionPickerMessageId === messageId) reactionPickerMessageId = null; }}
                     onToggleReaction={toggleReaction}
                     onSetReaction={(messageId, emoji) => setReaction(messageId, emoji, true)}
+                    onActivateParticipantSurface={(key) => activeParticipantSurfaceKey = key}
+                    onDismissParticipantSurface={(key) => { if (activeParticipantSurfaceKey === key) activeParticipantSurfaceKey = null; }}
                     onJoinInvite={(sharedInvite) => navigateFromRail(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
                     participantRooms={participantRoomChoices()}
                     onMention={mentionParticipant}

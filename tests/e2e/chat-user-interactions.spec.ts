@@ -113,11 +113,17 @@ test("participant menu opens from a non-self author, mentions through the compos
     content: "Open my actions",
     createdAt: Date.now(),
   }, {
+    id: "second-participant-menu-message",
+    sender: "f".repeat(64),
+    name: "Second participant",
+    content: "Open my other actions",
+    createdAt: Date.now() + 1,
+  }, {
     id: "self-message",
     sender: viewer,
     name: "Guest",
     content: "Do not offer self actions",
-    createdAt: Date.now() + 1,
+    createdAt: Date.now() + 2,
   }]);
   await page.evaluate(() => {
     const activeRoom = {
@@ -157,6 +163,21 @@ test("participant menu opens from a non-self author, mentions through the compos
   await menu.getByRole("button", { name: "Mention" }).click();
   await expect(page.getByTestId("chat-composer").locator("input")).toBeFocused();
   await expect(page.getByTestId("chat-composer").locator("input")).toHaveValue("@Participant");
+
+  const secondTrigger = page.getByRole("button", { name: "Actions for Second participant" });
+  await trigger.click();
+  await expect(page.getByRole("dialog", { name: "Actions for Participant" })).toBeVisible();
+  await secondTrigger.click();
+  await expect(page.getByRole("dialog", { name: "Actions for Participant" })).toHaveCount(0);
+  const secondMenu = page.getByRole("dialog", { name: "Actions for Second participant" });
+  await expect(secondMenu).toBeVisible();
+  await page.getByTestId("chat-composer").locator("input").focus();
+  await expect(secondMenu).toHaveCount(0);
+
+  await secondTrigger.click();
+  await expect(secondMenu).toBeVisible();
+  await page.getByTestId("chat-composer").locator("input").click();
+  await expect(secondMenu).toHaveCount(0);
 
   await trigger.click();
   await menu.getByRole("button", { name: "Invite to room" }).click();
