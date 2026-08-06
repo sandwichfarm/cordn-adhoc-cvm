@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import {
   CHAT_PARTICIPANT_PREFERENCES_STORAGE_KEY,
   ChatParticipantPreferencesStore,
+  PARTICIPANT_HIGHLIGHT_PALETTE,
 } from "../../src/chat/chat-participant-preferences.svelte";
 import { roomIdentityKey, sameRoomIdentity } from "../../src/chat/room-store";
 
@@ -81,5 +82,84 @@ describe("chat participant preferences — ignore", () => {
     for (const prohibited of ["message", "invite", "capability", "stateBase64", "pending", "keyPackage", "secret", "signer", "decrypted", "content"]) {
       expect(serialized).not.toContain(prohibited);
     }
+  });
+});
+
+describe("chat participant preferences — highlight", () => {
+  beforeEach(() => localStorage.clear());
+
+  test("uses the exact locked palette values", () => {
+    expect(PARTICIPANT_HIGHLIGHT_PALETTE).toEqual({
+      lime: "#7cf59d",
+      gold: "#f1f58f",
+      cyan: "#86ddff",
+      violet: "#c4a6ff",
+      rose: "#ffaaa3",
+    });
+  });
+
+  test("persists one normalized participant highlight globally across composite rooms", () => {
+    const preferences = store();
+    preferences.setHighlight(participantA.toUpperCase(), "violet");
+
+    expect(preferences.highlightFor(participantA)).toEqual({ name: "violet", value: "#c4a6ff" });
+    expect(store().highlightFor(participantA)).toEqual({ name: "violet", value: "#c4a6ff" });
+    expect(store().highlightFor(participantB)).toBeUndefined();
+    expect(roomIdentityKey(coordinatorA, "room-a")).not.toBe(roomIdentityKey(coordinatorB, "room-b"));
+  });
+
+  test("clearing a highlight is sparse and preserves exact-room ignores", () => {
+    const preferences = store();
+    preferences.setIgnored(coordinatorA, "room", participantB, true);
+    preferences.setHighlight(participantA, "lime");
+    preferences.setHighlight(participantA, undefined);
+
+    expect(preferences.highlightFor(participantA)).toBeUndefined();
+    expect(preferences.isIgnored(coordinatorA, "room", participantB)).toBe(true);
+    expect(localStorage.getItem(CHAT_PARTICIPANT_PREFERENCES_STORAGE_KEY)).not.toContain("highlights");
+  });
+
+  test("repairs invalid colors, raw CSS, malformed pubkeys, and inherited entries while preserving valid ignores", () => {
+    const ignoreKey = `${roomIdentityKey(coordinatorA, "room")}\u0000${participantA}`;
+    localStorage.setItem(CHAT_PARTICIPANT_PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      ignores: { [ignoreKey]: true },
+      highlights: {
+        [participantA]: "#7cf59d",
+        [participantB]: "orange",
+        "not-a-pubkey": "lime",
+        "__proto__": "gold",
+      },
+    }));
+
+    const preferences = store();
+    expect(preferences.isIgnored(coordinatorA, "room", participantA)).toBe(true);
+    expect(preferences.highlightFor(participantA)).toBeUndefined();
+    expect(preferences.highlightFor(participantB)).toBeUndefined();
+    preferences.setHighlight(participantA, "#7cf59d" as never);
+    expect(preferences.highlightFor(participantA)).toBeUndefined();
+  });
+
+  test("repairs a malformed highlights map without corrupting valid ignores", () => {
+    const ignoreKey = `${roomIdentityKey(coordinatorA, "room")}\u0000${participantA}`;
+    localStorage.setItem(CHAT_PARTICIPANT_PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      ignores: { [ignoreKey]: true },
+      highlights: [],
+    }));
+
+    const preferences = store();
+    expect(preferences.isIgnored(coordinatorA, "room", participantA)).toBe(true);
+    expect(preferences.highlightFor(participantA)).toBeUndefined();
+  });
+
+  test("highlight mutations preserve ignores and ignore mutations preserve highlights", () => {
+    const preferences = store();
+    preferences.setIgnored(coordinatorA, "room", participantA, true);
+    preferences.setHighlight(participantB, "gold");
+    preferences.setIgnored(coordinatorA, "room", participantA, false);
+
+    expect(preferences.highlightFor(participantB)).toEqual({ name: "gold", value: "#f1f58f" });
+    expect(preferences.isIgnored(coordinatorA, "room", participantA)).toBe(false);
   });
 });
