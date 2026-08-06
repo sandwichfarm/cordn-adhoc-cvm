@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Quality of Life & Polish
 current_phase: 24
 current_phase_name: chat-user-interactions
-status: executing
-stopped_at: Completed 24-03-PLAN.md
-last_updated: "2026-08-06T18:47:59.682Z"
+status: verifying
+stopped_at: Completed 24-04-PLAN.md
+last_updated: "2026-08-06T19:04:57.891Z"
 last_activity: 2026-08-06
 last_activity_desc: Phase 24 execution started
 progress:
   total_phases: 9
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 31
-  completed_plans: 28
+  completed_plans: 29
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 
 Phase: 24 (chat-user-interactions) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-06 — Phase 24 execution started
 Pull request: [#7 — maximize room QR codes](https://github.com/sandwichfarm/CAHMLS/pull/7) — open, CI in progress. [#6](https://github.com/sandwichfarm/CAHMLS/pull/6) merged 2026-08-06.
 
-Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 90%)
+Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 94%)
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 | Phase 24 P01 | 18 min | 2 tasks | 9 files |
 | Phase 24 P02 | 4 min | 2 tasks | 2 files |
 | Phase 24 P03 | 10 min | 2 tasks | 4 files |
+| Phase 24 P04 | 19 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Highlights are global by normalized participant pubkey and persist only locked palette symbols.
 - [Phase ?]: Kind-3 identity acceptance requires canonical event-hash equality plus signature verification before deterministic ordering.
 - [Phase ?]: Follow queue captures its originating identity generation and commits only after one relay accepts the signed replacement.
+- [Phase ?]: MessageGroup owns one non-self action menu while panes retain typed composer and room callbacks.
+- [Phase ?]: Ignored disclosure state is keyed after recipient filtering and remains private ephemeral UI state.
 
 ### Pending Todos
 
@@ -137,6 +140,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-06T18:47:59.674Z
-Stopped at: Completed 24-03-PLAN.md
+Last session: 2026-08-06T19:04:57.883Z
+Stopped at: Completed 24-04-PLAN.md
 Resume file: None

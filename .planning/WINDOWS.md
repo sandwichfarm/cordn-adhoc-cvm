@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 6
+open_count: 7
 waived_count: 0
 fixed_count: 0
-total_count: 6
-last_updated: 2026-08-06T18:47:59.271Z
+total_count: 7
+last_updated: 2026-08-06T19:04:57.470Z
 ---
 
 # Broken Windows Ledger
@@ -21,6 +21,7 @@ last_updated: 2026-08-06T18:47:59.271Z
 | 4 | 15 | unrun-verify | tests/e2e/phase-one.spec.ts | 406 | Full Playwright suite remains blocked by the unrelated narrow-viewport operator-shell height assertion. | open |  | 2026-08-02T16:26:18.963Z |  |
 | 5 | 21 | deviation | tests/e2e/nip07-session-restoration.spec.ts |  | Profile browser suites require a completed-setup fixture after Phase 21 hides UserProfile on incomplete fresh installs. | open |  | 2026-08-05T11:23:07.105Z |  |
 | 6 | 24 | unrun-verify | tests/e2e/workspace-lifecycle.spec.ts |  | Full pnpm test:e2e could not complete because the shared mock relay port 8765 was occupied and the clean retry left a Playwright worker running; rerun at Phase 24 close-out. | open |  | 2026-08-06T18:47:59.271Z |  |
+| 7 | 24 | unrun-verify | tests/e2e |  | Complete pnpm test:e2e left a worker running; focused Phase 24 browser coverage passed. | open |  | 2026-08-06T19:04:57.470Z |  |
 
 ````json
 [
@@ -94,6 +95,18 @@ last_updated: 2026-08-06T18:47:59.271Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-06T18:47:59.271Z",
+    "resolved_at": null
+  },
+  {
+    "id": 7,
+    "kind": "unrun-verify",
+    "phase": "24",
+    "file": "tests/e2e",
+    "line": null,
+    "description": "Complete pnpm test:e2e left a worker running; focused Phase 24 browser coverage passed.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-06T19:04:57.470Z",
     "resolved_at": null
   }
 ]
