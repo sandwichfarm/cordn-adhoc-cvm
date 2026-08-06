@@ -711,7 +711,13 @@
     const projection = reconcileSidebarLedger(storedLedger, rooms, coordinatorPubkey, config.coordinatorName || "My coordinator");
     sidebarLedger = projection.ledger;
     sidebarHistory = projection.history;
-    try { localStorage.setItem(SIDEBAR_LEDGER_KEY, serializeSidebarLedger(projection.ledger)); } catch { /* presentation order remains in memory */ }
+    try {
+      const ledgerHasContent = projection.ledger.coordinatorOrder.length > 0
+        || projection.ledger.history.length > 0
+        || Object.values(projection.ledger.roomOrder).some((order) => order.length > 0);
+      if (ledgerHasContent) localStorage.setItem(SIDEBAR_LEDGER_KEY, serializeSidebarLedger(projection.ledger));
+      else localStorage.removeItem(SIDEBAR_LEDGER_KEY);
+    } catch { /* presentation order remains in memory */ }
     const activeRooms = projection.activeRooms;
     hostedRooms = activeRooms
       .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
@@ -1629,7 +1635,9 @@
               </div>
               {#if !locked}
                 <div class="coordinator-actions" role="group" aria-label="Coordinator controls">
-                  <LifecyclePanel {coordinator} compact minimal onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+                  {#if !guidedSetupMode}
+                    <LifecyclePanel {coordinator} compact minimal onStart={wakeCoordinator} startLabel={config.presenceState === "offline" ? "Wake" : "Start"} />
+                  {/if}
                   <button class:pending={coordinator.restartRequired} class="channel-settings" type="button" aria-label={`Settings for ${config.coordinatorName || "My coordinator"}`} onclick={openSettings}>
                     <span aria-hidden="true">⚙</span>
                     {#if coordinator.restartRequired}<span class="channel-settings-pip" aria-label="Restart required"></span>{/if}
@@ -1661,7 +1669,7 @@
                   ...homeJoinedRooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const })),
                 ]}
                 unreadCount={coordinatorUnreadCount(coordinatorPubkey)}
-                {activeSidebarRoomKey}
+                activeRoomKey={activeSidebarRoomKey}
                 disabled={localRailUnavailable}
                 busy={localRailBusy}
                 {soundsEnabled}
@@ -1678,7 +1686,7 @@
                   statusLabel={reachabilityLabel(externalCoordinatorReachability(server.pubkey))}
                   rooms={server.rooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const }))}
                   unreadCount={coordinatorUnreadCount(server.pubkey)}
-                  {activeSidebarRoomKey}
+                  activeRoomKey={activeSidebarRoomKey}
                   {soundsEnabled}
                   onOpen={openCoordinatorRoom}
                   onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}

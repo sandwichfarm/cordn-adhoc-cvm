@@ -68,12 +68,12 @@
 
 ### Coordinator-Grouped Sidebar
 
-- [ ] **SIDE-01**: The sidebar keeps `Join from invite` first, followed by a dedicated local coordinator identity/status/control box with the selected local room's invite/admission controls attached as its bottom row, then coordinator-grouped room cards; the local control stack remains visible while browsing another coordinator.
-- [ ] **SIDE-02**: Every active coordinator renders as its own lightweight hairline card with its label embedded in the border; the local coordinator is always first and uniquely exposes a `+ Group` action.
-- [ ] **SIDE-03**: Each coordinator card shows at most five rooms by default and exposes an accessible show-more/show-less reveal without hiding unread state or the active room.
-- [ ] **SIDE-04**: Retired memberships, rotated local coordinator rooms, and explicitly deleted or left rooms appear only in one collapsed `History` section containing non-secret display metadata.
-- [ ] **SIDE-05**: Coordinator and room ordering is stable across connection, unread, and message activity changes and persists across browser sessions; newly discovered entries append without reordering existing entries.
-- [ ] **SIDE-06**: The reorganized sidebar remains keyboard-operable, screen-reader-labelled, compact-viewport bounded, and preserves exact room open/delete/leave targeting.
+- [x] **SIDE-01**: The sidebar keeps `Join from invite` first, followed by a dedicated local coordinator identity/status/control box with the selected local room's invite/admission controls attached as its bottom row, then coordinator-grouped room cards; the local control stack remains visible while browsing another coordinator.
+- [x] **SIDE-02**: Every active coordinator renders as its own lightweight hairline card with its label embedded in the border; the local coordinator is always first and uniquely exposes a `+ Group` action.
+- [x] **SIDE-03**: Each coordinator card shows at most five rooms by default and exposes an accessible show-more/show-less reveal without hiding unread state or the active room.
+- [x] **SIDE-04**: Retired memberships, rotated local coordinator rooms, and explicitly deleted or left rooms appear only in one collapsed `History` section containing non-secret display metadata.
+- [x] **SIDE-05**: Coordinator and room ordering is stable across connection, unread, and message activity changes and persists across browser sessions; newly discovered entries append without reordering existing entries.
+- [x] **SIDE-06**: The reorganized sidebar remains keyboard-operable, screen-reader-labelled, compact-viewport bounded, and preserves exact room open/delete/leave targeting.
 
 ## Future Requirements
 
@@ -133,12 +133,12 @@
 | SETUP-04 | Phase 21 | Pending |
 | PROFILE-01 | Phase 21 | Pending |
 | PROFILE-02 | Phase 21 | Pending |
-| SIDE-01 | Phase 22 | Pending |
-| SIDE-02 | Phase 22 | Pending |
-| SIDE-03 | Phase 22 | Pending |
-| SIDE-04 | Phase 22 | Pending |
-| SIDE-05 | Phase 22 | Pending |
-| SIDE-06 | Phase 22 | Pending |
+| SIDE-01 | Phase 22 | Complete |
+| SIDE-02 | Phase 22 | Complete |
+| SIDE-03 | Phase 22 | Complete |
+| SIDE-04 | Phase 22 | Complete |
+| SIDE-05 | Phase 22 | Complete |
+| SIDE-06 | Phase 22 | Complete |
 
 **Coverage:**
 

@@ -18,7 +18,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [x] **Phase 19: Grouped Conversations & Reactions** - Make active conversations easier to scan and react to without visual repetition.
 - [ ] **Phase 20: Delivery Contract & Regression Proof** - Document the GSD lifecycle and protect the complete v1.1 experience with automated coverage.
 - [ ] **Phase 21: First-Run Coordinator Identity & Profile** - Require deliberate operator identity and coordinator naming before first startup.
-- [ ] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history.
+- [x] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history. (completed 2026-08-06)
 
 ## Phase Details
 
@@ -181,8 +181,8 @@ Plans:
 
 **Plans**: 2 plans
 
-- [ ] 22-01-PLAN.md — Add secret-free sidebar history and stable first-seen ordering persistence with unit coverage.
-- [ ] 22-02-PLAN.md — Replace coordinator switching with coordinator cards, reveal limits, ordered controls, and browser coverage.
+- [x] 22-01-PLAN.md — Add secret-free sidebar history and stable first-seen ordering persistence with unit coverage.
+- [x] 22-02-PLAN.md — Replace coordinator switching with coordinator cards, reveal limits, ordered controls, and browser coverage.
 
 **UI hint**: yes
 
@@ -197,4 +197,4 @@ Plans:
 | 19. Grouped Conversations & Reactions | 1/1 | Complete | 2026-08-05 |
 | 20. Delivery Contract & Regression Proof | 0/TBD | Not started | - |
 | 21. First-Run Coordinator Identity & Profile | 0/TBD | Not started | - |
-| 22. Coordinator-Grouped Sidebar | 0/2 | Not started | - |
+| 22. Coordinator-Grouped Sidebar | 2/2 | Complete | 2026-08-06 |

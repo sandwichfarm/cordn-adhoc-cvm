@@ -335,22 +335,14 @@ test("renders one room per composite identity while verified v2 and legacy alias
   }
   await closeProfileMenu(page, restoredMenu);
 
-  const contextTrigger = page.locator("button.channel-context-button");
-  await contextTrigger.click();
-  let coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
-  await expect(coordinatorMenu).toBeVisible();
   const coordinatorALabel = `Coordinator ${coordinatorA.slice(0, 6)}…${coordinatorA.slice(-4)}`;
   const coordinatorBLabel = `Coordinator ${coordinatorB.slice(0, 6)}…${coordinatorB.slice(-4)}`;
-  await expect(coordinatorMenu.getByText(coordinatorALabel, { exact: true })).toHaveCount(1);
-  await expect(coordinatorMenu.getByText(coordinatorBLabel, { exact: true })).toHaveCount(1);
-  await coordinatorMenu.getByRole("menuitem").filter({ hasText: coordinatorALabel }).click();
-  await expect(page.getByRole("button", { name: /^Open room North canonical room, hosted by North host, on / })).toHaveCount(1);
+  const coordinatorCards = page.getByTestId("coordinator-card");
+  await expect(coordinatorCards.filter({ hasText: coordinatorALabel })).toHaveCount(1);
+  await expect(coordinatorCards.filter({ hasText: coordinatorBLabel })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^Open room North canonical room, hosted by North host/ })).toHaveCount(1);
   await expect(page.getByText("Legacy alias must not render", { exact: true })).toHaveCount(0);
-
-  await contextTrigger.click();
-  coordinatorMenu = page.getByRole("menu", { name: "Choose coordinator" });
-  await coordinatorMenu.getByRole("menuitem").filter({ hasText: coordinatorBLabel }).click();
-  await expect(page.getByRole("button", { name: /^Open room South canonical room, hosted by South host, on / })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^Open room South canonical room, hosted by South host/ })).toHaveCount(1);
   await expect(page.getByText("Legacy alias must not render", { exact: true })).toHaveCount(0);
 
   expect(await page.evaluate(({ prefix, roomId, coordinatorA, coordinatorB }) => ({

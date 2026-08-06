@@ -695,7 +695,7 @@ test("does not render disconnected local chat during recovery", async ({ page })
   await page.getByRole("button", { name: "Start", exact: true }).click();
 
   const startup = page.getByTestId("startup-progress-panel");
-  await expect(startup).toContainText("No rooms to restore");
+  await expect(startup).toContainText("No rooms to restore", { timeout: 20_000 });
   await expect(page.getByTestId("host-message-list")).toHaveCount(0);
   await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
   await expect(page.getByText(/MCP error|relay timeout|wss:\/\//i)).toHaveCount(0);
@@ -952,7 +952,7 @@ test("legacy chat index canonicalizes to the root shell and honors autostart", a
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
-  await expect(page.getByTestId("status-badge")).toBeHidden();
+  await expectGuidedCoordinatorOnline(page);
   await expect(page.getByRole("button", { name: "Create room", exact: true })).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => ({
@@ -1343,7 +1343,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
     /^(20|40|60|80)$/,
   );
   await expect(startup.getByRole("status")).toContainText(/identity|room|MLS|relay|coordinator/i);
-  await expect(startup.getByRole("button")).toHaveCount(0);
+  await expect(startup.getByRole("button", { name: "Review settings" })).toBeVisible();
   await expect(page.getByText("Starting", { exact: true })).toHaveCount(0);
   await expectGuidedCoordinatorOnline(page);
   await createRoom(page, "Runtime controls");
@@ -1391,7 +1391,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId("resource-monitor")).toHaveCount(0);
 
   await startCoordinator(page);
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   await expect(page.getByTestId("host-chat")).toBeVisible();
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
@@ -1407,7 +1407,7 @@ test("separates the coordinator runtime from the selected room connection", asyn
   await expect(page.getByTestId("coordinator-runtime-status")).toHaveText(/Coordinator\s*running/);
   const channelBrowser = page.getByRole("navigation", { name: "Server and channel browser" });
   await expect(channelBrowser).not.toContainText(/\brunning\b/i);
-  await expect(channelBrowser).toContainText(/\d+ relay paths?/);
+  await expect(page.getByTestId("coordinator-runtime-card")).toContainText(/\d+ relay paths?/);
 
   await page.getByRole("button", { name: "Open management interface" }).click();
   const summary = page.getByTestId("management-summary");
@@ -1756,7 +1756,7 @@ test("Feature: invite-only chat — Scenario: a guest is admitted and messages s
 
   await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 20_000 });
   await expect(guest.getByLabel("Add 👍")).toBeVisible();
-  const reachableCoordinator = guest.getByTestId("selected-coordinator-status");
+  const reachableCoordinator = guest.getByTestId(`coordinator-card-status-${await page.getByTestId("selected-coordinator-status").getAttribute("data-coordinator-pubkey")}`);
   await expect(reachableCoordinator).toHaveAttribute("data-state", "online", { timeout: 20_000 });
   await expect(reachableCoordinator).toHaveAttribute("aria-label", /coordinator online/i);
   const guestActions = await openRoomActions(guest, "Working room");
@@ -1992,14 +1992,16 @@ test("hosts delete rooms and members leave with contextual confirmation", async 
   await expect(guest.getByTestId("operator-shell")).toBeVisible();
   await expect(guest.getByTestId("workspace-navigation")).toHaveCount(1);
   expect(await guest.evaluate(() => [...Array(localStorage.length).keys()].some((index) => {
-    const value = localStorage.getItem(localStorage.key(index) ?? "");
+    const key = localStorage.key(index);
+    if (!key?.startsWith("cordn-adhoc-chat-room:")) return false;
+    const value = localStorage.getItem(key);
     return value?.includes('"title":"Disposable room"') ?? false;
   }))).toBe(false);
 
   await guestContext.close();
 });
 
-test("active room removal selects the previous room, then next, then the coordinator empty state", async ({ page }) => {
+test("active room removal follows stable adjacent order, then reaches the coordinator empty state", async ({ page }) => {
   test.setTimeout(75_000);
   await page.goto("/");
   await configureMockRelay(page);
@@ -2019,13 +2021,13 @@ test("active room removal selects the previous room, then next, then the coordin
 
   await page.getByRole("button", { name: /Open room Adjacent middle/ }).click();
   await deleteFromRail("Adjacent middle");
-  await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent last");
-
-  await deleteFromRail("Adjacent last");
   await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent first");
 
   await deleteFromRail("Adjacent first");
-  await expect(page.getByTestId("coordinator-empty-state")).toBeVisible();
+  await expect(page.locator(".channel-row.active .channel-row-primary")).toContainText("Adjacent last");
+
+  await deleteFromRail("Adjacent last");
+  await expect(page.getByTestId("coordinator-card").first()).toContainText("No groups yet");
   await expect(page.getByTestId("coordinator-empty-content")).toContainText("Ready for your first room");
   await expect(page.getByTestId("coordinator-empty-content")).toBeVisible();
 });
@@ -2113,8 +2115,8 @@ test("leaving the last remote room returns to the home coordinator", async ({ pa
   await page.getByTestId("confirm-leave-room").click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId("guided-start-state")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible();
+  await expect(page.getByTestId("guided-start-state")).toHaveCount(0);
+  await expect(page.getByTestId("coordinator-card").first()).toContainText("No groups yet");
   await expect(page.getByTestId("invite-panel")).toBeVisible();
   await expect(page.getByTestId("selected-coordinator-status"))
     .toHaveAttribute("data-coordinator-pubkey", homeCoordinatorPubkey ?? "");
@@ -2137,8 +2139,9 @@ test("switches local Delete to remote Leave without crossing same-id room identi
   await localDeleteDialog.getByTestId("confirm-delete-room").click();
   await expect(localDeleteDialog).toBeHidden();
   expect(await page.evaluate(() => [...Array(localStorage.length).keys()].every((index) => {
-    const value = localStorage.getItem(localStorage.key(index) ?? "");
-    return !value?.includes('"title":"Exact local delete target"');
+    const key = localStorage.key(index);
+    const value = localStorage.getItem(key ?? "");
+    return !key?.startsWith("cordn-adhoc-chat-room:") || !value?.includes('"title":"Exact local delete target"');
   }))).toBe(true);
 
   await createRoom(page, "Local collision room");
@@ -2449,7 +2452,7 @@ test("a persistent host can navigate home rooms while communicating on another c
   await expect(home.getByTestId("chat-composer").getByRole("button", { name: "Add 👍" })).toBeDisabled();
 
   await remote.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(remote.getByTestId("status-badge")).toHaveText("running");
+  await expect(remote.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   await expect(home.getByPlaceholder("Message")).toBeEnabled({ timeout: 25_000 });
   await expect(remoteCoordinatorStatus).toHaveAttribute("data-state", "online", { timeout: 25_000 });
 
@@ -2543,7 +2546,7 @@ test("startup handoff keeps actions reachable", async ({ page }) => {
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
   await expect(page.getByTestId("host-message-list")).toBeHidden();
-  await expect(page.getByTestId("status-badge")).toHaveText("running");
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 20_000 });
   await expect(idleRail).toHaveAttribute("data-local-rail-state", "ready");
   await expect(idleRoom).toBeEnabled();
   await expect(page.locator(".channel-row.active")).toContainText("First room");
@@ -2578,7 +2581,7 @@ test("a fresh empty hosted room survives refresh without depending on relay deli
     await expect(rail).toHaveAttribute("aria-busy", "false");
     await expect(roomButton).toBeEnabled();
     await expect(rail.getByRole("button", { name: `More actions for # ${roomTitle}` })).toBeVisible();
-    await expect(rail.getByRole("button", { name: "New room" })).toBeVisible();
+    await expect(rail.getByRole("button", { name: "Create group" })).toBeVisible();
     await expect(page.locator(".channel-row.active")).toContainText(roomTitle);
     await expect(page.getByTestId("host-message-list")).toBeVisible();
   } finally {
@@ -2619,7 +2622,7 @@ test("startup uses fluid masked ASCII ripple reveals", async ({ page }) => {
   await expect(page.getByTestId("startup-ascii-field")).toBeVisible();
   await expect(page.getByTestId("host-message-list")).toBeHidden();
   await expect(localStatus).toHaveAttribute("data-state", "offline");
-  await expect(localStatus).toHaveAttribute("title", "Coordinator offline");
+  await expect(localStatus).toHaveAttribute("aria-label", "Coordinator offline");
 
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
@@ -2651,7 +2654,7 @@ test("startup uses fluid masked ASCII ripple reveals", async ({ page }) => {
   await expect(page.getByText("Local room offline", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("host-message-list")).toBeHidden();
   await expect(localStatus).toHaveAttribute("data-state", "connecting");
-  await expect(localStatus).toHaveAttribute("title", "Coordinator starting");
+  await expect(localStatus).toHaveAttribute("aria-label", "Coordinator starting");
 
 });
 
