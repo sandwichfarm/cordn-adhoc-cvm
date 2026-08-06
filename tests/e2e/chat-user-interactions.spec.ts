@@ -603,7 +603,7 @@ test("authenticated host expands filtered ignored streaks", async ({ page: host,
         return;
       }
     }, { title: roomTitle, sender: aIdentity.stablePubkey, target: bIdentity.stablePubkey });
-    await host.reload();
+    await host.getByRole("button", { name: new RegExp(`^Open room ${roomTitle}, hosted by`) }).click();
     const log = host.getByTestId("host-message-list");
     await expect(log.getByText("A second visible message")).toBeVisible({ timeout: 35_000 });
     await expect(log.locator('[data-message-id="filtered-targeted-invite"]')).toHaveCount(0);
