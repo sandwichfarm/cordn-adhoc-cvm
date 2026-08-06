@@ -1,19 +1,21 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { viewportOverlay } from "../lib/viewport-overlay";
+  import { roomIdentityKey } from "../chat/room-store";
+  import { channelPreferences, type ChannelNotificationMode, type ChannelSoundMode } from "../notifications/channel-preferences.svelte";
 
   interface Props {
     roomTitle: string;
+    roomId: string;
     coordinatorPubkey: string;
     inviteUrl: string;
-    soundsEnabled: boolean;
     removalMode: "delete" | "leave";
-    onToggleSounds: () => void | Promise<void>;
     onRemove: (origin?: HTMLButtonElement) => void;
     sidebar?: boolean;
   }
 
-  let { roomTitle, coordinatorPubkey, inviteUrl, soundsEnabled, removalMode, onToggleSounds, onRemove, sidebar = false }: Props = $props();
+  let { roomTitle, roomId, coordinatorPubkey, inviteUrl, removalMode, onRemove, sidebar = false }: Props = $props();
+  const preferenceKey = $derived(roomIdentityKey(coordinatorPubkey, roomId));
   let open = $state(false);
   let trigger: HTMLButtonElement | undefined = $state();
   let copied = $state<"coordinator" | "invite" | null>(null);
@@ -89,16 +91,8 @@
           <strong>{copied === "invite" ? "Copied" : "Copy"}</strong>
         </button>
       </div>
-      {#if !sidebar}<button
-        class="room-menu-action"
-        type="button"
-        role="menuitemcheckbox"
-        aria-checked={soundsEnabled}
-        onclick={() => { close(); void onToggleSounds(); }}
-      >
-        <span>{soundsEnabled ? "Mute notification sounds" : "Enable notification sounds"}</span>
-        <span aria-hidden="true">{soundsEnabled ? "on" : "off"}</span>
-      </button>{/if}
+      <label class="room-preference"><span>Sound</span><select aria-label={`Sound setting for ${roomTitle}`} value={channelPreferences.get(preferenceKey).sound} onchange={(event) => channelPreferences.setSound(preferenceKey, (event.currentTarget as HTMLSelectElement).value as ChannelSoundMode)}><option value="global">Use global</option><option value="on">Always on</option><option value="off">Muted</option></select></label>
+      <label class="room-preference"><span>Notifications</span><select aria-label={`Notification setting for ${roomTitle}`} value={channelPreferences.get(preferenceKey).notifications} onchange={(event) => channelPreferences.setNotifications(preferenceKey, (event.currentTarget as HTMLSelectElement).value as ChannelNotificationMode)}><option value="all">All</option><option value="follows">Only follows</option><option value="mutuals">Only mutuals</option><option value="mute">Mute all</option></select></label>
       <button
         class:delete={removalMode === "delete"}
         class="room-menu-action"
@@ -137,6 +131,8 @@
   .room-menu-action > span:last-child { color: #718277; font-size: .52rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .room-menu-action.delete { color: #ffaaa3; }
   .room-menu-action.delete:hover, .room-menu-action.delete:focus-visible { background: #21110f; }
+  .room-preference { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .55rem .6rem; color: #b9cbbf; font-size: .62rem; }
+  .room-preference select { border: 1px solid #34483a; background: #0b110d; padding: .35rem .45rem; color: #dfffe7; font-size: .58rem; }
 
   @media (max-width: 520px) {
     .room-actions { top: .45rem; right: .45rem; }

@@ -42,6 +42,7 @@
   import UserProfile from "./UserProfile.svelte";
   import WorkspaceNav from "./WorkspaceNav.svelte";
   import { userProfileStore } from "../identity/user-profile.svelte";
+  import { channelPreferences } from "../notifications/channel-preferences.svelte";
 
   interface Props {
     coordinator: CoordinatorStore;
@@ -89,7 +90,6 @@
   let revision = $state(0);
   let roomConnection = $state<"connecting" | "connected" | "offline">("connecting");
   let roomConnectionDetail = $state<string | undefined>();
-  let soundsEnabled = $state(true);
   let messageList: HTMLDivElement | undefined = $state();
   let composerInput: HTMLInputElement | undefined = $state();
   let audioContext: AudioContext | null = null;
@@ -778,18 +778,23 @@
     error = "";
   }
 
-  async function enableSounds() {
+  async function enableSounds(updatePreference = true) {
     try {
       audioContext ??= new AudioContext();
       await audioContext.resume();
-      soundsEnabled = true;
+      if (updatePreference) {
+        channelPreferences.setGlobalSound(true);
+      }
     } catch {
-      soundsEnabled = false;
+      if (updatePreference) {
+        channelPreferences.setGlobalSound(false);
+      }
     }
   }
 
   function playIncomingTone() {
-    if (!soundsEnabled || !audioContext || audioContext.state !== "running") return;
+    const activeRoomKey = room ? roomIdentityKey(room.coordinatorPubkey, room.id) : undefined;
+    if ((activeRoomKey ? !channelPreferences.soundEnabled(activeRoomKey) : !channelPreferences.globalSound) || !audioContext || audioContext.state !== "running") return;
     const oscillator = audioContext.createOscillator();
     const gain = audioContext.createGain();
     oscillator.frequency.setValueAtTime(620, audioContext.currentTime);
@@ -805,7 +810,7 @@
   async function createInvite() {
     busy = true;
     error = "";
-    void enableSounds();
+    void enableSounds(false);
     try {
       const created = await createHostedRoom({
         title,
@@ -1044,8 +1049,8 @@
   }
 
   async function toggleSounds() {
-    if (soundsEnabled) {
-      soundsEnabled = false;
+    if (channelPreferences.globalSound) {
+      channelPreferences.setGlobalSound(false);
       return;
     }
     await enableSounds();
@@ -1162,7 +1167,7 @@
     if (!session || !canSendMessages()) return;
     const message = composer;
     if (!message.trim()) return;
-    void enableSounds();
+    void enableSounds(false);
     error = "";
     session.setIdentity(currentHostIdentity());
     composer = "";
@@ -1276,7 +1281,7 @@
         {homeCoordinatorPubkey}
         homeCoordinatorName={config.coordinatorName}
         coordinatorStatus={coordinator.status}
-        soundsEnabled={embeddedChatActive ? embeddedChatContext?.soundsEnabled ?? false : soundsEnabled}
+        soundsEnabled={embeddedChatActive ? embeddedChatContext?.soundsEnabled ?? false : channelPreferences.globalSound}
         activeRoomTitle={embeddedChatActive ? embeddedChatContext?.room?.title ?? activeIntentInvite?.title : room?.title}
         activeRoomCoordinatorPubkey={embeddedChatActive ? embeddedChatContext?.room?.coordinatorPubkey ?? activeIntentInvite?.coordinatorPubkey : room?.coordinatorPubkey}
         activeRoomHost={embeddedChatActive ? embeddedChatContext?.host ?? activeIntentHost : room ? hostIdentityForRoom(room) : undefined}
@@ -1309,6 +1314,22 @@
             aria-label={managementOpen ? "Close management interface" : "Open management interface"}
             onclick={toggleManagement}
           >{managementOpen ? "Host" : "Manage"}</button>
+        {/if}
+        {#if !setupRequired && !locked}
+          <button
+            class:enabled={channelPreferences.globalSound}
+            class="global-sound-toggle"
+            type="button"
+            aria-label={channelPreferences.globalSound ? "Mute all channel sounds" : "Enable channel sounds"}
+            aria-pressed={channelPreferences.globalSound}
+            title={channelPreferences.globalSound ? "Global sound on" : "Global sound off"}
+            onclick={() => void toggleSounds()}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9h3.3L12 5.2v13.6L7.3 15H4z"></path>
+              {#if channelPreferences.globalSound}<path d="M15.5 9.1a4 4 0 0 1 0 5.8M18 6.7a7.4 7.4 0 0 1 0 10.6"></path>{:else}<path d="m16 9 5 6m0-6-5 6"></path>{/if}
+            </svg>
+          </button>
         {/if}
       </div>
     </header>
@@ -1547,8 +1568,9 @@
                         {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta"><RoomHostBadge host={hostIdentityForRoom(entry.room)} compact /></span>{/if}
                       </button>
                       {#if localRailActionable}
+                        {#if !channelPreferences.isDefault(roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                         {#if roomUnreadCount(entry.room) > 0}<span class="unread-badge rail-ready-control rail-ready-room-meta" data-room-key={roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)} data-testid={`room-unread-${roomIdentityKey(entry.room.coordinatorPubkey, entry.room.id)}`} title={`${roomUnreadCount(entry.room)} unread messages`} aria-label={`${roomUnreadCount(entry.room)} unread messages`}>{displayUnreadCount(roomUnreadCount(entry.room))}</span>{/if}
-                        <div class="rail-ready-control rail-ready-room-actions"><RoomActionsMenu sidebar roomTitle={entry.room.title} coordinatorPubkey={entry.room.coordinatorPubkey} inviteUrl={entry.inviteUrl} {soundsEnabled} removalMode="delete" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(entry.room, origin)} /></div>
+                        <div class="rail-ready-control rail-ready-room-actions"><RoomActionsMenu sidebar roomTitle={entry.room.title} roomId={entry.room.id} coordinatorPubkey={entry.room.coordinatorPubkey} inviteUrl={entry.inviteUrl} removalMode="delete" onRemove={(origin) => requestSidebarRoomRemoval(entry.room, origin)} /></div>
                       {/if}
                     </div>
                   {/each}
@@ -1561,8 +1583,9 @@
                       {#if localRailActionable}<span class="rail-ready-control rail-ready-room-meta"><RoomHostBadge host={hostIdentityForRoom(joinedRoom)} compact /></span>{/if}
                     </button>
                     {#if localRailActionable}
+                      {#if !channelPreferences.isDefault(roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                       {#if roomUnreadCount(joinedRoom) > 0}<span class="unread-badge rail-ready-control rail-ready-room-meta" data-room-key={roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)} data-testid={`room-unread-${roomIdentityKey(joinedRoom.coordinatorPubkey, joinedRoom.id)}`} title={`${roomUnreadCount(joinedRoom)} unread messages`} aria-label={`${roomUnreadCount(joinedRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(joinedRoom))}</span>{/if}
-                      <div class="rail-ready-control rail-ready-room-actions"><RoomActionsMenu sidebar roomTitle={joinedRoom.title} coordinatorPubkey={joinedRoom.coordinatorPubkey} inviteUrl={remoteRoomHref(joinedRoom)} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(joinedRoom, origin)} /></div>
+                      <div class="rail-ready-control rail-ready-room-actions"><RoomActionsMenu sidebar roomTitle={joinedRoom.title} roomId={joinedRoom.id} coordinatorPubkey={joinedRoom.coordinatorPubkey} inviteUrl={remoteRoomHref(joinedRoom)} removalMode="leave" onRemove={(origin) => requestSidebarRoomRemoval(joinedRoom, origin)} /></div>
                     {/if}
                     </div>
                   {/each}
@@ -1585,8 +1608,9 @@
                         <span class="truncate">{remoteRoom.title}{remoteRoom.coordinatorKeyMode === "ephemeral" ? " · temporary key" : ""}</span>
                         <RoomHostBadge host={hostIdentityForRoom(remoteRoom)} compact />
                       </button>
+                      {#if !channelPreferences.isDefault(roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id))}<span class="channel-preference-indicator" title="Custom sound or notification settings" aria-label="Custom sound or notification settings">●</span>{/if}
                       {#if roomUnreadCount(remoteRoom) > 0}<span class="unread-badge" data-room-key={roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)} data-testid={`room-unread-${roomIdentityKey(remoteRoom.coordinatorPubkey, remoteRoom.id)}`} title={`${roomUnreadCount(remoteRoom)} unread messages`} aria-label={`${roomUnreadCount(remoteRoom)} unread messages`}>{displayUnreadCount(roomUnreadCount(remoteRoom))}</span>{/if}
-                      <RoomActionsMenu sidebar roomTitle={remoteRoom.title} coordinatorPubkey={remoteRoom.coordinatorPubkey} inviteUrl={remoteRoomHref(remoteRoom)} {soundsEnabled} removalMode="leave" onToggleSounds={toggleSounds} onRemove={(origin) => requestSidebarRoomRemoval(remoteRoom, origin)} />
+                      <RoomActionsMenu sidebar roomTitle={remoteRoom.title} roomId={remoteRoom.id} coordinatorPubkey={remoteRoom.coordinatorPubkey} inviteUrl={remoteRoomHref(remoteRoom)} removalMode="leave" onRemove={(origin) => requestSidebarRoomRemoval(remoteRoom, origin)} />
                       </div>
                   {/each}
                 </div>
@@ -1675,11 +1699,9 @@
                 activeRoomKey={activeSidebarRoomKey}
                 disabled={localRailUnavailable}
                 busy={localRailBusy}
-                {soundsEnabled}
                 onCreate={() => void openCreateDialog()}
                 onOpen={openCoordinatorRoom}
                 onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
-                onToggleSounds={toggleSounds}
               />
               {#each remoteServers as server (server.pubkey)}
                 <CoordinatorRoomCard
@@ -1690,10 +1712,8 @@
                   rooms={server.rooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const }))}
                   unreadCount={coordinatorUnreadCount(server.pubkey)}
                   activeRoomKey={activeSidebarRoomKey}
-                  {soundsEnabled}
                   onOpen={openCoordinatorRoom}
                   onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
-                  onToggleSounds={toggleSounds}
                 />
               {/each}
             </nav>
@@ -1744,11 +1764,10 @@
           <div class="room-pane flex h-full min-h-0 flex-col">{#if roomConnectionDetail}<p class="host-connection-banner">{roomConnectionDetail}</p>{/if}
             <RoomActionsMenu
               roomTitle={room.title}
+              roomId={room.id}
               coordinatorPubkey={room.coordinatorPubkey}
               {inviteUrl}
-              {soundsEnabled}
               removalMode="delete"
-              onToggleSounds={toggleSounds}
               onRemove={() => roomRemovalTarget = room}
             />
             <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">
@@ -2122,6 +2141,12 @@
   .host-topbar { position: relative; z-index: 40; align-items: stretch; border-bottom: 1px solid #21352a; background: rgb(10 16 12 / .94); padding-block: 0; }
   .host-topbar :global(.workspace-nav) { min-height: 3.6rem; padding-block: .55rem; }
   .host-commandbar { position: relative; display: flex; width: auto; min-width: 0; flex: 0 1 auto; align-items: stretch; justify-content: flex-end; background: transparent; }
+  .global-sound-toggle { display: grid; width: 2.75rem; min-height: 2.65rem; place-items: center; border: 0; background: transparent; color: #64756c; transition: background .15s ease, color .15s ease, transform .15s ease; }
+  .global-sound-toggle svg { width: 1.18rem; height: 1.18rem; fill: currentColor; }
+  .global-sound-toggle svg path + path { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+  .global-sound-toggle:hover { background: #101713; color: #bdebc8; transform: translateY(-1px); }
+  .global-sound-toggle.enabled { color: #7cf59d; }
+  .channel-preference-indicator { flex: 0 0 auto; color: #7cf59d; font-size: .45rem; }
   .host-utilities { display: flex; min-width: 0; align-items: stretch; gap: .12rem; }
   .command-cluster { display: flex; min-width: 0; align-items: stretch; gap: .08rem; }
   .command-cluster-label { display: none; align-items: center; padding: 0 .42rem; color: #617268; font-size: .46rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
@@ -2414,11 +2439,11 @@
   }
 
   @media (max-width: 900px) {
-    .host-topbar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0; padding: 0 .45rem; }
+    .host-topbar { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0; padding: 0 .45rem; }
     .host-topbar :global(.workspace-nav) { width: 100%; min-width: 0; }
     .host-topbar :global(.workspace-nav > a), .host-topbar :global(.workspace-nav > button) { min-height: 2.75rem; }
-    .host-commandbar { display: grid; width: 100%; grid-template-columns: minmax(3.25rem, 1fr) auto; align-items: stretch; justify-content: stretch; }
-    .host-commandbar.guided-setup { grid-template-columns: auto; justify-content: end; }
+    .host-commandbar { display: grid; width: 100%; grid-template-columns: minmax(3.25rem, 1fr) auto auto; align-items: stretch; justify-content: stretch; }
+    .host-commandbar.guided-setup { position: absolute; top: 0; right: .45rem; width: auto; grid-template-columns: auto; justify-content: end; }
     .mobile-rail-toggle { display: grid; min-width: 0; height: 2.75rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .4rem; padding: 0 .55rem; color: #b9cbbf; text-align: left; font-size: .6rem; }
     .mobile-rail-toggle:hover, .mobile-rail-toggle.active { background: #142018; color: #effff2; }
     .mobile-rail-toggle > span:first-child { color: #7cf59d; font-size: .78rem; }

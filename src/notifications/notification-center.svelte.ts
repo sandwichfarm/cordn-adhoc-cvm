@@ -1,4 +1,5 @@
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
+import { channelNotificationRelationships, channelPreferences } from "./channel-preferences.svelte";
 
 export const NOTIFICATION_STORAGE_KEY = "cordn:v1:notifications";
 export const NOTIFICATION_FEED_STORAGE_KEY = "cordn:v1:notification-feed";
@@ -25,6 +26,8 @@ export interface CordnNotificationEvent {
   actor?: string;
   room?: string;
   action?: "waiting" | "joined";
+  roomKey?: string;
+  actorPubkey?: string;
 }
 
 export interface FeedNotificationEntry {
@@ -164,6 +167,10 @@ export class NotificationCenterStore {
 
   /** Record a safe event for the feed, then optionally offer it to desktop delivery. */
   record(event: CordnNotificationEvent): void {
+    const relationships = channelNotificationRelationships();
+    if (event.category === "new_message"
+      && event.roomKey
+      && !channelPreferences.allows(event.roomKey, event.actorPubkey, relationships.following, relationships.mutuals)) return;
     const normalized = normalizeEvent(event);
     if (!normalized) return;
 

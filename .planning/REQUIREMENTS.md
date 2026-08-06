@@ -44,6 +44,8 @@
 - [x] **NOTF-02**: A separate bell control opens an in-app notification feed with unread state, concise grouped entries, and actions for applicable events such as room invitations.
 - [x] **NOTF-03**: Browser notification permission is requested only from an explicit user action, and enabled desktop notifications are delivered on the configured cadence without duplicate bursts.
 - [x] **NOTF-05**: The in-app notification feed provides an accessible clear-all action that removes persisted feed history and unread state without accepting, dismissing, or resolving live room invitations.
+- [x] **NOTF-06**: A persisted global sound control lives at the top-right of the workspace, while each channel can override sound and choose message notifications from all, follows, mutuals, or mute; channels with non-default choices show a compact indicator.
+- [x] **SHELL-03**: The local coordinator card exposes a large, right-aligned `+` create action without the `Group` label and provides clear hover/focus motion without moving surrounding content.
 
 ### Conversation Presentation & Reactions
 

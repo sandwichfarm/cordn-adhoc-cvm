@@ -9,6 +9,7 @@ import {
   type NostrProfile,
 } from "../identity/user-profile.svelte";
 import { notificationCenter } from "../notifications/notification-center.svelte";
+import { registerChannelNotificationRelationships } from "../notifications/channel-preferences.svelte";
 import { createGiftWrap, supportsNip44, unwrapGiftWrap, type Nip44Signer } from "./nostr-envelope";
 
 const PRESENCE_RUMOR_KIND = 24133;
@@ -301,6 +302,7 @@ function isInvitePayload(value: unknown): value is InvitePayload {
 }
 
 export const nostrSocialStore = new NostrSocialStore();
+registerChannelNotificationRelationships(() => ({ following: nostrSocialStore.following, mutuals: nostrSocialStore.mutuals }));
 
 export function inviteEligibilityError(
   recipient: string,

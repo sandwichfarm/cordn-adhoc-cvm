@@ -797,6 +797,8 @@ export class ChatRoomSession {
               key: decoded.envelope.id,
               actor: decoded.envelope.name,
               room: this.room.title,
+              roomKey: roomIdentityKey(this.room.coordinatorPubkey, this.room.id),
+              actorPubkey: decoded.envelope.sender,
             });
           }
         }

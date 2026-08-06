@@ -110,6 +110,14 @@ Never show raw invite URLs, room secrets, decrypted envelope data, relay URLs, s
 
 ## Phase 18 Surface and Interaction Contract
 
+### Channel-level sound and notification supplement (2026-08-06)
+
+- The persisted global sound control occupies the far-right edge of the workspace command bar and exposes its state through `aria-pressed`, an explicit accessible name, and a restrained active color.
+- Each room-actions overlay contains independent labelled selects for sound (`Use global`, `Always on`, `Muted`) and message notifications (`All`, `Only follows`, `Only mutuals`, `Mute all`). Channel sound overrides take precedence over the global setting.
+- A small accent dot appears beside any channel whose sound or notification choice differs from the defaults. Its accessible label is `Custom sound or notification settings`; color is not the only programmatic signal.
+- The local coordinator card's create action is a large `+` aligned to the right edge. Its visible `Group` label is removed while `Create group` remains its accessible name and title. Hover and keyboard focus rotate and enlarge the glyph without changing layout.
+- These controls use existing flat surfaces, square geometry, viewport-overlay containment, and persistence patterns. They add no new popover owner or visual system.
+
 ### Shell ownership and hierarchy
 
 The selected room content pane remains the workspace's primary visual anchor. Controls are distributed by durable context instead of collected into a dense command bar.

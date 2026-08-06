@@ -7,10 +7,11 @@
   import { parseInviteUrl, type ChatInvite, type RoomHostIdentity } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellChatHref } from "../chat/room-navigation";
-  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
+  import { ChatRoomSession, createJoiningRoom, hostIdentityForRoom, loadRoom, markRoomRead, reactionSummary, reconcileRoomHostIdentity, removeStoredRoom, requireRoomSigner, roomIdentityKey, roomTargetFor, roomUnreadCount, ROOMS_CHANGED_EVENT, saveRoom, sameRoomIdentity, type StoredRoom } from "../chat/room-store";
   import { CHAT_EMOJI_SHORTCUTS, type ChatEmojiShortcut } from "../chat/protocol";
   import { groupMessageStreaks } from "../chat/message-presentation";
   import { userProfileStore } from "../identity/user-profile.svelte";
+  import { channelPreferences } from "../notifications/channel-preferences.svelte";
   import MessageGroup from "./MessageGroup.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
@@ -65,7 +66,7 @@
   let bunkerUri = $state("");
   let remoteUri = $state("");
   let remoteQr = $state("");
-  let soundsEnabled = $state(true);
+  let soundsEnabled = $state(channelPreferences.globalSound);
   let messageList: HTMLDivElement | undefined = $state();
   let composerInput: HTMLInputElement | undefined = $state();
   let audioContext: AudioContext | null = null;
@@ -226,18 +227,25 @@
     });
   }
 
-  async function enableSounds() {
+  async function enableSounds(updatePreference = true) {
     try {
       audioContext ??= new AudioContext();
       await audioContext.resume();
-      soundsEnabled = true;
+      if (updatePreference) {
+        soundsEnabled = true;
+        channelPreferences.setGlobalSound(true);
+      }
     } catch {
-      soundsEnabled = false;
+      if (updatePreference) {
+        soundsEnabled = false;
+        channelPreferences.setGlobalSound(false);
+      }
     }
   }
 
   function playIncomingTone() {
-    if (!soundsEnabled || !audioContext || audioContext.state !== "running") return;
+    const activeRoomKey = room ? roomIdentityKey(room.coordinatorPubkey, room.id) : undefined;
+    if ((activeRoomKey ? !channelPreferences.soundEnabled(activeRoomKey) : !channelPreferences.globalSound) || !audioContext || audioContext.state !== "running") return;
     const oscillator = audioContext.createOscillator();
     const gain = audioContext.createGain();
     oscillator.frequency.setValueAtTime(720, audioContext.currentTime);
@@ -317,8 +325,9 @@
   }
 
   async function toggleSounds() {
-    if (soundsEnabled) {
+    if (channelPreferences.globalSound) {
       soundsEnabled = false;
+      channelPreferences.setGlobalSound(false);
       return;
     }
     await enableSounds();
@@ -474,7 +483,7 @@
   async function joinAnonymous() {
     if (signerConnecting || joining) return;
     signerConnecting = true;
-    void enableSounds();
+    void enableSounds(false);
     try {
       const signer = userProfileStore.activeSigner;
       if (!signer) throw new Error("Local identity is not ready");
@@ -486,7 +495,7 @@
 
   async function joinExtension() {
     if (signerConnecting || joining) return;
-    void enableSounds();
+    void enableSounds(false);
     signerConnecting = true;
     try {
       const signer = await userProfileStore.connectNip07();
@@ -503,7 +512,7 @@
 
   async function beginRemote() {
     if (!invite || joining || signerConnecting) return;
-    void enableSounds();
+    void enableSounds(false);
     error = "";
     const { signer: remote, uri } = userProfileStore.createNip46Request(invite.relayUrls);
     pendingRemoteSigner = remote;
@@ -528,7 +537,7 @@
 
   async function joinBunker() {
     if (signerConnecting || joining) return;
-    void enableSounds();
+    void enableSounds(false);
     signerConnecting = true;
     try {
       const signer = await userProfileStore.connectNip46(bunkerUri.trim());
@@ -547,7 +556,7 @@
     if (!session || !canSendMessages()) return;
     const next = composer;
     if (!next.trim()) return;
-    void enableSounds();
+    void enableSounds(false);
     composerError = "";
     session.setIdentity({
       name: userProfileStore.displayName,
@@ -685,11 +694,10 @@
       <h1 class="sr-only">{currentRoom.title}</h1>
       <RoomActionsMenu
         roomTitle={currentRoom.title}
+        roomId={currentRoom.id}
         coordinatorPubkey={currentRoom.coordinatorPubkey}
         inviteUrl={createSameShellChatHref(window.location.origin, currentRoom)}
-        {soundsEnabled}
         removalMode={activeRoomRemovalMode ?? "leave"}
-        onToggleSounds={toggleSounds}
         onRemove={() => requestRoomRemoval(currentRoom)}
       />
       {#if roomDeletedByHost}

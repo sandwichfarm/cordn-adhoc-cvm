@@ -90,7 +90,7 @@ and closes with repeatable delivery guidance and automated proof.
 
 **Goal**: Users can find personal presence, notification, and invitation actions in one coherent surface, distinct from coordinator lifecycle controls.
 **Depends on**: Phase 16
-**Requirements**: PRES-01, PRES-02, INVITE-01, SHELL-01, SHELL-02, NOTF-01, NOTF-02, NOTF-03, NOTF-05
+**Requirements**: PRES-01, PRES-02, INVITE-01, SHELL-01, SHELL-02, SHELL-03, NOTF-01, NOTF-02, NOTF-03, NOTF-05, NOTF-06
 **Success Criteria** (what must be TRUE):
 
   1. The profile dropdown lets a user select online, invisible, or offline presence, and its active accessible status dot is attached to the user/avatar control.
@@ -100,6 +100,8 @@ and closes with repeatable delivery guidance and automated proof.
   5. Browser-notification permission is requested only after a user action, and enabled desktop notifications follow the configured cadence without duplicate bursts.
   6. Users can clear all persisted in-app notification history without implicitly resolving live room invitations.
   7. Sidebar-originated menus, popovers, and dialogs escape rail clipping and remain viewport-contained, scrollable, and focus-safe across supported viewport sizes.
+  8. Global sound is controlled from the top-right, each channel can override sound and filter message notifications by relationship, and non-default channels are visibly marked.
+  9. The coordinator create action is a large right-aligned animated `+` with an accessible `Create group` name.
 
 **Plans**: 3/4 plans executed
 
@@ -109,6 +111,7 @@ Plans:
 - [x] 18-02-PLAN.md — Deliver the separate bell feed, same-shell invitation actions, and exact Notification settings surface.
 - [ ] 18-03-PLAN.md — Move presence into the profile and finalize personal/host control ownership across breakpoints.
 - [x] 18-04-PLAN.md — Introduce one viewport overlay primitive and migrate every sidebar-originated floating surface with constrained-resolution regressions.
+- [x] 18-05-PLAN.md — Add global and per-channel sound/notification controls plus the compact coordinator create affordance.
 
 **UI hint**: yes
 
