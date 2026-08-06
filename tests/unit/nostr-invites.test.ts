@@ -252,3 +252,108 @@ describe("validated kind-3 contact lists", () => {
     expect(social.following).toEqual(["a".repeat(64)]);
   });
 });
+
+describe("serialized kind-3 follows", () => {
+  beforeEach(() => localStorage.clear());
+
+  test("preserves exact content and unrelated tags while deduplicating and appending contacts", async () => {
+    const secret = generateSecretKey();
+    const signer = createLocalNip44Signer(secret);
+    const targetA = "a".repeat(64);
+    const targetB = "b".repeat(64);
+    const targetC = "c".repeat(64);
+    const base = signedContact(secret, 100, [["t", "topic"], ["p", targetA], ["p", targetB], ["p", targetA], ["client", "exact"]], "keep this exact");
+    const pool = new FakeContactPool();
+    pool.queries.push([base], [base]);
+    const social = new NostrSocialStore({ createPool: () => pool, now: () => 99_000 } as never);
+
+    await social.startContactList(signer);
+    await social.follow(targetC);
+
+    const published = pool.publish.mock.calls[0]?.[1] as NostrEvent;
+    expect(published.content).toBe("keep this exact");
+    expect(published.created_at).toBe(101);
+    expect(published.tags).toEqual([["t", "topic"], ["p", targetA], ["p", targetB], ["client", "exact"], ["p", targetC]]);
+    expect(social.following).toEqual([targetA, targetB, targetC]);
+    expect(social.followStatus).toBe("success");
+  });
+
+  test("serializes concurrent follows so each accepted replacement retains prior targets", async () => {
+    const secret = generateSecretKey();
+    const signer = createLocalNip44Signer(secret);
+    const targetA = "a".repeat(64);
+    const targetB = "b".repeat(64);
+    const pool = new FakeContactPool();
+    pool.queries.push([], [], []);
+    const social = new NostrSocialStore({ createPool: () => pool, now: () => 10_000 } as never);
+
+    await social.startContactList(signer);
+    await Promise.all([social.follow(targetA), social.follow(targetB)]);
+
+    const published = pool.publish.mock.calls.map((call) => call[1] as NostrEvent);
+    expect(published).toHaveLength(2);
+    expect(contactTargets(published[0]!)).toEqual([targetA]);
+    expect(contactTargets(published[1]!)).toEqual([targetA, targetB]);
+    expect(social.following).toEqual([targetA, targetB]);
+  });
+
+  test("waits for relay acceptance and suppresses only its own pending subscription echo", async () => {
+    const secret = generateSecretKey();
+    const signer = createLocalNip44Signer(secret);
+    const target = "a".repeat(64);
+    const base = signedContact(secret, 10, [], "existing");
+    const accepted = deferred<string>();
+    const pool = new FakeContactPool();
+    pool.queries.push([base], [base]);
+    pool.publications.push([accepted.promise]);
+    const social = new NostrSocialStore({ createPool: () => pool, now: () => 11_000 } as never);
+
+    await social.startContactList(signer);
+    const following = social.follow(target);
+    await vi.waitFor(() => expect(pool.publish).toHaveBeenCalledOnce());
+    const pending = pool.publish.mock.calls[0]?.[1] as NostrEvent;
+    pool.emit(pending);
+
+    expect(social.selectedContactEvent?.id).toBe(base.id);
+    expect(social.followStatus).toBe("pending");
+    accepted.resolve("accepted");
+    await following;
+
+    expect(social.selectedContactEvent?.id).toBe(pending.id);
+    expect(social.followStatus).toBe("success");
+  });
+
+  test("leaves state retryable when every relay rejects or signer output is invalid", async () => {
+    const secret = generateSecretKey();
+    const foreignSecret = generateSecretKey();
+    const signer = createLocalNip44Signer(secret);
+    const target = "a".repeat(64);
+    const base = signedContact(secret, 10, [], "existing");
+    const pool = new FakeContactPool();
+    const rejected = deferred<string>();
+    pool.queries.push([base], [base]);
+    pool.publications.push([rejected.promise]);
+    const social = new NostrSocialStore({ createPool: () => pool, now: () => 11_000 } as never);
+
+    await social.startContactList(signer);
+    const following = social.follow(target);
+    await vi.waitFor(() => expect(pool.publish).toHaveBeenCalledOnce());
+    rejected.reject(new Error("relay diagnostic"));
+    await expect(following).rejects.toThrow("Unable to follow on Nostr. Try again.");
+    expect(social.selectedContactEvent?.id).toBe(base.id);
+    expect(social.followStatus).toBe("error");
+    expect(social.followError).toBe("Unable to follow on Nostr. Try again.");
+
+    const invalidPool = new FakeContactPool();
+    invalidPool.queries.push([base], [base]);
+    const invalidSigner = {
+      getPublicKey: signer.getPublicKey,
+      signEvent: async (event: Pick<NostrEvent, "kind" | "created_at" | "tags" | "content">) => finalizeEvent(event, foreignSecret),
+    };
+    const invalidSocial = new NostrSocialStore({ createPool: () => invalidPool, now: () => 11_000 } as never);
+    await invalidSocial.startContactList(invalidSigner as never);
+    await expect(invalidSocial.follow(target)).rejects.toThrow("Unable to follow on Nostr. Try again.");
+    expect(invalidPool.publish).not.toHaveBeenCalled();
+    expect(invalidSocial.selectedContactEvent?.id).toBe(base.id);
+  });
+});
