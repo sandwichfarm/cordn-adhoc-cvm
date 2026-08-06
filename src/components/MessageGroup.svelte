@@ -101,7 +101,9 @@
   .mine .streak-author strong { color: #7f9387; }
   .message-badge { display: inline-flex; user-select: text; align-items: center; gap: .22rem; border: 1px solid #41664b; background: rgb(124 245 157 / .07); padding: .12rem .32rem; color: #93dba4; font-size: .48rem; font-weight: 680; letter-spacing: .09em; line-height: 1.15; text-transform: uppercase; }
   .streak-messages { display: grid; gap: .18rem; }
-  .message-bubble { position: relative; min-width: 5rem; border: 0; background: #1a241e; padding: .48rem .72rem .72rem; color: #dce8df; }
+  .message-bubble { position: relative; z-index: 0; min-width: 5rem; border: 0; background: #1a241e; padding: .48rem .72rem .72rem; color: #dce8df; }
+  .message-bubble:hover, .message-bubble:focus-within, .message-bubble:has(:global(.picker-open)) { z-index: 4; }
+  .message-bubble:has(:global(.has-reactions)) { margin-bottom: .72rem; }
   .mine .message-bubble { background: #162019; color: #cbd7ce; }
   .message-streak.host:not(.mine) .message-bubble { background: #18291d; box-shadow: inset 2px 0 rgb(124 245 157 / .12); }
   .mine .message-bubble.host { background: #162019; box-shadow: none; }

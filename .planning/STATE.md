@@ -6,7 +6,7 @@ current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
 status: executing
 stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-08-06T11:33:11.677Z"
+last_updated: "2026-08-06T12:43:40.515Z"
 last_activity: 2026-08-03
 last_activity_desc: Phase 18 execution started
 progress:
@@ -118,6 +118,7 @@ None yet.
 | 7 | Reduce chat bubble border noise and compact message spacing | 2026-08-06 | uncommitted | — |
 | 8 | Show relative message timestamps until seven days old | 2026-08-06 | 08cb3aa | — |
 | 9 | Add required Git remote synchronization, commit, issue, push, and pull-request procedures | 2026-08-06 | 7ff1d08 | — |
+| 10 | Show reaction add control on message hover and separate it from reaction chips | 2026-08-06 | 37f65d0 | — |
 
 ## Deferred Items
 

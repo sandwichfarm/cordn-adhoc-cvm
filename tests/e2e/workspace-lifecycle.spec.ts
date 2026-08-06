@@ -1895,7 +1895,11 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   await expect(page.getByRole("menuitem", { name: "Delete room Reaction room" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await guestMessage.getByRole("button", { name: "Add reaction" }).click();
+  const addReaction = guestMessage.getByRole("button", { name: "Add reaction" });
+  await expect(addReaction).toHaveCSS("opacity", "0");
+  await guestMessage.hover();
+  await expect(addReaction).toHaveCSS("opacity", "1");
+  await addReaction.click();
   const reactionMenu = guestMessage.getByRole("menu", { name: /Choose reaction/ });
   await expect(reactionMenu).toBeVisible();
   await expect(reactionMenu).toHaveCSS("position", "absolute");
@@ -1909,7 +1913,7 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
     const bubble = message.getBoundingClientRect();
     return Boolean(add && chip
       && add.left < chip.left
-      && add.right > chip.left
+      && add.right < chip.left
       && add.top < bubble.bottom
       && add.bottom > bubble.bottom
       && chip.top < bubble.bottom
