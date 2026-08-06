@@ -2337,12 +2337,13 @@
   .refresh-guidance { min-height: .85rem; color: #718277; font-size: .55rem; line-height: 1.5; }
   .refresh-guidance.refreshed { color: #9bf6b3; }
   .share-qr img { animation: qr-refresh .24s ease-out; }
-  .invite-dialog.qr-expanded { width: calc(100vw - 2rem); height: calc(100dvh - 2rem); max-width: none; }
-  .invite-dialog.qr-expanded .share-dialog-body { display: grid; min-height: 0; }
-  .invite-dialog.qr-expanded .invite-dialog-content { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 1rem; }
-  .invite-dialog.qr-expanded .invite-qr-section { width: 100%; min-height: 0; align-content: center; }
-  .invite-dialog.qr-expanded .invite-qr-heading { width: min(100%, calc(100dvh - 7.5rem)); }
-  .invite-dialog.qr-expanded .share-qr { width: min(calc(100vw - 5rem), calc(100dvh - 8rem)); max-width: none; }
+  .invite-dialog.qr-expanded { display: grid; width: calc(100vw - 2rem); height: calc(100dvh - 2rem); max-width: none; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+  .invite-dialog.qr-expanded .share-dialog-body { display: grid; min-height: 0; overflow: hidden; }
+  .invite-dialog.qr-expanded .invite-dialog-content { display: grid; min-height: 0; height: 100%; grid-template-columns: minmax(0, 1fr); place-items: stretch; overflow: hidden; padding: 1rem; }
+  .invite-dialog.qr-expanded .invite-qr-section { display: grid; width: 100%; min-height: 0; height: 100%; grid-template-rows: auto minmax(0, 1fr); align-items: stretch; }
+  .invite-dialog.qr-expanded .invite-qr-heading { width: 100%; }
+  .invite-dialog.qr-expanded .share-qr { width: auto; height: 100%; max-width: 100%; max-height: 100%; aspect-ratio: 1; box-sizing: border-box; }
+  .invite-dialog.qr-expanded .share-qr img { width: 100%; height: 100%; }
   .invite-dialog.qr-expanded .invite-details, .invite-dialog.qr-expanded .invite-in-app { display: none; }
   .emoji-button { flex: 0 0 auto; border: 1px solid #293832; background: #0b0e0d; padding: .2rem .4rem; font-size: .9rem; line-height: 1; }
   .emoji-button:hover { border-color: #7cf59d; background: #112219; }
@@ -2487,7 +2488,6 @@
     .invite-in-app { margin-inline: .85rem; }
     .share-qr { width: min(100%, 15rem, 42dvh); border-width: .4rem; }
     .invite-dialog.qr-expanded { width: calc(100vw - 1.1rem); height: calc(100dvh - 1.1rem); }
-    .invite-dialog.qr-expanded .share-qr { width: min(calc(100vw - 3rem), calc(100dvh - 7rem)); }
     .host-composer-status:not(.unavailable) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   }
 
