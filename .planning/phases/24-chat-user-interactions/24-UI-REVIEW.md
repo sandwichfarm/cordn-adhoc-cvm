@@ -1,88 +1,89 @@
 # Phase 24 — UI Review
 
-**Audited:** 2026-08-06  
-**Baseline:** `24-UI-SPEC.md` (approved)  
-**Screenshots:** captured at desktop (1440×900), tablet (768×1024), and mobile (375×812) in `.planning/ui-reviews/24-20260806-214022/`. The live dev server stopped at the pre-auth identity screen, so these do not visually evidence the Phase 24 chat surfaces; component code and the focused browser suite were audited instead.
+**Audited:** 2026-08-06
+**Baseline:** approved `24-UI-SPEC.md`
+**Screenshots:** captured at desktop (1440x900), tablet (768x1024), and mobile (375x812) in `.planning/ui-reviews/24-20260806-232520/`. The running Vite server stops at the unauthenticated identity screen, so those captures do not show Phase 24 chat controls. Current-source focused Chromium checks supplied host/guest component evidence instead.
 
 ---
+
+## Verdict
+
+**PASS WITH ONE VISUAL-EVIDENCE WARNING.** The Phase 24 gap closure resolves all four findings in the prior 10/24 review: author triggers are 44px, highlight and ignore state is visibly persistent, participant token values match the approved contract, and compact overlays retain 16px side gutters. No implementation blocker remains.
 
 ## Pillar Scores
 
-| Pillar | Score | Key Finding |
+| Pillar | Score | Key finding |
 |--------|-------|-------------|
-| 1. Copywriting | 2/4 | Ignore disclosure omits its required visible `Show messages` / `Hide messages` action, and the selected highlight is never named in the menu. |
-| 2. Visuals | 2/4 | The compact shared surface exists, but the active highlight choice has no visible selected state and the author trigger misses its required touch affordance. |
-| 3. Color | 2/4 | Phase 24 menus use undeclared dark surfaces and have no selected highlight-swatch treatment; this does not meet the declared token roles. |
-| 4. Typography | 1/4 | All new participant-menu type is materially below the contracted 12/14/16/20px scale, including a 9.3px coordinator label. |
-| 5. Spacing | 2/4 | New surface spacing uses arbitrary fractional rem values and a 16px compact gutter where the contract requires 32px. |
-| 6. Experience Design | 1/4 | The non-self author trigger has no 44px minimum hit target, blocking reliable touch access to every Phase 24 action. |
+| 1. Copywriting | 4/4 | Locked menu, chooser, mention, ignore, and feedback copy is present in both panes. |
+| 2. Visuals | 3/4 | Contract geometry and selected state pass browser assertions, but live screenshots could not reach an authenticated chat. |
+| 3. Color | 4/4 | Participant surfaces use the declared secondary, accent, mention, divider, and error colors. |
+| 4. Typography | 4/4 | New participant controls use the declared 12/14/16/20px sizes and 400/600 weights. |
+| 5. Spacing | 4/4 | 44px targets, 4/8/16px component spacing, and 16px compact gutters match the contract. |
+| 6. Experience Design | 4/4 | Keyboard entry/dismissal, focus return, state feedback, touch targets, and reduced-motion behavior are implemented and tested. |
 
-**Overall: 10/24**
+**Overall: 23/24**
 
 ---
 
-## Top 3 Priority Fixes
+## Top 3 Priority Follow-ups
 
-1. **BLOCKER — Make every non-self author identity trigger at least 44×44px.** The sole entry point to mention, invite, follow, highlight, and ignore is currently content-sized (`.participant-trigger` has no `min-height` or `min-width`). Add `min-height: 44px; min-width: 44px` while preserving the existing author alignment and streak geometry.
-2. **BLOCKER — Replace the sub-12px participant UI scale with the contract’s four sizes.** Map supporting text to 12px/400, action and room rows to 14px/400, section labels to 16px/600, and chooser headings to 20px/600. Do not retain the current `.58rem`–`.78rem` values or 700/760 weights for new Phase 24 UI.
-3. **WARNING — Make highlight and ignore state explicit, selected, and contract-copy compliant.** Render `Highlight: {color}` in the menu; give the active palette choice a text/semantic selected state (for example `aria-pressed="true"` plus accent treatment); and put visible `Show messages` / `Hide messages` text on each disclosure, not only in its accessible name.
+1. **WARNING — Capture an authenticated chat visual UAT.** The three live captures show only onboarding, so an operator should open host and invitee menus at desktop and 320px widths before release; this validates visual hierarchy against real conversation density.
+2. **WARNING — Exercise the invite chooser with a real successful send.** Focused UI coverage proves chooser layout and error handling, but a connected multi-room session should confirm the success presentation and focus return with live data.
+3. **WARNING — Run the full browser suite before shipping.** This audit reran the Phase 24 focused checks only; retain the project-wide `pnpm test:e2e` result as final regression evidence.
 
 ---
 
 ## Detailed Findings
 
-### Pillar 1: Copywriting (2/4)
+### Pillar 1: Copywriting (4/4)
 
-- **WARNING:** Both panes render only `{name} posted {N} message(s)` for an ignored streak. `Show messages` / `Hide messages` appears only inside `aria-label`, although the contract requires the button’s *visible action* to change. See [ChatRoute.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/ChatRoute.svelte:818) and [HostWorkspace.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/HostWorkspace.svelte:1896).
-- **WARNING:** Highlight is always labelled simply `Highlight`; after a selection, the menu exposes no required `Highlight: {color}` label. The off-screen status is useful feedback but is not persistent state communication. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:128) and [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:329).
-- The required participant action, invite, anonymous-follow, pending/success, empty chooser, and retry-copy strings otherwise match the contract. Focused browser coverage passed 7/7.
+- **PASS:** The participant menu contains the exact action order and labels, including persistent `Highlight: {color}` feedback. The chooser and its empty/pending/error copy match the contract. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:327)
+- **PASS:** Both host and invitee ignored-streak disclosures now visibly switch between `Show messages` and `Hide messages` while retaining the count and `aria-expanded`. [HostWorkspace.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/HostWorkspace.svelte:1896), [ChatRoute.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/ChatRoute.svelte:818)
+- **PASS:** Targeted messages render the visible, accessible `Mentioned you` label only when recipient metadata targets the active viewer. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:274)
 
-### Pillar 2: Visuals (2/4)
+### Pillar 2: Visuals (3/4)
 
-- **BLOCKER:** The author identity is the only participant-action trigger but has no 44px minimum dimension. Its padding is only `.18rem .26rem`, so its visual and touch target tracks the small author text rather than the mandated target size. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:390).
-- **WARNING:** The palette is text-only and every choice has the same appearance; there is no swatch, checkmark, accent row, or selected-state styling. A user cannot inspect the current private highlight after reopening the menu. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:331) and [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:399).
-- **WARNING:** The live captures show only onboarding because the running server was unauthenticated. The intended participant surfaces therefore need a human visual pass in an authenticated/seeded chat state despite automated behavioural coverage.
+- **PASS:** The shared host/invitee trigger stays at least 44x44px without shifting the author streak or bubble; selected highlights have a visible accent rail plus a text `Selected` marker. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:393), [chat-user-interactions.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/chat-user-interactions.spec.ts:401)
+- **WARNING:** Captures at the three required viewport sizes are git-safe and available, but all stop before chat authentication. They cannot independently confirm local focal hierarchy, menu placement, or density in a real populated log. This is an evidence limitation, not a code-level contract failure.
 
-### Pillar 3: Color (2/4)
+### Pillar 3: Color (4/4)
 
-- **WARNING:** The approved secondary surface is `#101614`, but the new menu/chooser is `#0c120f`; active and hover surfaces likewise use undeclared `#101a13` and `#14241a`. This breaks the declared color token contract rather than simply reusing the secondary role. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:391) and [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:393).
-- **WARNING:** Accent `#7cf59d` is correctly used for focus and hover, and mention `#f1f58f`, divider `#293832`, and error `#ffaaa3` are present. However, the required active highlight choice has no accent application at all; the palette’s own named values are not visually represented in the chooser. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:400).
-- Phase-specific `MessageGroup` CSS contains 24 literal hex colours plus rgba variants, with no local role variables; this makes the promised 60/30/10 distribution un-auditable and has already allowed role drift.
+- **PASS:** Menus/choosers use `#101614`; divider, accent focus/selection, mention rail, and actionable-error tokens use their specified values. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:396)
+- **PASS:** The current highlight is not color-only: its action names the color and its selected palette button adds both `aria-pressed` and visible `Selected` text. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:332)
 
-### Pillar 4: Typography (1/4)
+### Pillar 4: Typography (4/4)
 
-- **BLOCKER:** The contract permits exactly 12px, 14px, 16px, and 20px for new Phase 24 UI. The participant UI instead declares `.58rem` (9.28px), `.62rem` (9.92px), `.72rem` (11.52px), `.78rem` (12.48px), and `.7rem` (11.2px). The chooser heading is 12.48px rather than the required 20px/600; action labels inherit the pre-existing small message scale rather than 14px. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:397), [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:400), [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:402), and [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:406).
-- **WARNING:** New emphasis uses `font-weight: 700` and `760`, while the approved Phase 24 contract permits only 400 and 600. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:402) and [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:419).
+- **PASS:** Participant actions and room rows are 14px/400; guidance and coordinator labels are 12px/400; selected markers and empty heading are 16px/600; the chooser heading is 20px/600. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:397)
+- **PASS:** The focused browser test verifies 14px action rows and the 20px/600 chooser heading in both host and guest fixtures. [chat-user-interactions.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/chat-user-interactions.spec.ts:324)
 
-### Pillar 5: Spacing (2/4)
+### Pillar 5: Spacing (4/4)
 
-- **WARNING:** New menu spacing is built from `.1rem`, `.15rem`, `.16rem`, `.18rem`, `.25rem`, `.35rem`, `.55rem`, `.65rem`, and `.75rem`, rather than the approved 4px scale. Negative guidance margins additionally make the compact surface fragile at larger text settings. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:393), [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:397), and [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:399).
-- **WARNING:** At ≤520px, the contract requires panels bounded to `calc(100vw - 32px)`. The CSS starts at `calc(100vw - 1rem)` and the overlay directive forces an 8px gutter, equivalent to `calc(100vw - 16px)`. The component can be contained but does not preserve the specified 16px side inset. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:393), [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:321), and [viewport-overlay.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/src/lib/viewport-overlay.ts:42).
-- Room rows and menu actions do meet 44px minimum height (`2.75rem`); the trigger does not.
+- **PASS:** The shared author trigger and all menu/palette actions have the required 44px minimum target. Menus use the approved 4/8/16px local scale. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:393)
+- **PASS:** At 320px, both menu and chooser render at 288px with exactly 16px on each side, fulfilling `calc(100vw - 32px)`. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:324), [chat-user-interactions.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/chat-user-interactions.spec.ts:344)
 
-### Pillar 6: Experience Design (1/4)
+### Pillar 6: Experience Design (4/4)
 
-- **BLOCKER:** Because the required single author trigger is smaller than 44px, touch users cannot reliably begin any Phase 24 flow. This violates the participant-trigger accessibility exception and affects host and invitee alike through the shared component. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:247) and [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:390).
-- **WARNING:** The highlight popover is a plain `div aria-label="Highlight color"` with buttons that do not communicate the active value using `aria-pressed`, `aria-current`, or an equivalent selected semantic. Keyboard and screen-reader users cannot determine the current preference. See [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:329) and [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:331).
-- **WARNING:** Compact containment and reduced-motion checks pass at 320px, but the test only asserts containment, not the contract’s 32px panel width/gutter. See [chat-user-interactions.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/chat-user-interactions.spec.ts:286).
-- Positive evidence: menu focus enters Mention, Escape returns to the originating trigger, outside focus/pointer dismisses the surface, disabled anonymous follow has guidance, invite/follow use busy and live status, and host/invitee flows passed 7 focused browser tests.
+- **PASS:** Non-self author controls are keyboard-addressable; opening moves focus to Mention, Escape restores the trigger, and outside pointer/focus interaction dismisses the active surface. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:85)
+- **PASS:** Follow/invite pending and error states use disabled/busy controls plus safe status text; anonymous follow is visibly unavailable with the required guidance. [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:329)
+- **PASS:** The 320px reduced-motion check confirms both surfaces stay inside the viewport and the invite control has a `0s` transition duration. [chat-user-interactions.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/chat-user-interactions.spec.ts:286)
 
 ---
 
+## Verification Performed
+
+- `CI=1 PLAYWRIGHT_PORT=4288 pnpm exec playwright test tests/e2e/chat-user-interactions.spec.ts --grep 'participant visual contract|participant feedback remains visible and persistent|participant surfaces keep invite controls contained' --workers=1` — **3 passed**.
+- Screenshot safety gate confirmed `.planning/ui-reviews/.gitignore` already ignores all configured image formats before capture.
+- Registry audit: skipped — `components.json` is absent and the approved UI specification declares no third-party registry.
+
 ## Files Audited
 
-- `.planning/phases/24-chat-user-interactions/24-UI-SPEC.md`
 - `.planning/phases/24-chat-user-interactions/24-CONTEXT.md`
-- `.planning/phases/24-chat-user-interactions/24-01-PLAN.md` through `24-04-PLAN.md`
-- `.planning/phases/24-chat-user-interactions/24-01-SUMMARY.md` through `24-04-SUMMARY.md`
-- `.planning/phases/24-chat-user-interactions/24-REVIEW.md` and `24-REVIEW-FIX.md`
+- `.planning/phases/24-chat-user-interactions/24-01-PLAN.md` through `24-05-PLAN.md`
+- `.planning/phases/24-chat-user-interactions/24-01-SUMMARY.md` through `24-05-SUMMARY.md`
+- `.planning/phases/24-chat-user-interactions/24-UI-SPEC.md`
+- `.planning/phases/24-chat-user-interactions/24-REVIEW-FIX.md`
 - `src/components/MessageGroup.svelte`
 - `src/components/HostWorkspace.svelte`
 - `src/components/ChatRoute.svelte`
-- `src/chat/chat-participant-preferences.svelte.ts`
-- `src/chat/message-presentation.ts`
 - `src/lib/viewport-overlay.ts`
-- `src/app.css`
 - `tests/e2e/chat-user-interactions.spec.ts`
-
-Registry audit: skipped — `components.json` is absent and the approved UI specification declares no third-party registry.
