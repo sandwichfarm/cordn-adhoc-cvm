@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Quality of Life & Polish
-current_phase: 24
-current_phase_name: chat-user-interactions
-status: verifying
+current_phase: 18
+current_phase_name: Unified Presence, Notifications & Controls
+status: planning
 stopped_at: Completed 24-05-PLAN.md
-last_updated: "2026-08-06T22:12:55.369Z"
-last_activity: 2026-08-06
-last_activity_desc: Phase 24 execution started
+last_updated: "2026-08-07T00:24:19.818Z"
+last_activity: 2026-08-07
+last_activity_desc: Phase 24 complete, transitioned to Phase 18
 progress:
   total_phases: 9
   completed_phases: 8
-  total_plans: 32
-  completed_plans: 30
+  total_plans: 33
+  completed_plans: 31
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 
 ## Current Position
 
-Phase: 24 (chat-user-interactions) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-08-06 — Phase 24 execution started
+Phase: 18 — Unified Presence, Notifications & Controls
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-07 — Phase 24 complete, transitioned to Phase 18
 Pull request: [#7 — maximize room QR codes](https://github.com/sandwichfarm/CAHMLS/pull/7) — open, CI in progress. [#6](https://github.com/sandwichfarm/CAHMLS/pull/6) merged 2026-08-06.
 
 Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 94%)
@@ -39,7 +39,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 
 **Velocity:**
 
-- Total plans completed: 11
+- Total plans completed: 15
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -49,6 +49,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 |-------|-------|-------|----------|
 | 15 | 3 | - | - |
 | 16 | 6 | 2h+ | - |
+| 24 | 6 | - | - |
 
 **Recent Trend:** No data yet
 
