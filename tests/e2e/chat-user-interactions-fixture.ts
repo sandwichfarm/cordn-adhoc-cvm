@@ -77,7 +77,15 @@ export async function installControllableNip07(page: Page): Promise<Controllable
 export async function installSocialRelayControl(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const testWindow = window as typeof window & {
-      __phase24SocialSockets?: Array<{ closed: boolean; ids: string[]; filters: Array<{ authors?: string[]; kinds?: number[] }>; onmessage: ((event: MessageEvent<string>) => void) | null }>;
+      __phase24SocialSockets?: Array<{
+        closed: boolean;
+        requests: Array<{
+          id: string;
+          closed: boolean;
+          filters: Array<{ authors?: string[]; kinds?: number[] }>;
+        }>;
+        onmessage: ((event: MessageEvent<string>) => void) | null;
+      }>;
       __phase24SocialEmit?: (event: unknown) => void;
       __phase24NativeWebSocket?: typeof WebSocket;
     };
@@ -101,7 +109,15 @@ export async function installSocialRelayControl(page: Page): Promise<void> {
       onerror: ((event: Event) => void) | null = null;
       onclose: ((event: CloseEvent) => void) | null = null;
       onmessage: ((event: MessageEvent<string>) => void) | null = null;
-      readonly record = { closed: false, ids: [] as string[], filters: [] as Array<{ authors?: string[]; kinds?: number[] }>, onmessage: null as ((event: MessageEvent<string>) => void) | null };
+      readonly record = {
+        closed: false,
+        requests: [] as Array<{
+          id: string;
+          closed: boolean;
+          filters: Array<{ authors?: string[]; kinds?: number[] }>;
+        }>,
+        onmessage: null as ((event: MessageEvent<string>) => void) | null,
+      };
       constructor(_url: string) {
         void _url;
         testWindow.__phase24SocialSockets?.push(this.record);
@@ -109,19 +125,33 @@ export async function installSocialRelayControl(page: Page): Promise<void> {
       }
       send(payload: string): void {
         const message = JSON.parse(payload) as unknown[];
-        if (message[0] !== "REQ" || typeof message[1] !== "string") return;
+        if (typeof message[1] !== "string") return;
         const id = message[1];
-        this.record.ids.push(id);
-        this.record.filters.push(...message.slice(2).filter((value): value is { authors?: string[]; kinds?: number[] } => typeof value === "object" && value !== null));
+        if (message[0] === "CLOSE") {
+          for (const request of this.record.requests) {
+            if (request.id === id) request.closed = true;
+          }
+          return;
+        }
+        if (message[0] !== "REQ") return;
+        const filters = message.slice(2).filter((value): value is { authors?: string[]; kinds?: number[] } => typeof value === "object" && value !== null);
+        this.record.requests.push({ id, closed: false, filters });
         this.record.onmessage = this.onmessage;
         queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(["EOSE", id]) } as MessageEvent<string>));
       }
-      close(): void { this.record.closed = true; this.readyState = ProfileRelayWebSocket.CLOSED; this.onclose?.({} as CloseEvent); }
+      close(): void {
+        this.record.closed = true;
+        for (const request of this.record.requests) request.closed = true;
+        this.readyState = ProfileRelayWebSocket.CLOSED;
+        this.onclose?.({} as CloseEvent);
+      }
     }
     testWindow.__phase24SocialEmit = (event) => {
       for (const socket of testWindow.__phase24SocialSockets ?? []) {
-        if (socket.filters.some((filter) => matches(event as { kind?: number; pubkey?: string }, filter))) {
-          for (const id of socket.ids) socket.onmessage?.({ data: JSON.stringify(["EVENT", id, event]) } as MessageEvent<string>);
+        for (const request of socket.requests) {
+          if (request.filters.some((filter) => matches(event as { kind?: number; pubkey?: string }, filter))) {
+            socket.onmessage?.({ data: JSON.stringify(["EVENT", request.id, event]) } as MessageEvent<string>);
+          }
         }
       }
     };
@@ -167,36 +197,25 @@ export async function emitSocialContactEvent(page: Page, event: NostrEvent): Pro
 }
 
 /**
- * Collapse duplicate public-relay subscriptions into one logical filter while
- * retaining whether every backing socket has been closed.  The snapshot is
- * intentionally metadata-only so contact tests cannot inspect relay traffic.
+ * Return one sanitized entry for every REQ. The request id and relay remain
+ * private, but keeping their ledger entries separate prevents duplicate live
+ * subscriptions from being hidden by a matching filter.
  */
 export async function socialRelaySubscriptions(page: Page): Promise<SocialRelaySubscriptionSnapshot[]> {
   return page.evaluate(() => {
     type RelayRecord = {
       closed: boolean;
-      filters: Array<{ authors?: string[]; kinds?: number[] }>;
+      requests: Array<{
+        closed: boolean;
+        filters: Array<{ authors?: string[]; kinds?: number[] }>;
+      }>;
     };
     const testWindow = window as typeof window & { __phase24SocialSockets?: RelayRecord[] };
-    const subscriptions = new Map<string, { closed: boolean; kinds: number[]; authors: string[] }>();
-    for (const socket of testWindow.__phase24SocialSockets ?? []) {
-      for (const filter of socket.filters) {
-        const kinds = [...(filter.kinds ?? [])].sort((left, right) => left - right);
-        const authors = [...(filter.authors ?? [])].sort();
-        const key = JSON.stringify({ kinds, authors });
-        const existing = subscriptions.get(key);
-        if (existing) {
-          existing.closed &&= socket.closed;
-        } else {
-          subscriptions.set(key, { closed: socket.closed, kinds, authors });
-        }
-      }
-    }
-    return [...subscriptions.values()].map(({ closed, kinds, authors }) => ({
-      state: closed ? "closed" : "open",
-      kinds,
-      authors,
-    }));
+    return (testWindow.__phase24SocialSockets ?? []).flatMap((socket) => socket.requests.map((request) => ({
+      state: socket.closed || request.closed ? "closed" as const : "open" as const,
+      kinds: [...new Set(request.filters.flatMap((filter) => filter.kinds ?? []))].sort((left, right) => left - right),
+      authors: [...new Set(request.filters.flatMap((filter) => filter.authors ?? []))].sort(),
+    })));
   });
 }
 

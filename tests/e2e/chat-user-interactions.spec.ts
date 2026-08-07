@@ -687,6 +687,19 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   const firstPubkey = signer.pubkey;
   const contactKindThreeSubscriptions = async () => (await socialRelaySubscriptions(page))
     .filter((subscription) => subscription.kinds.includes(3) && subscription.authors.length > 0);
+  const contactRequestsFor = async (pubkey: string) => (await contactKindThreeSubscriptions())
+    .filter((subscription) => subscription.authors.length === 1 && subscription.authors[0] === pubkey);
+  const openContactRequestsFor = async (pubkey: string) => (await contactRequestsFor(pubkey))
+    .filter((subscription) => subscription.state === "open");
+  const expectOneLiveRequestPerRelay = async (pubkey: string) => {
+    // SOCIAL_RELAYS has two configured relays. Each is a required physical
+    // leg for the one logical owner, so two entries proves there is exactly
+    // one live REQ per relay rather than a collapsed or duplicate lifecycle.
+    await expect.poll(() => openContactRequestsFor(pubkey)).toEqual([
+      { state: "open", kinds: [3], authors: [pubkey] },
+      { state: "open", kinds: [3], authors: [pubkey] },
+    ]);
+  };
   await page.goto("/");
   const probe = page.getByTestId("contact-lifecycle-probe");
   await expect(probe).toHaveAttribute("data-owner-ready", "false");
@@ -694,11 +707,7 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   await authenticateNip07(page);
   await expect(probe).toHaveAttribute("data-contact-pubkey", firstPubkey, { timeout: 20_000 });
   await expect(probe).toHaveAttribute("data-owner-ready", "true");
-  await expect.poll(contactKindThreeSubscriptions).toEqual([{
-    state: "open",
-    kinds: [3],
-    authors: [firstPubkey],
-  }]);
+  await expectOneLiveRequestPerRelay(firstPubkey);
   const staleAEvent = signer.signedContactList(["c".repeat(64)]);
 
   const profile = page.getByTestId("user-profile");
@@ -707,31 +716,22 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   await firstMenu.getByRole("button", { name: "Disconnect" }).click();
   await expect(probe).toHaveAttribute("data-contact-pubkey", "");
   await expect(probe).toHaveAttribute("data-owner-ready", "false");
-  await expect.poll(contactKindThreeSubscriptions).toEqual([{
-    state: "closed",
-    kinds: [3],
-    authors: [firstPubkey],
-  }]);
+  await expect.poll(async () => await openContactRequestsFor(firstPubkey)).toEqual([]);
+  await expect.poll(async () => {
+    const requests = await contactRequestsFor(firstPubkey);
+    return requests.length >= 2 && requests.every((request) => request.state === "closed");
+  }).toBe(true);
 
   const secondPubkey = signer.replaceIdentity();
   await authenticateNip07(page);
   await expect(probe).toHaveAttribute("data-contact-pubkey", secondPubkey, { timeout: 20_000 });
   await expect(probe).toHaveAttribute("data-owner-ready", "true");
-  await expect.poll(contactKindThreeSubscriptions).toEqual(expect.arrayContaining([{
-    state: "closed",
-    kinds: [3],
-    authors: [firstPubkey],
-  }, {
-    state: "open",
-    kinds: [3],
-    authors: [secondPubkey],
-  }]));
-  await expect.poll(async () => (await contactKindThreeSubscriptions())
-    .filter((subscription) => subscription.state === "open")).toEqual([{
-    state: "open",
-    kinds: [3],
-    authors: [secondPubkey],
-  }]);
+  await expectOneLiveRequestPerRelay(secondPubkey);
+  await expect.poll(async () => await openContactRequestsFor(firstPubkey)).toEqual([]);
+  await expect.poll(async () => {
+    const requests = await contactRequestsFor(firstPubkey);
+    return requests.length >= 2 && requests.every((request) => request.state === "closed");
+  }).toBe(true);
   const followingB = "b".repeat(64);
   await emitSocialContactEvent(page, signer.signedContactList([followingB]));
   await expect(probe).toHaveAttribute("data-following", followingB);
@@ -747,11 +747,11 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   await secondMenu.getByRole("button", { name: "Disconnect" }).click();
   await expect(probe).toHaveAttribute("data-contact-pubkey", "");
   await expect(probe).toHaveAttribute("data-owner-ready", "false");
-  await expect.poll(contactKindThreeSubscriptions).toEqual(expect.arrayContaining([{
-    state: "closed",
-    kinds: [3],
-    authors: [secondPubkey],
-  }]));
+  await expect.poll(async () => await openContactRequestsFor(secondPubkey)).toEqual([]);
+  await expect.poll(async () => {
+    const requests = await contactRequestsFor(secondPubkey);
+    return requests.length >= 2 && requests.every((request) => request.state === "closed");
+  }).toBe(true);
   await expect.poll(async () => (await contactKindThreeSubscriptions())
     .filter((subscription) => subscription.state === "open")).toEqual([]);
 });
