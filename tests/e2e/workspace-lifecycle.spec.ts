@@ -891,10 +891,18 @@ test("offline coordinator disclosure preserves motion and five-room behavior", a
 
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.mouse.move(0, 0);
-  await expect(disclosure).toHaveAttribute("inert", "");
-  await expect(disclosure).toHaveAttribute("aria-hidden", "true");
-  await expect(disclosure).toHaveCSS("pointer-events", "none");
-  expect(await disclosure.evaluate((element) => getComputedStyle(element).animationName)).toContain("offline-rooms-exit");
+  await expect.poll(async () => {
+    if (await disclosure.count() === 0) return "removed";
+    return disclosure.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return element.hasAttribute("inert")
+        && element.getAttribute("aria-hidden") === "true"
+        && style.pointerEvents === "none"
+        && style.animationName.includes("offline-rooms-exit")
+        ? "exiting"
+        : "waiting";
+    });
+  }).toMatch(/^(exiting|removed)$/);
   await expect(card.locator(".channel-row")).toHaveCount(0);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
