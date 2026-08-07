@@ -945,7 +945,8 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
   await page.getByRole("menu", { name: "Room actions for Reveal room 6" }).getByRole("menuitem", { name: "Add to favorites" }).click();
   await expect(rail.getByRole("group", { name: "Favorites" })).toContainText("Reveal room 5");
 
-  await sourceCard.getByRole("button", { name: "Show fewer chats" }).click();
+  await sourceCard.getByRole("button", { name: "Show fewer chats" }).focus();
+  await page.keyboard.press("Enter");
   await expect(sourceCard.locator(".channel-row")).toHaveCount(5);
   const favorite = rail.getByRole("group", { name: "Favorites" });
   await favorite.getByRole("button", { name: "More actions for # Reveal room 5" }).click();
@@ -956,7 +957,8 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
   await expect(restoredSource).toBeVisible();
   await expect(restoredSource).toBeFocused();
 
-  await sourceCard.getByRole("button", { name: "Show fewer chats" }).click();
+  await sourceCard.getByRole("button", { name: "Show fewer chats" }).focus();
+  await page.keyboard.press("Enter");
   await favorite.getByRole("button", { name: /Open room Reveal room 6, hosted by/ }).click();
   await sourceCard.hover();
   const laterActiveSource = sourceCard.locator(".channel-row.active").getByRole("button", { name: /Open room Reveal room 6, hosted by/ });
