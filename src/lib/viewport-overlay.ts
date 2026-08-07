@@ -183,7 +183,10 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
       window.visualViewport?.removeEventListener("scroll", schedule);
       if (animationFrame) cancelAnimationFrame(animationFrame);
       if (node.matches(":popover-open")) node.hidePopover();
-      if (activeMobileOverlay === node) activeMobileOverlay = undefined;
+      if (activeMobileOverlay === node) {
+        activeMobileOverlay = undefined;
+        window.dispatchEvent(new CustomEvent("cahmls:mobile-overlay-close", { detail: { node } }));
+      }
       node.removeAttribute("aria-modal");
       delete node.dataset.viewportOverlay;
       delete node.dataset.overlaySide;

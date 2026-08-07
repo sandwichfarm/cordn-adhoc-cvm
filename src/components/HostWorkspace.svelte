@@ -119,6 +119,7 @@
   let managementOpen = $state(false);
   let compactViewport = $state(false);
   let mobileRailOpen = $state(false);
+  let mobileChildSurfaceOpen = $state(false);
   let mobileOverlay = $state<ReturnType<typeof createMobileOverlayController> | null>(null);
   let hostChatElement = $state<HTMLElement>();
   let mobileRoomBrowser = $state<HTMLElement>();
@@ -1442,7 +1443,16 @@
       if (createDialogOpen) closeCreateDialog();
       settingsDialogOpen = false;
     };
-    const closeDrawerForMobileSurface = () => closeMobileRoomBrowser(false);
+    const closeDrawerForMobileSurface = () => {
+      mobileChildSurfaceOpen = true;
+      closeMobileRoomBrowser(false);
+    };
+    const clearMobileChildSurface = () => {
+      mobileChildSurfaceOpen = false;
+      // A sheet's trigger lives in the drawer. Re-open it before the child
+      // restores exact opener focus, rather than leaving focus on hidden UI.
+      if (compactViewport) mobileRailOpen = true;
+    };
     refreshRemoteRooms();
     const compactQuery = window.matchMedia("(max-width: 900px)");
     const markCoordinatorOnline = (event: Event) => handleCoordinatorReachabilityEvent(event, "online");
@@ -1489,6 +1499,7 @@
     document.addEventListener("visibilitychange", recheckWhenVisible);
     window.addEventListener("keydown", closeDialogsOnEscape);
     window.addEventListener("cahmls:mobile-overlay-open", closeDrawerForMobileSurface);
+    window.addEventListener("cahmls:mobile-overlay-close", clearMobileChildSurface);
     const acknowledgeOnVisibility = () => acknowledgeVisibleHostRoom();
     document.addEventListener("visibilitychange", acknowledgeOnVisibility);
     reachabilityTimer = window.setInterval(() => void probeRemoteCoordinators(), 12_000);
@@ -1505,6 +1516,7 @@
       document.removeEventListener("visibilitychange", recheckWhenVisible);
       window.removeEventListener("keydown", closeDialogsOnEscape);
       window.removeEventListener("cahmls:mobile-overlay-open", closeDrawerForMobileSurface);
+      window.removeEventListener("cahmls:mobile-overlay-close", clearMobileChildSurface);
       document.removeEventListener("visibilitychange", acknowledgeOnVisibility);
       compactQuery.removeEventListener("change", syncCompactViewport);
     };
@@ -1596,8 +1608,8 @@
         data-testid="invite-panel"
         data-local-rail-state={localRailState}
         aria-busy={localRailBusy}
-        aria-hidden={compactViewport && !mobileRailOpen}
-        inert={compactViewport && !mobileRailOpen}
+        aria-hidden={compactViewport && !mobileRailOpen && !mobileChildSurfaceOpen}
+        inert={compactViewport && !mobileRailOpen && !mobileChildSurfaceOpen}
         role={compactViewport ? "dialog" : undefined}
         aria-modal={compactViewport && mobileRailOpen ? "true" : undefined}
         aria-label={compactViewport ? "Rooms" : undefined}
