@@ -138,6 +138,28 @@ export async function installSocialRelayControl(page: Page): Promise<void> {
   });
 }
 
+/** Route configured public relays to a local test relay without changing invite hints. */
+export async function installMockPublicRelayRoute(page: Page, relayUrl: string): Promise<void> {
+  await page.addInitScript((mockRelayUrl) => {
+    const testWindow = window as typeof window & { __phase24NativePublicRelayWebSocket?: typeof WebSocket };
+    testWindow.__phase24NativePublicRelayWebSocket ??= window.WebSocket;
+    const publicRelayHosts = new Set([
+      "wss://relay2.contextvm.org",
+      "wss://bucket.coracle.social",
+      "wss://nos.lol",
+    ]);
+    Object.defineProperty(window, "WebSocket", {
+      configurable: true,
+      value: new Proxy(testWindow.__phase24NativePublicRelayWebSocket, {
+        construct(Target, args) {
+          const url = String(args[0] ?? "");
+          return Reflect.construct(Target, publicRelayHosts.has(url) ? [mockRelayUrl, ...args.slice(1)] : args);
+        },
+      }),
+    });
+  }, relayUrl);
+}
+
 export async function emitSocialContactEvent(page: Page, event: NostrEvent): Promise<void> {
   await page.evaluate((signed) => {
     (window as typeof window & { __phase24SocialEmit?: (event: unknown) => void }).__phase24SocialEmit?.(signed);
