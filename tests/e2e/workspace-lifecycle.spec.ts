@@ -2198,8 +2198,11 @@ test("keeps host mobile tools and room dialogs bounded inside the app shell", as
   await expect(profile).toBeHidden();
   await expectNoDocumentOverflow(page, portrait);
 
+  // The profile sheet was opened from inside the drawer, so closing it must
+  // deterministically restore that drawer rather than stranding focus.
   const reopenedBrowser = page.locator(".mobile-rail-toggle[aria-expanded='true']");
-  if (await reopenedBrowser.isVisible()) await reopenedBrowser.click();
+  await expect(reopenedBrowser).toBeVisible();
+  await reopenedBrowser.click();
   await page.getByRole("button", { name: "Open room browser" }).click();
   await page.getByRole("button", { name: "Invite", exact: true }).click();
   const invite = page.getByTestId("invite-dialog").getByRole("dialog");

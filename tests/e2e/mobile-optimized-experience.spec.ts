@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { installEstablishedInstallation } from "./established-installation-fixture";
 import { startMockRelay, type MockRelay } from "./mock-relay";
 
@@ -9,8 +9,23 @@ const PROHIBITED_DIAGNOSTIC = /private.?key|secret|invite(?:\s|-)??(?:url|link|t
 
 let relay: MockRelay;
 
-test.beforeAll(async () => {
-  relay = await startMockRelay(8777);
+/**
+ * WebKit executes this MLS/relay path roughly an order of magnitude slower
+ * than Chromium, so budgets scale by engine rather than being inflated for
+ * every project. The assertions themselves stay identical across engines.
+ */
+function budgets(testInfo: TestInfo): { settle: number; journey: number; longJourney: number } {
+  const slow = testInfo.project.use.browserName === "webkit";
+  return slow
+    ? { settle: 90_000, journey: 300_000, longJourney: 360_000 }
+    : { settle: 35_000, journey: 120_000, longJourney: 180_000 };
+}
+
+// This file runs in the desktop and both mobile projects, so concurrently
+// scheduled workers must not contend for one fixed relay port.
+// eslint-disable-next-line no-empty-pattern
+test.beforeAll(async ({}, testInfo) => {
+  relay = await startMockRelay(8777 + testInfo.parallelIndex);
 });
 
 test.afterAll(async () => {
@@ -114,14 +129,17 @@ test("mobile projects enumerate real touch Chromium and WebKit contexts", async 
   expect(config).toContain('name: "chromium"');
 
   if (MOBILE_PROJECTS.includes(testInfo.project.name as (typeof MOBILE_PROJECTS)[number])) {
-    expect(await page.evaluate(() => navigator.maxTouchPoints)).toBeGreaterThan(0);
+    // WebKit reports maxTouchPoints as 0 even in a touch context, so accept
+    // either signal rather than asserting a Chromium-only implementation detail.
+    expect(await page.evaluate(() => "ontouchstart" in window || navigator.maxTouchPoints > 0)).toBe(true);
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
   }
 });
 
 test("complete durable host journey uses touch controls", async ({ page }, testInfo) => {
   test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name as (typeof MOBILE_PROJECTS)[number]), "the tracer runs only in real mobile projects");
-  test.setTimeout(120_000);
+  const { settle, journey } = budgets(testInfo);
+  test.setTimeout(journey);
   const diagnostics: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") diagnostics.push(message.text());
@@ -137,7 +155,7 @@ test("complete durable host journey uses touch controls", async ({ page }, testI
   await configureMockRelay(page);
   await startCoordinator(page);
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
-  await expect(page.getByTestId("coordinator-empty-content")).toContainText("Coordinator online", { timeout: 35_000 });
+  await expect(page.getByTestId("coordinator-empty-content")).toContainText("Coordinator online", { timeout: settle });
   await createRoom(page, "Mobile durable room");
 
   const roomBrowser = page.getByRole("button", { name: "Open room browser" });
@@ -153,25 +171,34 @@ test("complete durable host journey uses touch controls", async ({ page }, testI
   await tap(page.getByRole("button", { name: "Send", exact: true }));
   const message = page.getByTestId("host-message-list").locator("article.host-message").filter({ hasText: "Mobile host message" });
   await expect(message).toBeVisible();
+
   await tap(page.getByRole("button", { name: "More room actions" }));
   const roomActions = page.getByRole("menu", { name: "Room actions for Mobile durable room" });
   await expect(roomActions).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(roomActions).toBeHidden();
 
+  // A sheet opened from the chat surface — not from the drawer — must not
+  // leave the room browser open behind it, or its scrim swallows the composer.
+  await expect(drawer).toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator(".mobile-rail-scrim")).toHaveCount(0);
+  await composer.fill("After the room actions sheet");
+  await tap(page.getByRole("button", { name: "Send", exact: true }));
+  await expect(page.getByTestId("host-message-list").getByText("After the room actions sheet")).toBeVisible();
+
   await stopCoordinator(page);
   await expect(page.getByText("Stopping and saving…", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("status-badge")).toHaveText("idle", { timeout: 35_000 });
+  await expect(page.getByTestId("status-badge")).toHaveText("idle", { timeout: settle });
   await startCoordinator(page);
-  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 35_000 });
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: settle });
   await page.reload({ waitUntil: "domcontentloaded" });
   const unlock = page.getByTestId("coordinator-unlock");
-  await expect(unlock.getByRole("button", { name: "Unlock coordinator" })).toBeVisible({ timeout: 35_000 });
+  await expect(unlock.getByRole("button", { name: "Unlock coordinator" })).toBeVisible({ timeout: settle });
   await unlock.getByPlaceholder("passphrase", { exact: true }).fill("mobile-test-password");
   await tap(unlock.getByRole("button", { name: "Unlock coordinator" }));
-  await expect(page.getByRole("heading", { name: "Mobile host" })).toBeVisible({ timeout: 35_000 });
+  await expect(page.getByRole("heading", { name: "Mobile host" })).toBeVisible({ timeout: settle });
   await startCoordinator(page);
-  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 35_000 });
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: settle });
   await tap(page.getByRole("button", { name: "Open room browser" }));
   await tap(page.getByTestId("invite-panel").getByRole("button", { name: /Open room Mobile durable room/ }));
   await expect(page.getByRole("heading", { name: "Mobile durable room" })).toBeVisible();
@@ -182,19 +209,25 @@ test("complete durable host journey uses touch controls", async ({ page }, testI
   ]);
   await assertSecretSafeDiagnostics(page, diagnostics);
   await stopCoordinator(page);
-  await expect(page.getByTestId("status-badge")).toHaveText("idle", { timeout: 35_000 });
+  await expect(page.getByTestId("status-badge")).toHaveText("idle", { timeout: settle });
 });
 
 test("independent mobile clients exchange an admitted encrypted reaction journey by tap", async ({ page: host, browser }, testInfo) => {
   test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name as (typeof MOBILE_PROJECTS)[number]), "requires a real mobile project");
-  test.setTimeout(120_000);
+  // The two-client journey crosses the real relay six times (join request,
+  // welcome, message, reaction, response, re-navigation); budget accordingly.
+  const { settle, longJourney } = budgets(testInfo);
+  test.setTimeout(longJourney);
   await installEstablishedInstallation(host);
-  await host.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  // Only Chromium exposes clipboard permissions; WebKit grants access to the
+  // focused page directly, so the copy path is still exercised on both.
+  const clipboardPermissions = testInfo.project.use.browserName === "chromium";
+  if (clipboardPermissions) await host.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await host.setViewportSize(MOBILE_VIEWPORT);
   await host.goto("/");
   await configureMockRelay(host);
   await startCoordinator(host);
-  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
+  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: settle });
   await tap(host.getByRole("button", { name: "Create room", exact: true }));
   const createDialog = host.getByTestId("create-room-dialog");
   await createDialog.getByPlaceholder("Friday plans").fill("Mobile two-client room");
@@ -211,7 +244,11 @@ test("independent mobile clients exchange an admitted encrypted reaction journey
   expect(Boolean(inviteUrl)).toBe(true);
   await tap(copyInvite);
   await expect(copyInvite).toHaveText("Copied");
-  expect(await host.evaluate(async () => Boolean(await navigator.clipboard.readText()))).toBe(true);
+  // Reading back the clipboard needs the granted permission; where it is
+  // unavailable the visible "Copied" confirmation above is the touch evidence.
+  if (clipboardPermissions) {
+    expect(await host.evaluate(async () => Boolean(await navigator.clipboard.readText()))).toBe(true);
+  }
   await tap(inviteDialog.getByRole("button", { name: "Close invite dialog" }).last());
 
   const guestContext = await browser.newContext({ hasTouch: true, isMobile: true, viewport: MOBILE_VIEWPORT });
@@ -219,34 +256,45 @@ test("independent mobile clients exchange an admitted encrypted reaction journey
   try {
     await installEstablishedInstallation(guest);
     await guest.goto(inviteUrl!);
-    await expect(guest.getByText("Your encrypted join request is with the host.")).toBeVisible({ timeout: 35_000 });
+    await expect(guest.getByText("Your encrypted join request is with the host.")).toBeVisible({ timeout: settle });
 
     await tap(host.getByRole("button", { name: "Open room browser" }));
     await expect(host.getByTestId("invite-panel").getByRole("heading", { name: "Rooms" })).toBeVisible();
     const approve = host.getByRole("button", { name: /Approve waiting invitees, 1 request/ });
-    await expect(approve).toBeEnabled({ timeout: 35_000 });
+    await expect(approve).toBeEnabled({ timeout: settle });
     await tap(approve);
-    await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
+    await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: settle });
 
-    await host.getByPlaceholder("Message as host").fill("Host message for a mobile guest");
+    // The open drawer is a modal surface on mobile: the composer behind it is
+    // inert, so it must be closed before the host can type again.
+    await tap(host.getByTestId("invite-panel").getByRole("button", { name: "Close room browser" }));
+    await expect(host.getByTestId("invite-panel")).toHaveAttribute("aria-hidden", "true");
+
+    const hostComposer = host.getByPlaceholder("Message as host");
+    await hostComposer.fill("Host message for a mobile guest");
+    await expect(hostComposer).toHaveValue("Host message for a mobile guest");
     await tap(host.getByRole("button", { name: "Send", exact: true }));
     const guestMessage = guest.locator("article.message").filter({ hasText: "Host message for a mobile guest" });
-    await expect(guestMessage).toBeVisible({ timeout: 35_000 });
+    await expect(guestMessage).toBeVisible({ timeout: settle });
     await tap(guestMessage.getByRole("button", { name: "Add reaction" }));
     const reactionSheet = guestMessage.getByRole("menu", { name: /Choose reaction/ });
     await expect(reactionSheet).toBeVisible();
     await tap(reactionSheet.getByRole("menuitem", { name: "React 👍" }));
     await expect(guestMessage.getByRole("button", { name: /Remove 👍 reaction, 1 participant/ })).toHaveAttribute("aria-pressed", "true");
-    await expect(host.locator("article.host-message").filter({ hasText: "Host message for a mobile guest" }).getByLabel("👍 reaction, 1 participant")).toBeVisible({ timeout: 35_000 });
+    await expect(host.locator("article.host-message").filter({ hasText: "Host message for a mobile guest" }).getByLabel("👍 reaction, 1 participant")).toBeVisible({ timeout: settle });
 
+    await expect(guest.getByTestId("chat-composer-status")).toHaveText("Connected. Messages are end-to-end encrypted.", { timeout: settle });
     await guest.getByPlaceholder("Message").fill("Guest response from a touch context");
     await tap(guest.getByRole("button", { name: "Send", exact: true }));
-    await expect(host.getByTestId("host-message-list").getByText("Guest response from a touch context")).toBeVisible({ timeout: 35_000 });
+    await expect(host.getByTestId("host-message-list").getByText("Guest response from a touch context")).toBeVisible({ timeout: settle });
     await tap(guest.getByRole("button", { name: "Open room browser" }));
     await tap(guest.getByTestId("invite-panel").getByRole("button", { name: /Open room Mobile two-client room/ }));
     await expect(guest.getByRole("heading", { name: "Mobile two-client room" })).toBeVisible();
   } finally {
     await guestContext.close();
+    // Stop the host and wait for the coordinator to fully release its
+    // transport so the per-file relay can close its sockets deterministically.
     await stopCoordinator(host).catch(() => undefined);
+    await expect(host.getByTestId("status-badge")).toHaveText("idle", { timeout: settle }).catch(() => undefined);
   }
 });

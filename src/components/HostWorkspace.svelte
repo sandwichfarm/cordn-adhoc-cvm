@@ -121,6 +121,7 @@
   let compactViewport = $state(false);
   let mobileRailOpen = $state(false);
   let mobileChildSurfaceOpen = $state(false);
+  let mobileChildSurfaceRestoresDrawer = false;
   let mobileOverlay = $state<ReturnType<typeof createMobileOverlayController> | null>(null);
   let hostChatElement = $state<HTMLElement>();
   let mobileRoomBrowser = $state<HTMLElement>();
@@ -1446,14 +1447,19 @@
       settingsDialogOpen = false;
     };
     const closeDrawerForMobileSurface = () => {
+      // Sheets reposition on every scroll and resize, so only the opening
+      // transition may decide whether the drawer owns this child surface.
+      if (!mobileChildSurfaceOpen) mobileChildSurfaceRestoresDrawer = mobileRailOpen;
       mobileChildSurfaceOpen = true;
       closeMobileRoomBrowser(false);
     };
     const clearMobileChildSurface = () => {
       mobileChildSurfaceOpen = false;
-      // A sheet's trigger lives in the drawer. Re-open it before the child
-      // restores exact opener focus, rather than leaving focus on hidden UI.
-      if (compactViewport) mobileRailOpen = true;
+      // Only re-open the drawer when the sheet's trigger lived inside it, so
+      // focus returns to real UI. A sheet opened from the chat surface must
+      // never raise a drawer the reader did not ask for.
+      if (compactViewport && mobileChildSurfaceRestoresDrawer) mobileRailOpen = true;
+      mobileChildSurfaceRestoresDrawer = false;
     };
     refreshRemoteRooms();
     const compactQuery = window.matchMedia("(max-width: 900px)");
