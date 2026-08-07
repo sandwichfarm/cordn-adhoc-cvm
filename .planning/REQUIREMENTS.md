@@ -113,6 +113,16 @@
 
 - [x] **SIDE-07**: An offline remote coordinator hides its room rows behind a compact “N chats offline” summary by default; hovering or keyboard-focusing the card reveals those navigable historical chats with restrained motion and a reduced-motion fallback.
 
+### Mobile-Optimized Experience
+
+- [x] **MOBILE-01**: Every primary coordinator, room, chat, invitation, identity, notification, and settings interaction is operable by a single touchscreen tap without requiring hover, a hardware keyboard, or an invisible hit target.
+- [x] **MOBILE-02**: Mobile navigation uses a deliberate single-pane drawer/sheet model that keeps the active conversation primary, makes coordinator and room switching discoverable, and closes predictably after navigation, outside-tap, or platform back/Escape actions.
+- [x] **MOBILE-03**: At supported phone portrait, phone landscape, and short-height viewports, controls meet a 44-by-44 CSS-pixel touch target, overlays remain contained and scrollable, and the focused composer or form action remains reachable while the viewport is reduced by an onscreen keyboard.
+- [x] **MOBILE-04**: A fresh mobile user can choose an identity, start and stop the coordinator, create a room, invite and admit a participant, exchange encrypted messages and reactions in both directions, manage the room, and return after reload using touch interaction alone.
+- [x] **MOBILE-05**: Durable coordinator state is stored asynchronously in IndexedDB under the exact coordinator identity, survives reload and browser restart, and preserves the full validated coordinator snapshot without synchronous whole-snapshot writes on the UI thread.
+- [x] **MOBILE-06**: Coordinator startup, mutation, stop, and restart handle unavailable, denied, corrupt, or quota-exhausted persistent storage without recursive failure, cross-identity state attachment, secret-bearing diagnostics, or a falsely successful durability claim.
+- [ ] **MOBILE-07**: Automated mobile-browser coverage uses real touch-enabled Playwright device contexts to prove the complete coordinator and two-client chat journeys on Chromium and WebKit, including tap-only affordances, overlay dismissal, narrow/landscape layouts, reload continuity, and storage failure recovery.
+
 ## Future Requirements
 
 ### Notification Expansion
@@ -130,7 +140,7 @@
 | Server-side identity or notification accounts | The application remains browser-resident and self-sovereign. |
 | Email, SMS, or push-service notification backend | This milestone covers local in-app and browser notifications only. |
 | Replacing MLS or ContextVM transport protocols | The milestone repairs continuity and presentation around the existing protocol stack. |
-| Full mobile-first redesign | Layout must remain coherent, but this milestone targets the current desktop workspace. |
+| Native iOS or Android application shells | Phase 27 delivers a browser-resident mobile experience and does not add native application packages. |
 | Historical access after explicit identity rotation | Rotation is a deliberate privacy boundary; old credentials are retired unless the old identity is restored separately. |
 
 ## Traceability
@@ -201,11 +211,18 @@
 | FAV-02 | Phase 25 | Complete |
 | INVMSG-02 | Phase 25 | Complete |
 | SIDE-07 | Phase 26 | Complete |
+| MOBILE-01 | Phase 27 | Complete |
+| MOBILE-02 | Phase 27 | Complete |
+| MOBILE-03 | Phase 27 | Complete |
+| MOBILE-04 | Phase 27 | Complete |
+| MOBILE-05 | Phase 27 | Complete |
+| MOBILE-06 | Phase 27 | Complete |
+| MOBILE-07 | Phase 27 | Pending |
 
 **Coverage:**
 
-- v1.1 requirements: 57 total
-- Mapped to phases: 57
+- v1.1 requirements: 64 total
+- Mapped to phases: 64
 - Unmapped: 0 ✓
 
 ---

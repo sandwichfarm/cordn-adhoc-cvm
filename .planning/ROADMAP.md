@@ -22,6 +22,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [x] **Phase 23: Bounded Gift-Wrap Delivery** - Stop unavailable relays and room polling from accumulating immortal ContextVM gift-wrap publications.
 - [x] **Phase 25: Favorite Groups & Invite Availability** - Add persistent duplicate favorites and prevent room-invite actions while their coordinator is offline. (completed 2026-08-07)
 - [x] **Phase 26: Offline Coordinator Room Disclosure** - Collapse offline coordinator rooms into an animated, accessible disclosure. (completed 2026-08-07)
+- [ ] **Phase 27: Mobile-Optimized Experience** - Make every coordinator and chat journey touch-native, redesign mobile navigation, and move durable coordinator persistence to IndexedDB.
 
 ## Phase Details
 
@@ -80,6 +81,30 @@ and closes with repeatable delivery guidance and automated proof.
 - [x] 26-01-PLAN.md
 
 - [ ] 26-01-PLAN.md
+
+**UI hint**: yes
+
+### Phase 27: Mobile-Optimized Experience
+
+**Goal**: A phone user can complete the entire CAHMLS coordinator and participant lifecycle reliably with touch, responsive navigation, and durable mobile-safe persistence.
+**Depends on**: Phase 15, Phase 18, Phase 21, Phase 22, Phase 23, Phase 24, Phase 25, Phase 26
+**Requirements**: MOBILE-01, MOBILE-02, MOBILE-03, MOBILE-04, MOBILE-05, MOBILE-06, MOBILE-07
+**Success Criteria** (what must be TRUE):
+
+  1. Fresh setup, coordinator start/stop/restart, room creation and management, invitations and admission, messaging, reactions, notifications, settings, identity actions, and navigation all work by tap in touch-enabled browser contexts.
+  2. Phone portrait, landscape, short-height, and onscreen-keyboard layouts keep the active conversation primary, all actions reachable, touch targets at least 44 CSS pixels, and every drawer, sheet, dialog, and popover contained.
+  3. Coordinator snapshots persist asynchronously in identity-scoped IndexedDB, restore after reload, flush before a completed stop, and never silently attach legacy state to the wrong coordinator identity.
+  4. Denied, unavailable, corrupt, and quota-exhausted persistence paths fail safely with bounded recovery or an explicitly temporary session, without recursive startup failure or secret-bearing errors.
+  5. Chromium and WebKit mobile-device suites prove one complete host journey and a real two-client encrypted chat journey, and all repository quality and Cordn interoperability gates pass.
+
+**Plans**: 3/4 plans executed
+
+Plans:
+
+- [x] 27-01-PLAN.md — Replace coordinator snapshot persistence with validated identity-scoped IndexedDB, flush-before-stop, and truthful recovery.
+- [x] 27-02-PLAN.md — Converge host and guest on one shared mobile Room browser and one deterministic overlay lifecycle.
+- [x] 27-03-PLAN.md — Harden touch targets, hoverless discovery, action sheets, VisualViewport behavior, safe areas, and responsive containment.
+- [ ] 27-04-PLAN.md — Prove complete host and two-client journeys in touch-enabled mobile Chromium and WebKit and run every quality/interoperability gate.
 
 **UI hint**: yes
 

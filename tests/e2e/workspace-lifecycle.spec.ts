@@ -469,6 +469,27 @@ async function createRoom(page: import("@playwright/test").Page, title: string):
   await expect(dialog).toBeHidden();
 }
 
+test("host room browser opens and navigates by tap", async ({ page }) => {
+  test.setTimeout(60_000);
+  await installEstablishedInstallation(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await configureMockRelay(page);
+  await startCoordinator(page);
+  await createRoom(page, "Mobile browser room");
+
+  const opener = page.getByRole("button", { name: "Open room browser" });
+  await opener.click();
+  const drawer = page.getByTestId("invite-panel");
+  await expect(drawer.getByRole("heading", { name: "Rooms" })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "Close room browser" })).toBeVisible();
+  await expect.poll(() => page.getByTestId("host-chat").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+
+  await drawer.getByRole("button", { name: /Open room Mobile browser room, hosted by/ }).click();
+  await expect(drawer).toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByTestId("active-conversation-heading")).toBeFocused();
+});
+
 test("global and per-channel sound controls persist and expose non-default state", async ({ page }) => {
   await installEstablishedInstallation(page);
   await page.goto("/");
@@ -777,7 +798,7 @@ test("coordinator cards keep stable order and collapse dead groups into history"
   await expect(page.getByTestId("sidebar-history").getByRole("button", { name: /History 4/ })).toBeVisible();
 });
 
-test("offline coordinator disclosure keeps history reachable by pointer and keyboard", async ({ page }) => {
+test("offline chat disclosure is touch-operated while retaining pointer and keyboard discovery", async ({ page }) => {
   const singularCoordinator = "e".repeat(64);
   const pluralCoordinator = "f".repeat(64);
   await page.goto("/");
@@ -790,28 +811,30 @@ test("offline coordinator disclosure keeps history reachable by pointer and keyb
   const singularCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${singularCoordinator}"]`);
   const pluralCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${pluralCoordinator}"]`);
 
-  await expect(singularCard).toContainText("1 chat offline");
-  await expect(pluralCard).toContainText("2 chats offline");
+  const singularDisclosure = singularCard.getByRole("button", { name: "Show 1 offline chat" });
+  const pluralDisclosure = pluralCard.getByRole("button", { name: "Show 2 offline chats" });
+  await expect(singularDisclosure).toBeVisible();
+  await expect(pluralDisclosure).toBeVisible();
   await expect(singularCard.locator(".channel-row")).toHaveCount(0);
   await expect(pluralCard.locator(".channel-row")).toHaveCount(0);
-  await expect(singularCard).toHaveAttribute("tabindex", "0");
-  await expect(singularCard).toHaveAttribute("aria-describedby", /.+/);
-  const descriptionId = await singularCard.getAttribute("aria-describedby");
-  await expect(page.locator(`#${descriptionId}`)).toHaveText("Focus to reveal 1 offline historical chat.");
+  await expect.poll(() => singularDisclosure.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return bounds.width >= 44 && bounds.height >= 44;
+  })).toBe(true);
 
-  await singularCard.focus();
+  await singularDisclosure.click();
+  const hideDisclosure = singularCard.getByRole("button", { name: "Hide offline chats" });
+  await expect(hideDisclosure).toHaveAttribute("aria-expanded", "true");
   const soloRoom = singularCard.getByRole("button", { name: /Open room Solo archive, hosted by/ });
   await expect(soloRoom).toBeVisible();
-  await page.keyboard.press("Tab");
-  await expect(soloRoom).toBeFocused();
+  await hideDisclosure.click();
+  await expect(singularCard.locator(".channel-row")).toHaveCount(0);
 
-  await page.locator("body").click({ position: { x: 2, y: 2 } });
+  await page.mouse.move(1270, 700);
   await singularCard.hover();
   await expect(soloRoom).toBeVisible();
   await soloRoom.hover();
   await expect(soloRoom).toBeVisible();
-  await page.mouse.move(0, 0);
-  await expect(singularCard.locator(".channel-row")).toHaveCount(0);
 });
 
 test("offline coordinator disclosure survives reachability transitions while focused", async ({ page }) => {
@@ -821,7 +844,7 @@ test("offline coordinator disclosure survives reachability transitions while foc
   await page.reload();
 
   const card = page.getByTestId("invite-panel").locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinatorPubkey}"]`);
-  await expect(card).toContainText("1 chat offline", { timeout: 20_000 });
+  await expect(card.getByRole("button", { name: "Show 1 offline chat" })).toBeVisible({ timeout: 20_000 });
   await card.focus();
   const room = card.getByRole("button", { name: /Open room Transition archive, hosted by/ });
   await expect(room).toBeVisible();
@@ -838,6 +861,8 @@ test("offline coordinator disclosure survives reachability transitions while foc
   await expect(card).toBeFocused();
   await expect(room).toBeVisible();
   await page.keyboard.press("Tab");
+  await expect(card.getByRole("button", { name: "Show 1 offline chat" })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(room).toBeFocused();
 });
 
@@ -850,7 +875,7 @@ test("offline coordinator disclosure preserves motion and five-room behavior", a
   await page.reload();
 
   const card = page.getByTestId("invite-panel").locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinator}"]`);
-  await expect(card).toContainText("7 chats offline");
+  await expect(card.getByRole("button", { name: "Show 7 offline chats" })).toBeVisible();
   await expect(card.locator(".channel-row")).toHaveCount(0);
 
   await card.hover();
@@ -866,17 +891,26 @@ test("offline coordinator disclosure preserves motion and five-room behavior", a
 
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.mouse.move(0, 0);
-  await expect(disclosure).toHaveAttribute("inert", "");
-  await expect(disclosure).toHaveAttribute("aria-hidden", "true");
-  await expect(disclosure).toHaveCSS("pointer-events", "none");
-  expect(await disclosure.evaluate((element) => getComputedStyle(element).animationName)).toContain("offline-rooms-exit");
+  await expect.poll(async () => {
+    if (await disclosure.count() === 0) return "removed";
+    return disclosure.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return element.hasAttribute("inert")
+        && element.getAttribute("aria-hidden") === "true"
+        && style.pointerEvents === "none"
+        && style.animationName.includes("offline-rooms-exit")
+        ? "exiting"
+        : "waiting";
+    });
+  }).toMatch(/^(exiting|removed)$/);
   await expect(card.locator(".channel-row")).toHaveCount(0);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.mouse.move(1270, 700);
   await card.hover();
   await expect(disclosure).toHaveCSS("animation-name", "none");
   await expect(disclosure).toHaveCSS("transform", "none");
-  await page.mouse.move(0, 0);
+  await page.mouse.move(1270, 700);
   expect(await card.locator(".channel-row").count()).toBe(0);
   await card.hover();
   await page.setViewportSize({ width: 320, height: 720 });
@@ -1899,6 +1933,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId("host-chat")).toBeVisible();
 
   await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.getByText("Stopping and saving…", { exact: true })).toBeVisible();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   expect(await pageExitIsGuarded(page)).toBe(false);
   await expect(page.getByTestId("resource-monitor")).toHaveCount(0);
@@ -2076,6 +2111,70 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
   }
 });
 
+test("visual viewport keeps focused composer reachable", async ({ page }) => {
+  const viewport = { width: 390, height: 430 };
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+  await configureMockRelay(page);
+  await startCoordinator(page);
+  await expectGuidedCoordinatorOnline(page);
+  await createRoom(page, "Visual viewport room");
+
+  const composer = page.getByTestId("host-chat-composer");
+  const input = composer.getByPlaceholder("Message as host");
+  const log = page.getByTestId("host-message-list");
+  const previousScroll = await log.evaluate((element) => element.scrollTop);
+  await input.focus();
+
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--app-visual-height"))).toBe("430px");
+  await expect.poll(() => composer.evaluate((element) => {
+    const container = element.closest<HTMLElement>(".operator-field")?.getBoundingClientRect();
+    const input = element.querySelector<HTMLInputElement>("input");
+    const send = [...element.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === "Send");
+    if (!container || !input || !send) return false;
+    const inputBounds = input.getBoundingClientRect();
+    const sendBounds = send.getBoundingClientRect();
+    return inputBounds.top >= container.top
+      && inputBounds.bottom <= container.bottom
+      && sendBounds.top >= container.top
+      && sendBounds.bottom <= container.bottom
+      && sendBounds.width >= 44
+      && sendBounds.height >= 44;
+  })).toBe(true);
+  await expect(log).toHaveJSProperty("scrollTop", previousScroll);
+  await expectNoDocumentOverflow(page, viewport);
+});
+
+test("touch target inventory and mobile action sheet remain contained", async ({ page }) => {
+  const viewport = { width: 390, height: 520 };
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+  await configureMockRelay(page);
+  await startCoordinator(page);
+  await expectGuidedCoordinatorOnline(page);
+  await createRoom(page, "Touch target room");
+
+  const inventory = [
+    page.getByRole("button", { name: "Open room browser" }),
+    page.getByTestId("host-chat-composer").getByRole("button", { name: "Send" }),
+    page.getByTestId("host-chat").getByRole("button", { name: "More room actions" }),
+    page.getByTestId("host-chat-composer").getByLabel("Add 👍"),
+  ];
+  for (const control of inventory) {
+    await expect.poll(() => control.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.width >= 44 && bounds.height >= 44;
+    })).toBe(true);
+  }
+
+  const actions = page.getByTestId("host-chat").getByRole("button", { name: "More room actions" });
+  await actions.click();
+  const sheet = page.getByRole("menu", { name: "Room actions for Touch target room" });
+  await expect(sheet).toHaveAttribute("data-overlay-side", "sheet");
+  await expectInsideViewport(sheet);
+  await expectNoDocumentOverflow(page, viewport);
+});
+
 test("keeps host mobile tools and room dialogs bounded inside the app shell", async ({ page }) => {
   const portrait = { width: 320, height: 568 };
   await page.setViewportSize(portrait);
@@ -2099,6 +2198,11 @@ test("keeps host mobile tools and room dialogs bounded inside the app shell", as
   await expect(profile).toBeHidden();
   await expectNoDocumentOverflow(page, portrait);
 
+  // The profile sheet was opened from inside the drawer, so closing it must
+  // deterministically restore that drawer rather than stranding focus.
+  const reopenedBrowser = page.locator(".mobile-rail-toggle[aria-expanded='true']");
+  await expect(reopenedBrowser).toBeVisible();
+  await reopenedBrowser.click();
   await page.getByRole("button", { name: "Open room browser" }).click();
   await page.getByRole("button", { name: "Invite", exact: true }).click();
   const invite = page.getByTestId("invite-dialog").getByRole("dialog");
@@ -2423,7 +2527,7 @@ test("message reactions persist and synchronize", async ({ page, browser }) => {
   await addReaction.click();
   const reactionMenu = guestMessage.getByRole("menu", { name: /Choose reaction/ });
   await expect(reactionMenu).toBeVisible();
-  await expect(reactionMenu).toHaveCSS("position", "absolute");
+  await expect(reactionMenu).toHaveCSS("position", "fixed");
   await reactionMenu.getByRole("menuitem", { name: "React 👍" }).click();
   await expect(guestMessage.getByRole("button", { name: /Remove 👍 reaction, 1 participant/ })).toHaveAttribute("aria-pressed", "true");
   await expect(hostMessage.getByLabel("👍 reaction, 1 participant")).toBeVisible({ timeout: 20_000 });

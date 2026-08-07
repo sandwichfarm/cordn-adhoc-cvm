@@ -45,6 +45,8 @@
   import { projectStartupSignal } from "./startup-signal-presentation";
   import UserProfile from "./UserProfile.svelte";
   import WorkspaceNav from "./WorkspaceNav.svelte";
+  import { createMobileOverlayController } from "./mobile-overlay.svelte";
+  import { mountAppVisualViewport } from "./app-visual-viewport";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import { channelPreferences } from "../notifications/channel-preferences.svelte";
 
@@ -118,6 +120,13 @@
   let managementOpen = $state(false);
   let compactViewport = $state(false);
   let mobileRailOpen = $state(false);
+  let mobileChildSurfaceOpen = $state(false);
+  let mobileChildSurfaceRestoresDrawer = false;
+  let mobileOverlay = $state<ReturnType<typeof createMobileOverlayController> | null>(null);
+  let hostChatElement = $state<HTMLElement>();
+  let mobileRoomBrowser = $state<HTMLElement>();
+  let mobileRoomBrowserTrigger = $state<HTMLButtonElement>();
+  let mobileRoomBrowserClose = $state<HTMLButtonElement>();
   let mobileToolsOpen = $state(false);
   let mobileToolsTrigger = $state<HTMLButtonElement>();
   let refreshState = $state<"idle" | "refreshing" | "refreshed">("idle");
@@ -850,7 +859,7 @@
 
   async function openCreateDialog() {
     serverMenuOpen = false;
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     title = "";
     error = "";
@@ -944,6 +953,7 @@
   }
 
   function openInviteDialog() {
+    closeMobileRoomBrowser(false);
     if (room) {
       const entry = buildHostedRoomEntry(room);
       room = entry.room;
@@ -991,7 +1001,7 @@
 
   async function selectRoom(entry: HostedRoomEntry) {
     inviteDialogOpen = false;
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     selectedServerPubkey = coordinatorPubkey;
     const latest = loadRoom(entry.room.id, entry.room.coordinatorPubkey) ?? entry.room;
@@ -1001,10 +1011,12 @@
     inviteUrl = refreshedEntry.inviteUrl;
     qrUrl = refreshedEntry.qrUrl;
     if (hasChatIntent) onNavigate("/");
+    await tick();
+    document.querySelector<HTMLElement>("[data-testid='active-conversation-heading']")?.focus();
   }
 
   function navigateFromRail(href: string): void {
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     onNavigate(href);
   }
@@ -1075,14 +1087,34 @@
   }
 
   function openSettings(): void {
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     settingsDialogOpen = true;
   }
 
+  async function openMobileRoomBrowser(): Promise<void> {
+    mobileRailOpen = true;
+    await tick();
+    if (!mobileOverlay || !mobileRoomBrowser) return;
+    mobileOverlay.open({
+      id: "room-browser",
+      element: mobileRoomBrowser,
+      opener: mobileRoomBrowserTrigger,
+      initialFocus: mobileRoomBrowserClose,
+      safeScrim: true,
+      onClose: () => { mobileRailOpen = false; },
+    });
+  }
+
+  function closeMobileRoomBrowser(restoreFocus = true): void {
+    if (mobileOverlay?.activeId === "room-browser") mobileOverlay.close({ restoreFocus });
+    else mobileRailOpen = false;
+  }
+
   function toggleMobileRail(): void {
     mobileToolsOpen = false;
-    mobileRailOpen = !mobileRailOpen;
+    if (mobileRailOpen) closeMobileRoomBrowser();
+    else void openMobileRoomBrowser();
   }
 
   function closeMobileTools(restoreFocus = true): void {
@@ -1092,7 +1124,7 @@
   }
 
   function toggleManagement(): void {
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     managementOpen = !managementOpen;
   }
@@ -1378,6 +1410,7 @@
   }
 
   onDestroy(() => {
+    mobileOverlay?.destroy();
     reachabilityProbeGeneration += 1;
     if (reachabilityTimer !== null) window.clearInterval(reachabilityTimer);
     reachabilityTimer = null;
@@ -1391,6 +1424,14 @@
     session?.stop();
   });
   onMount(() => {
+    const visualViewport = mountAppVisualViewport(document.documentElement);
+    if (hostChatElement) {
+      mobileOverlay = createMobileOverlayController({
+        applicationRoot: hostChatElement,
+        backgroundRoots: [hostChatElement],
+        fallbackFocus: hostChatElement,
+      });
+    }
     setupWasCompleteOnMount = config.isSetupComplete;
     const closeDialogsOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -1399,11 +1440,26 @@
       const targetMessageId = reactionPickerMessageId;
       reactionPickerMessageId = null;
       if (targetMessageId) void tick().then(() => document.getElementById(`host-add-reaction-${targetMessageId}`)?.focus());
-      mobileRailOpen = false;
+      closeMobileRoomBrowser();
       closeMobileTools();
       if (inviteDialogOpen) closeInviteDialog();
       if (createDialogOpen) closeCreateDialog();
       settingsDialogOpen = false;
+    };
+    const closeDrawerForMobileSurface = () => {
+      // Sheets reposition on every scroll and resize, so only the opening
+      // transition may decide whether the drawer owns this child surface.
+      if (!mobileChildSurfaceOpen) mobileChildSurfaceRestoresDrawer = mobileRailOpen;
+      mobileChildSurfaceOpen = true;
+      closeMobileRoomBrowser(false);
+    };
+    const clearMobileChildSurface = () => {
+      mobileChildSurfaceOpen = false;
+      // Only re-open the drawer when the sheet's trigger lived inside it, so
+      // focus returns to real UI. A sheet opened from the chat surface must
+      // never raise a drawer the reader did not ask for.
+      if (compactViewport && mobileChildSurfaceRestoresDrawer) mobileRailOpen = true;
+      mobileChildSurfaceRestoresDrawer = false;
     };
     refreshRemoteRooms();
     const compactQuery = window.matchMedia("(max-width: 900px)");
@@ -1450,10 +1506,13 @@
     window.addEventListener("online", recheckBrowserOnline);
     document.addEventListener("visibilitychange", recheckWhenVisible);
     window.addEventListener("keydown", closeDialogsOnEscape);
+    window.addEventListener("cahmls:mobile-overlay-open", closeDrawerForMobileSurface);
+    window.addEventListener("cahmls:mobile-overlay-close", clearMobileChildSurface);
     const acknowledgeOnVisibility = () => acknowledgeVisibleHostRoom();
     document.addEventListener("visibilitychange", acknowledgeOnVisibility);
     reachabilityTimer = window.setInterval(() => void probeRemoteCoordinators(), 12_000);
     return () => {
+      visualViewport.destroy();
       reachabilityProbeGeneration += 1;
       if (reachabilityTimer !== null) window.clearInterval(reachabilityTimer);
       reachabilityTimer = null;
@@ -1465,6 +1524,8 @@
       window.removeEventListener("online", recheckBrowserOnline);
       document.removeEventListener("visibilitychange", recheckWhenVisible);
       window.removeEventListener("keydown", closeDialogsOnEscape);
+      window.removeEventListener("cahmls:mobile-overlay-open", closeDrawerForMobileSurface);
+      window.removeEventListener("cahmls:mobile-overlay-close", clearMobileChildSurface);
       document.removeEventListener("visibilitychange", acknowledgeOnVisibility);
       compactQuery.removeEventListener("change", syncCompactViewport);
     };
@@ -1490,6 +1551,7 @@
       <div class:guided-setup={guidedSetupMode} class="host-commandbar">
         {#if !setupRequired}
           <button
+            bind:this={mobileRoomBrowserTrigger}
             class:active={mobileRailOpen}
             class="mobile-rail-toggle"
             type="button"
@@ -1532,6 +1594,10 @@
       </div>
     </header>
 
+    {#if coordinator.snapshotPersistence === "flushing"}
+      <p class="absolute right-4 top-16 z-30 border border-[#e4e78d] bg-[#101614] px-3 py-2 text-xs text-[#e4e78d]" role="status">Stopping and saving…</p>
+    {/if}
+
     <div
       class:management-open={managementOpen}
       class:startup-mode={coordinator.status === "starting" || coordinator.status === "stopping"}
@@ -1540,21 +1606,29 @@
       class="host-layout grid min-h-0 min-w-0"
     >
       {#if mobileRailOpen && compactViewport}
-        <button class="mobile-rail-scrim" type="button" aria-label="Close room browser" onclick={() => mobileRailOpen = false}></button>
+        <button class="mobile-rail-scrim" type="button" aria-label="Close room browser" onclick={() => mobileOverlay?.dismissFromScrim()}></button>
       {/if}
       {#if !setupRequired}
       <aside
+        bind:this={mobileRoomBrowser}
         id="host-room-rail"
         class:mobile-open={mobileRailOpen}
         class="host-rail min-h-0 min-w-0 overflow-y-auto border-b border-[#21352a] p-3 sm:p-4 lg:border-r lg:border-b-0"
         data-testid="invite-panel"
         data-local-rail-state={localRailState}
         aria-busy={localRailBusy}
-        aria-hidden={compactViewport && !mobileRailOpen}
-        inert={compactViewport && !mobileRailOpen}
+        aria-hidden={compactViewport && !mobileRailOpen && !mobileChildSurfaceOpen}
+        inert={compactViewport && !mobileRailOpen && !mobileChildSurfaceOpen}
+        role={compactViewport ? "dialog" : undefined}
+        aria-modal={compactViewport && mobileRailOpen ? "true" : undefined}
+        aria-label={compactViewport ? "Rooms" : undefined}
       >
         <span class="sr-only" aria-live="polite">{unreadAnnouncement}</span>
         <div class="flex min-h-full flex-col gap-4">
+            <header class="room-browser-mobile-heading">
+              <h2>Rooms</h2>
+              <button bind:this={mobileRoomBrowserClose} type="button" aria-label="Close room browser" onclick={() => closeMobileRoomBrowser()}>Close room browser</button>
+            </header>
             <div class="rail-join"><InviteRedeemer onNavigate={navigateFromRail} /></div>
             {#if false}
             <nav class="channel-browser" aria-label="Server and channel browser">
@@ -1958,7 +2032,7 @@
       </aside>
       {/if}
 
-      <section class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
+      <section bind:this={hostChatElement} tabindex="-1" class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
         {#if locked && !embeddedChatActive}
           <PassphrasePrompt embedded {coordinator} />
         {:else if setupRequired}
@@ -1989,6 +2063,7 @@
         {:else if localRoomReady}
           {@const composerEnabled = true}
           <div class="room-pane flex h-full min-h-0 flex-col">{#if roomConnectionDetail}<p class="host-connection-banner">{roomConnectionDetail}</p>{/if}
+            <h1 class="sr-only" tabindex="-1" data-testid="active-conversation-heading">{room.title}</h1>
             <RoomActionsMenu
               roomTitle={room.title}
               roomId={room.id}
@@ -2383,6 +2458,7 @@
 </main>
 
 <style>
+  .operator-field { height: var(--app-visual-height, 100dvh); max-height: var(--app-visual-height, 100dvh); overscroll-behavior: contain; }
   .ignored-streak-disclosure { width: 100%; border: 1px solid #293832; background: #101614; padding: 8px 16px; color: #82958a; font-size: 14px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; }
   .ignored-streak-disclosure:hover, .ignored-streak-disclosure:focus-visible { border-color: #7cf59d; color: #dfffe7; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .host-workspace { max-width: 100vw; overflow: hidden; background: rgb(7 12 9 / .8); }
@@ -2400,7 +2476,7 @@
   .command-cluster { display: flex; min-width: 0; align-items: stretch; gap: .08rem; }
   .command-cluster-label { display: none; align-items: center; padding: 0 .42rem; color: #617268; font-size: .46rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
   .command-cluster-divider { width: 1px; height: 1.55rem; align-self: center; margin: 0 .28rem; background: #2b3c31; }
-  .mobile-rail-toggle, .mobile-tools-toggle, .mobile-tools-scrim, .mobile-rail-scrim { display: none; }
+  .mobile-rail-toggle, .mobile-tools-toggle, .mobile-tools-scrim, .mobile-rail-scrim, .room-browser-mobile-heading { display: none; }
   .host-commandbar :global(.notification-feed), .host-commandbar :global(.notification-center), .host-commandbar :global(.user-profile) { border: 0; }
   .host-commandbar :global(.notification-feed-trigger), .host-commandbar :global(.notification-trigger), .host-commandbar :global(.user-trigger) { border: 0; background: transparent; }
   .host-commandbar :global(.notification-feed-trigger:hover), .host-commandbar :global(.notification-feed-trigger[aria-expanded="true"]), .host-commandbar :global(.notification-trigger:hover), .host-commandbar :global(.notification-trigger[aria-expanded="true"]), .host-commandbar :global(.user-trigger:hover), .host-commandbar :global(.user-trigger[aria-expanded="true"]) { background: #101713; }
@@ -2432,7 +2508,7 @@
   .host-input { width: 100%; border: 1px solid #34433b; background: #090d0b; padding: .7rem .8rem; color: #effff2; outline: none; }
   .host-input:focus { border-color: #7cf59d; box-shadow: 0 0 0 2px rgb(124 245 157 / .11); }
   .host-input:disabled { cursor: not-allowed; border-color: #26322c; color: #64766b; opacity: .72; }
-  .host-primary { border: 1px solid #7cf59d; background: #7cf59d; padding: .72rem 1rem; color: #08110b; font-weight: 650; }
+  .host-primary { min-width: 44px; min-height: 44px; border: 1px solid #7cf59d; background: #7cf59d; padding: .72rem 1rem; color: #08110b; font-weight: 650; }
   .host-primary:hover { border-color: #c5ffcf; background: #c5ffcf; }
   .host-primary:disabled { cursor: not-allowed; opacity: .45; }
   .host-secondary { border: 1px solid #496451; padding: .55rem .7rem; color: #c6eccc; font-size: .75rem; }
@@ -2623,7 +2699,7 @@
   .invite-dialog.qr-expanded .share-qr { width: auto; height: 100%; max-width: 100%; max-height: 100%; aspect-ratio: 1; box-sizing: border-box; }
   .invite-dialog.qr-expanded .share-qr img { width: 100%; height: 100%; }
   .invite-dialog.qr-expanded .invite-details, .invite-dialog.qr-expanded .invite-in-app { display: none; }
-  .emoji-button { flex: 0 0 auto; border: 1px solid #293832; background: #0b0e0d; padding: .2rem .4rem; font-size: .9rem; line-height: 1; }
+  .emoji-button { flex: 0 0 auto; min-width: 44px; min-height: 44px; border: 1px solid #293832; background: #0b0e0d; padding: .2rem .4rem; font-size: .9rem; line-height: 1; }
   .emoji-button:hover { border-color: #7cf59d; background: #112219; }
   .emoji-button:disabled { cursor: not-allowed; opacity: .28; }
   .host-connection-banner { flex: 0 0 auto; border-bottom: 1px solid #293832; background: #111814; padding: .65rem 1rem; color: #a9bbb0; font-size: .7rem; line-height: 1.5; }
@@ -2698,6 +2774,9 @@
     .host-commandbar { display: grid; width: 100%; grid-template-columns: minmax(3.25rem, 1fr) auto auto; align-items: stretch; justify-content: stretch; }
     .host-commandbar.guided-setup { position: absolute; top: 0; right: .45rem; width: auto; grid-template-columns: auto; justify-content: end; }
     .mobile-rail-toggle { display: grid; min-width: 0; height: 2.75rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .4rem; padding: 0 .55rem; color: #b9cbbf; text-align: left; font-size: .6rem; }
+    .room-browser-mobile-heading { position: sticky; z-index: 1; top: 0; display: flex; min-height: 2.75rem; align-items: center; justify-content: space-between; border-bottom: 1px solid #293832; background: #0d1310; padding: max(8px, env(safe-area-inset-top)) 8px 8px; }
+    .room-browser-mobile-heading h2 { color: #effff2; font-size: 18px; font-weight: 600; }
+    .room-browser-mobile-heading button { min-width: 2.75rem; min-height: 2.75rem; border: 1px solid #496451; padding: 8px; color: #bde7c7; font-size: 12px; }
     .mobile-rail-toggle:hover, .mobile-rail-toggle.active { background: #142018; color: #effff2; }
     .mobile-rail-toggle > span:first-child { color: #7cf59d; font-size: .78rem; }
     .mobile-rail-toggle > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2705,7 +2784,7 @@
     .mobile-tools-toggle { position: relative; z-index: 61; display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #82958a; font-size: .7rem; letter-spacing: .08em; }
     .mobile-tools-toggle:hover, .mobile-tools-toggle.active { background: #142018; color: #effff2; }
     .mobile-tools-scrim { position: fixed; z-index: 59; inset: 0; display: block; border: 0; background: rgb(0 0 0 / .38); cursor: default; backdrop-filter: blur(1px); }
-    .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); max-height: calc(100dvh - 1.1rem); grid-template-columns: minmax(0, 1fr); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
+    .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); max-height: calc(var(--app-visual-height, 100dvh) - 1.1rem); grid-template-columns: minmax(0, 1fr); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
     .host-utilities.open { display: grid; }
     .host-utilities, .command-cluster { gap: 0; }
     .command-cluster { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); }
@@ -2724,7 +2803,7 @@
       bottom: .55rem;
       left: .55rem;
       width: auto;
-      max-height: calc(100dvh - 1.1rem);
+      max-height: calc(var(--app-visual-height, 100dvh) - 1.1rem);
       overflow-y: auto;
       overscroll-behavior: contain;
     }
@@ -2738,7 +2817,7 @@
       bottom: .55rem;
       left: .55rem;
       width: auto;
-      max-height: calc(100dvh - 1.1rem);
+      max-height: calc(var(--app-visual-height, 100dvh) - 1.1rem);
       overflow-y: auto;
       overscroll-behavior: contain;
     }
@@ -2757,7 +2836,7 @@
     .management-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .management-summary > div { padding: .65rem; }
     .share-overlay { padding: .55rem; }
-    .share-dialog { display: grid; max-height: calc(100dvh - 1.1rem); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+    .share-dialog { display: grid; max-height: calc(var(--app-visual-height, 100dvh) - 1.1rem); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
     .share-dialog-header { padding: .7rem .75rem; }
     .share-dialog-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     .share-dialog-content { padding: .75rem; }
@@ -2765,7 +2844,7 @@
     .invite-dialog-header { padding-inline: .85rem; }
     .invite-in-app { margin-inline: .85rem; }
     .share-qr { width: min(100%, 15rem, 42dvh); border-width: .4rem; }
-    .invite-dialog.qr-expanded { width: calc(100vw - 1.1rem); height: calc(100dvh - 1.1rem); }
+    .invite-dialog.qr-expanded { width: calc(100vw - 1.1rem); height: calc(var(--app-visual-height, 100dvh) - 1.1rem); }
     .host-composer-status:not(.unavailable) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   }
 
