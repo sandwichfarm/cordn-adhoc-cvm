@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
 status: planning
-stopped_at: Completed 27-01-PLAN.md
-last_updated: "2026-08-07T09:54:59.286Z"
+stopped_at: Completed 27-02-PLAN.md
+last_updated: "2026-08-07T10:24:39.905Z"
 last_activity: 2026-08-07
 last_activity_desc: Phase 26 complete; offline coordinator room disclosure verified
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 40
-  completed_plans: 35
+  completed_plans: 36
 ---
 
 # Project State
@@ -33,7 +33,7 @@ Status: Ready to plan
 Last activity: 2026-08-07 — Phase 26 complete; offline coordinator room disclosure verified
 Pull request: [#13 — favorite groups and online-only invites](https://github.com/sandwichfarm/CAHMLS/pull/13) — open, stacked on [#12 — participant chat interactions](https://github.com/sandwichfarm/CAHMLS/pull/12). [#9](https://github.com/sandwichfarm/CAHMLS/pull/9) merged 2026-08-06.
 
-Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 88%)
+Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 90%)
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 | Phase 24 P05 | 72min | 2 tasks | 5 files |
 | Phase 25-favorite-groups-invite-availability P01 | 9min | 3 tasks | 8 files |
 | Phase 27 P01 | 20m | 3 tasks | 13 files |
+| Phase 27-mobile-optimized-experience P02 | 1h 20m | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -118,6 +119,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Shared invite Join defaults to unavailable and enables only for an exact online workspace reachability result.
 - [Phase ?]: Coordinator snapshots are validated IndexedDB records keyed only by normalized coordinator pubkey.
 - [Phase ?]: Coordinator stop waits for the serialized snapshot flush and preserves a live runtime on flush failure.
+- [Phase ?]: Mobile room navigation uses a single named drawer and preserves route-owned room callbacks.
+- [Phase ?]: Compact sheets coordinate through viewportOverlay and restore a visible exact opener.
 
 ### Pending Todos
 
@@ -152,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-07T09:54:59.279Z
-Stopped at: Completed 27-01-PLAN.md
+Last session: 2026-08-07T10:24:39.898Z
+Stopped at: Completed 27-02-PLAN.md
 Resume file: None
