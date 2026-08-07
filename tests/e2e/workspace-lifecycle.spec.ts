@@ -2113,7 +2113,6 @@ test("visual viewport keeps focused composer reachable", async ({ page }) => {
 
   const composer = page.getByTestId("host-chat-composer");
   const input = composer.getByPlaceholder("Message as host");
-  const send = composer.getByRole("button", { name: "Send" });
   const log = page.getByTestId("host-message-list");
   const previousScroll = await log.evaluate((element) => element.scrollTop);
   await input.focus();
