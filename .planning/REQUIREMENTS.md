@@ -109,6 +109,10 @@
 - [x] **FAV-02**: Favorited groups are duplicated in a dedicated Favorites section above all coordinator groups while remaining in their original coordinator section, and unfavoriting removes only the duplicate.
 - [x] **INVMSG-02**: A rendered room invite is actionable only while its referenced coordinator is known online; otherwise it is visibly subdued, disabled, uses a not-allowed pointer, and exposes the reason “Coordinator is offline” by tooltip and accessible text.
 
+### Offline Coordinator Rooms
+
+- [ ] **SIDE-07**: An offline remote coordinator hides its room rows behind a compact “N chats offline” summary by default; hovering or keyboard-focusing the card reveals those navigable historical chats with restrained motion and a reduced-motion fallback.
+
 ## Future Requirements
 
 ### Notification Expansion
@@ -196,11 +200,12 @@
 | FAV-01 | Phase 25 | Complete |
 | FAV-02 | Phase 25 | Complete |
 | INVMSG-02 | Phase 25 | Complete |
+| SIDE-07 | Phase 26 | Pending |
 
 **Coverage:**
 
-- v1.1 requirements: 56 total
-- Mapped to phases: 56
+- v1.1 requirements: 57 total
+- Mapped to phases: 57
 - Unmapped: 0 ✓
 
 ---

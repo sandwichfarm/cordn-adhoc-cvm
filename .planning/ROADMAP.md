@@ -21,6 +21,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [x] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history. (completed 2026-08-06)
 - [x] **Phase 23: Bounded Gift-Wrap Delivery** - Stop unavailable relays and room polling from accumulating immortal ContextVM gift-wrap publications.
 - [x] **Phase 25: Favorite Groups & Invite Availability** - Add persistent duplicate favorites and prevent room-invite actions while their coordinator is offline. (completed 2026-08-07)
+- [ ] **Phase 26: Offline Coordinator Room Disclosure** - Collapse offline coordinator rooms into an animated, accessible disclosure.
 
 ## Phase Details
 
@@ -59,6 +60,24 @@ and closes with repeatable delivery guidance and automated proof.
 **Plans**: 1/1 plans executed
 
 - [x] 25-01-PLAN.md
+
+**UI hint**: yes
+
+### Phase 26: Offline Coordinator Room Disclosure
+
+**Goal**: Offline coordinators stay visually compact while their historical chats remain immediately reachable on deliberate hover or keyboard interaction.
+**Depends on**: Phase 22, Phase 25
+**Requirements**: SIDE-07
+**Success Criteria** (what must be TRUE):
+
+  1. An offline remote coordinator with rooms initially renders a grammatically correct “1 chat offline” or “N chats offline” summary instead of room rows.
+  2. Hovering the coordinator card reveals its existing room rows with restrained motion and keeps them available while the pointer traverses the card.
+  3. Keyboard focus reveals the same rooms without requiring a pointer, existing room navigation remains unchanged, and reduced-motion users receive an immediate transition.
+  4. Online, connecting, unknown, local, and Favorites presentations retain their existing behavior.
+
+**Plans**: 0/1 plans executed
+
+- [ ] 26-01-PLAN.md
 
 **UI hint**: yes
 
@@ -274,3 +293,4 @@ Plans:
 | 23. Bounded Gift-Wrap Delivery | 2/2 | Complete | 2026-08-06 |
 | 24. Chat User Interactions | 6/6 | Complete    | 2026-08-07 |
 | 25. Favorite Groups & Invite Availability | 2/2 | Complete    | 2026-08-07 |
+| 26. Offline Coordinator Room Disclosure | 0/1 | In Progress |  |
