@@ -31,7 +31,7 @@ Phase: 18 — Unified Presence, Notifications & Controls
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-08-07 — Phase 24 complete, transitioned to Phase 18
-Pull request: [#7 — maximize room QR codes](https://github.com/sandwichfarm/CAHMLS/pull/7) — open, CI in progress. [#6](https://github.com/sandwichfarm/CAHMLS/pull/6) merged 2026-08-06.
+Pull request: [#12 — participant chat interactions](https://github.com/sandwichfarm/CAHMLS/pull/12) — open, CI in progress. [#9](https://github.com/sandwichfarm/CAHMLS/pull/9) merged 2026-08-06.
 
 Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 94%)
 
