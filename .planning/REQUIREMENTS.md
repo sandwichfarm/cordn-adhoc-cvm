@@ -103,6 +103,12 @@
 - [x] **FOLLOW-02**: Following a participant serially merges a new `p` tag into the newest validated kind-3 event, preserves unrelated tags and content, signs a strictly newer replacement, publishes it to the configured social relays, and does not report success until publication succeeds.
 - [x] **HILITE-01**: A viewer can choose or clear a participant highlight color; the preference persists between browser sessions and is rendered consistently in both host and invitee chat views without reducing text contrast.
 
+### Favorite Groups & Invite Availability
+
+- [ ] **FAV-01**: Every active sidebar group exposes an accessible favorite toggle both as a star revealed by row hover or keyboard focus and in its three-dot menu; the exact coordinator-and-room favorite state persists across browser sessions.
+- [ ] **FAV-02**: Favorited groups are duplicated in a dedicated Favorites section above all coordinator groups while remaining in their original coordinator section, and unfavoriting removes only the duplicate.
+- [ ] **INVMSG-02**: A rendered room invite is actionable only while its referenced coordinator is known online; otherwise it is visibly subdued, disabled, uses a not-allowed pointer, and exposes the reason “Coordinator is offline” by tooltip and accessible text.
+
 ## Future Requirements
 
 ### Notification Expansion
@@ -187,6 +193,9 @@
 | FOLLOW-01 | Phase 24 | Complete |
 | FOLLOW-02 | Phase 24 | Complete |
 | HILITE-01 | Phase 24 | Complete |
+| FAV-01 | Phase 25 | Pending |
+| FAV-02 | Phase 25 | Pending |
+| INVMSG-02 | Phase 25 | Pending |
 
 **Coverage:**
 

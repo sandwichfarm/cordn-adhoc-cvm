@@ -20,6 +20,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [ ] **Phase 21: First-Run Coordinator Identity & Profile** - Require deliberate operator identity and coordinator naming before first startup.
 - [x] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history. (completed 2026-08-06)
 - [x] **Phase 23: Bounded Gift-Wrap Delivery** - Stop unavailable relays and room polling from accumulating immortal ContextVM gift-wrap publications.
+- [ ] **Phase 25: Favorite Groups & Invite Availability** - Add persistent duplicate favorites and prevent room-invite actions while their coordinator is offline.
 
 ## Phase Details
 
@@ -40,6 +41,22 @@ and closes with repeatable delivery guidance and automated proof.
 - [x] 15-01-PLAN.md
 - [x] 15-02-PLAN.md
 - [x] 15-03-PLAN.md
+
+**UI hint**: yes
+
+### Phase 25: Favorite Groups & Invite Availability
+
+**Goal**: Frequently used groups stay one click away without leaving their coordinator grouping, and room invites never imply that an offline coordinator can currently be joined.
+**Depends on**: Phase 22, Phase 24
+**Requirements**: FAV-01, FAV-02, INVMSG-02
+**Success Criteria** (what must be TRUE):
+
+  1. Hovering or keyboard-focusing any active group row reveals a star toggle, with the same toggle available in the room’s three-dot menu.
+  2. Favorite state persists by exact coordinator and room identity and produces a duplicate Favorites section above coordinator cards without removing the original row.
+  3. Favorite duplicates navigate and expose the same room actions as their source rows, and unfavoriting either copy removes only the Favorites duplicate.
+  4. Invite messages are enabled only for coordinators known online; offline, unknown, and connecting states render a subdued disabled action with a not-allowed cursor and the reason “Coordinator is offline.”
+
+**Plans**: 0/1 plans executed
 
 **UI hint**: yes
 
@@ -254,3 +271,4 @@ Plans:
 | 22. Coordinator-Grouped Sidebar | 2/2 | Complete | 2026-08-06 |
 | 23. Bounded Gift-Wrap Delivery | 2/2 | Complete | 2026-08-06 |
 | 24. Chat User Interactions | 6/6 | Complete    | 2026-08-07 |
+| 25. Favorite Groups & Invite Availability | 0/1 | Not started | - |
