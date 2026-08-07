@@ -798,7 +798,7 @@ test("coordinator cards keep stable order and collapse dead groups into history"
   await expect(page.getByTestId("sidebar-history").getByRole("button", { name: /History 4/ })).toBeVisible();
 });
 
-test("offline coordinator disclosure keeps history reachable by pointer and keyboard", async ({ page }) => {
+test("offline chat disclosure is touch-operated while retaining pointer and keyboard discovery", async ({ page }) => {
   const singularCoordinator = "e".repeat(64);
   const pluralCoordinator = "f".repeat(64);
   await page.goto("/");
@@ -811,22 +811,25 @@ test("offline coordinator disclosure keeps history reachable by pointer and keyb
   const singularCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${singularCoordinator}"]`);
   const pluralCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${pluralCoordinator}"]`);
 
-  await expect(singularCard).toContainText("1 chat offline");
-  await expect(pluralCard).toContainText("2 chats offline");
+  const singularDisclosure = singularCard.getByRole("button", { name: "Show 1 offline chat" });
+  const pluralDisclosure = pluralCard.getByRole("button", { name: "Show 2 offline chats" });
+  await expect(singularDisclosure).toBeVisible();
+  await expect(pluralDisclosure).toBeVisible();
   await expect(singularCard.locator(".channel-row")).toHaveCount(0);
   await expect(pluralCard.locator(".channel-row")).toHaveCount(0);
-  await expect(singularCard).toHaveAttribute("tabindex", "0");
-  await expect(singularCard).toHaveAttribute("aria-describedby", /.+/);
-  const descriptionId = await singularCard.getAttribute("aria-describedby");
-  await expect(page.locator(`#${descriptionId}`)).toHaveText("Focus to reveal 1 offline historical chat.");
+  await expect.poll(() => singularDisclosure.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return bounds.width >= 44 && bounds.height >= 44;
+  })).toBe(true);
 
-  await singularCard.focus();
+  await singularDisclosure.tap();
+  await expect(singularDisclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(singularCard.getByRole("button", { name: "Hide offline chats" })).toBeVisible();
   const soloRoom = singularCard.getByRole("button", { name: /Open room Solo archive, hosted by/ });
   await expect(soloRoom).toBeVisible();
-  await page.keyboard.press("Tab");
-  await expect(soloRoom).toBeFocused();
+  await singularCard.getByRole("button", { name: "Hide offline chats" }).tap();
+  await expect(singularCard.locator(".channel-row")).toHaveCount(0);
 
-  await page.locator("body").click({ position: { x: 2, y: 2 } });
   await singularCard.hover();
   await expect(soloRoom).toBeVisible();
   await soloRoom.hover();
