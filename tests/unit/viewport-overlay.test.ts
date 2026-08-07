@@ -1,7 +1,94 @@
 import { describe, expect, it } from "vitest";
 import { calculateOverlayPosition } from "../../src/lib/viewport-overlay";
+import { mountAppVisualViewport, type AppVisualViewportWindow } from "../../src/components/app-visual-viewport";
+
+function createViewportWindow(height: number) {
+  const listeners = new Map<string, Set<EventListener>>();
+  let nextFrame = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  const viewportListeners = new Map<string, Set<EventListener>>();
+  const visualViewport = {
+    height,
+    addEventListener(type: string, listener: EventListener) {
+      const bucket = viewportListeners.get(type) ?? new Set<EventListener>();
+      bucket.add(listener);
+      viewportListeners.set(type, bucket);
+    },
+    removeEventListener(type: string, listener: EventListener) {
+      viewportListeners.get(type)?.delete(listener);
+    },
+    dispatch(type: string) {
+      for (const listener of viewportListeners.get(type) ?? []) listener(new Event(type));
+    },
+  };
+  const browser: AppVisualViewportWindow = {
+    visualViewport,
+    addEventListener(type, listener) {
+      const bucket = listeners.get(type) ?? new Set<EventListener>();
+      bucket.add(listener);
+      listeners.set(type, bucket);
+    },
+    removeEventListener(type, listener) {
+      listeners.get(type)?.delete(listener);
+    },
+    requestAnimationFrame(callback) {
+      const id = ++nextFrame;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      frames.delete(id);
+    },
+  };
+
+  return {
+    browser,
+    visualViewport,
+    dispatch(type: string) {
+      for (const listener of listeners.get(type) ?? []) listener(new Event(type));
+    },
+    flush() {
+      const queued = [...frames.values()];
+      frames.clear();
+      queued.forEach((callback) => callback(0));
+    },
+    listenerCount() {
+      return [...listeners.values(), ...viewportListeners.values()].reduce((total, bucket) => total + bucket.size, 0);
+    },
+  };
+}
 
 describe("calculateOverlayPosition", () => {
+  it("shares a single visual viewport frame and cleans it up after the final owner", () => {
+    const fixture = createViewportWindow(430);
+    const root = document.createElement("div");
+    const first = mountAppVisualViewport(root, fixture.browser);
+    const second = mountAppVisualViewport(root, fixture.browser);
+
+    fixture.flush();
+    expect(root.style.getPropertyValue("--app-visual-height")).toBe("430px");
+    fixture.visualViewport.height = 390;
+    fixture.visualViewport.dispatch("resize");
+    fixture.visualViewport.dispatch("scroll");
+    fixture.dispatch("resize");
+    fixture.flush();
+    expect(root.style.getPropertyValue("--app-visual-height")).toBe("390px");
+
+    first.destroy();
+    expect(fixture.listenerCount()).toBeGreaterThan(0);
+    second.destroy();
+    expect(fixture.listenerCount()).toBe(0);
+  });
+
+  it("keeps a dynamic viewport fallback when VisualViewport is unavailable", () => {
+    const root = document.createElement("div");
+    const browser = createViewportWindow(430).browser;
+    browser.visualViewport = undefined;
+    const owner = mountAppVisualViewport(root, browser);
+    expect(root.style.getPropertyValue("--app-visual-height")).toBe("100dvh");
+    owner.destroy();
+  });
+
   it("keeps an end-aligned panel inside the viewport", () => {
     expect(calculateOverlayPosition({
       viewportWidth: 1_280,
