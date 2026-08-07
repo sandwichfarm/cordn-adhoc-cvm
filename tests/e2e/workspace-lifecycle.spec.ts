@@ -766,6 +766,36 @@ test("favorite menu duplicates the exact room and survives reload", async ({ pag
   await expect(restoredSource.locator(".channel-row")).toHaveCount(1);
 });
 
+test("favorite star mirrors duplicate state and keeps sidebar controls touch-safe", async ({ page }) => {
+  const coordinator = "c".repeat(64);
+  await page.goto("/");
+  await seedJoinedRoom(page, "Star favorite", coordinator);
+  await page.reload();
+
+  const rail = page.getByTestId("invite-panel");
+  const sourceRow = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinator}"] .channel-row`);
+  const star = sourceRow.getByRole("button", { name: "Favorite # Star favorite" });
+  await expect(star).toHaveAttribute("aria-pressed", "false");
+  const bounds = await Promise.all([sourceRow.boundingBox(), star.boundingBox()]);
+  expect(bounds[0]?.height).toBeGreaterThanOrEqual(44);
+  expect(bounds[1]?.width).toBeGreaterThanOrEqual(44);
+  expect(bounds[1]?.height).toBeGreaterThanOrEqual(44);
+
+  await star.focus();
+  await expect(star).toHaveCSS("opacity", "1");
+  await star.click();
+  await expect(star).toHaveAttribute("aria-label", "Unfavorite # Star favorite");
+  await expect(star).toHaveAttribute("aria-pressed", "true");
+  const favoriteStar = rail.getByRole("group", { name: "Favorites" }).getByRole("button", { name: "Unfavorite # Star favorite" });
+  await expect(favoriteStar).toHaveAttribute("aria-pressed", "true");
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expectNoDocumentOverflow(page, { width: 320, height: 720 });
+  await favoriteStar.click();
+  await expect(rail.getByRole("group", { name: "Favorites" })).toHaveCount(0);
+  await expect(sourceRow).toHaveCount(1);
+});
+
 test("generates copyable identity on first load", async ({ page }) => {
   await page.goto("/");
 
