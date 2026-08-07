@@ -4,6 +4,8 @@ import {
   CoordinatorStorageFailure,
   clearPersistedCoordinatorState,
   createBrowserCoordinatorStorage,
+  removePersistedCoordinatorSnapshot,
+  type CoordinatorStorageFailureKind,
 } from "../cordn/coordinator/storage/indexedDbSnapshotStorage";
 import { KeyManager } from "../crypto/key-manager";
 import {
@@ -238,6 +240,8 @@ export class CoordinatorStore {
   persistenceError = $state<string | null>(null);
   persistenceEnabled = $state(false);
   snapshotPersistence = $state<SnapshotPersistenceState>("temporary");
+  snapshotFailureKind = $state<CoordinatorStorageFailureKind | null>(null);
+  private snapshotTemporarySession = $state(false);
   relayStatuses = $state<Record<string, RelayConnectionStatus>>({});
   debugLog = $state<DebugLogEntry[]>([]);
   profilePublicationState = $state<CoordinatorProfilePublicationState>("idle");
@@ -461,7 +465,7 @@ export class CoordinatorStore {
     this.recoveryTargets = [];
     this.recoveryCompleted.clear();
     this.status = transitionCoordinator(this.status, "start");
-    this.snapshotPersistence = this.persistenceEnabled ? "checking" : "temporary";
+    this.snapshotPersistence = this.persistenceEnabled && !this.snapshotTemporarySession ? "checking" : "temporary";
     this.setStartupProgress("checking-instance");
     configStore.lock();
     this.error = null;
@@ -487,11 +491,11 @@ export class CoordinatorStore {
         keyManager.getSecretKeyBytes(),
         configStore.enabledRelayUrls,
         configStore.coordinatorOptions,
-        this.persistenceEnabled,
+        this.persistenceEnabled && !this.snapshotTemporarySession,
         {
           onStartupPhase: ({ phase }) => {
             const detail = phase === "opening-storage"
-              ? this.persistenceEnabled
+              ? this.persistenceEnabled && !this.snapshotTemporarySession
                 ? "Loading encrypted room state from this device."
                 : "Preparing temporary room state for this session."
               : phase === "connecting-relays"
@@ -547,7 +551,7 @@ export class CoordinatorStore {
         return;
       }
       this.running = running;
-      this.snapshotPersistence = this.persistenceEnabled ? "durable" : "temporary";
+      this.snapshotPersistence = this.persistenceEnabled && !this.snapshotTemporarySession ? "durable" : "temporary";
       this.setEnabledRelayStatuses("connected");
       const recovered = await this.recoverHostedRooms(generation, signal);
       if (!recovered || !this.ownsGeneration(generation, signal)) return;
@@ -562,6 +566,7 @@ export class CoordinatorStore {
       this.runtime.stopResourceMonitor();
       if (error instanceof CoordinatorStorageFailure) {
         this.snapshotPersistence = "attention";
+        this.snapshotFailureKind = error.kind;
         this.error = "Storage needs attention";
       } else {
         this.error = error instanceof Error ? error.message : "Coordinator startup failed";
@@ -600,10 +605,28 @@ export class CoordinatorStore {
     this.snapshotPersistence = "flushing";
     try {
       await this.running.flush?.();
-      this.snapshotPersistence = this.persistenceEnabled ? "durable" : "temporary";
+      this.snapshotPersistence = this.persistenceEnabled && !this.snapshotTemporarySession ? "durable" : "temporary";
     } catch {
       this.snapshotPersistence = "flush-failed";
     }
+  }
+
+  async retryStorage(): Promise<void> {
+    if (this.snapshotPersistence !== "attention") return;
+    await this.start();
+  }
+
+  async removeCorruptSnapshot(): Promise<void> {
+    if (this.snapshotFailureKind !== "corrupt") return;
+    await removePersistedCoordinatorSnapshot(this.identity.publicKeyHex);
+    this.snapshotFailureKind = null;
+    await this.retryStorage();
+  }
+
+  async continueTemporarily(): Promise<void> {
+    if (this.snapshotPersistence !== "attention") return;
+    this.snapshotTemporarySession = true;
+    await this.start();
   }
 
   private async stopCurrentGeneration(abandonPersistence: boolean): Promise<void> {
@@ -634,7 +657,7 @@ export class CoordinatorStore {
     this.status = transitionCoordinator(this.status, "stopped");
     this.snapshotPersistence = abandonPersistence
       ? "temporary"
-      : this.persistenceEnabled ? "durable" : "temporary";
+      : this.persistenceEnabled && !this.snapshotTemporarySession ? "durable" : "temporary";
     this.setStartupProgress("idle");
     this.addDebugLog("info", "coordinator stopped");
   }

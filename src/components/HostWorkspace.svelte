@@ -1532,6 +1532,10 @@
       </div>
     </header>
 
+    {#if coordinator.snapshotPersistence === "flushing"}
+      <p class="absolute right-4 top-16 z-30 border border-[#e4e78d] bg-[#101614] px-3 py-2 text-xs text-[#e4e78d]" role="status">Stopping and saving…</p>
+    {/if}
+
     <div
       class:management-open={managementOpen}
       class:startup-mode={coordinator.status === "starting" || coordinator.status === "stopping"}

@@ -233,3 +233,21 @@ export async function clearPersistedCoordinatorState(): Promise<void> {
     request.onblocked = () => reject(new CoordinatorStorageFailure("write"));
   });
 }
+
+/** Remove only the active identity record after a contextual confirmation. */
+export async function removePersistedCoordinatorSnapshot(coordinatorPubkey: string): Promise<void> {
+  const key = normalizeCoordinatorStorageKey(coordinatorPubkey);
+  const factory = globalThis.indexedDB;
+  if (!factory) throw new CoordinatorStorageFailure("unavailable");
+  let database: IDBDatabase | undefined;
+  try {
+    database = await openDatabase(factory);
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    transaction.objectStore(STORE_NAME).delete(key);
+    await transactionComplete(transaction);
+  } catch (error) {
+    throw failureFor(error, "write");
+  } finally {
+    database?.close();
+  }
+}
