@@ -73,6 +73,18 @@ describe("calculateOverlayPosition", () => {
     })).toEqual({ left: 16, top: 16, width: 288, maxHeight: 448, side: "sheet" });
   });
 
+  it("uses named sheet mode without an anchor when a mobile surface replaces a drawer", () => {
+    expect(calculateOverlayPosition({
+      viewportWidth: 390,
+      viewportHeight: 430,
+      anchor: { top: 0, right: 0, bottom: 0, left: 0 },
+      overlayWidth: 600,
+      overlayHeight: 600,
+      gutter: 8,
+      sheet: true,
+    })).toEqual({ left: 8, top: 8, width: 374, maxHeight: 414, side: "sheet" });
+  });
+
   it("keeps an explicit-gutter constrained panel inset and scrollable", () => {
     expect(calculateOverlayPosition({
       viewportWidth: 320,
