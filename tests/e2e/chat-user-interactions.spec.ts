@@ -84,6 +84,10 @@ async function openSeededGuestRoom(page: Page): Promise<void> {
     const roomBrowser = page.getByRole("button", { name: "Open room browser" });
     if (await roomBrowser.isVisible()) await roomBrowser.click();
   }
+  const card = page.getByTestId("invite-panel").locator(
+    `[data-testid="coordinator-card"][data-coordinator-pubkey="${"c".repeat(64)}"]`,
+  );
+  if (await card.getAttribute("tabindex") === "0") await card.focus();
   await room.click();
 }
 

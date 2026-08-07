@@ -1036,6 +1036,7 @@ test("shared invite follows exact coordinator availability", async ({ page }) =>
     }));
   }, { viewerPubkey: viewer, content: invite });
   await page.reload();
+  await revealOfflineCoordinatorCard(page, "c".repeat(64));
   const room = page.getByRole("button", { name: /^Open room Availability renderer/ });
   if (!(await room.isVisible())) await page.getByRole("button", { name: "Open room browser" }).click();
   await room.click();
@@ -1125,6 +1126,7 @@ test("shared invite availability descriptions are unique across sender streaks",
     ],
   });
   await page.reload();
+  await revealOfflineCoordinatorCard(page, "c".repeat(64));
   const room = page.getByRole("button", { name: /^Open room Availability description renderer/ });
   if (!(await room.isVisible())) await page.getByRole("button", { name: "Open room browser" }).click();
   await room.click();
@@ -2769,6 +2771,7 @@ test("switches local Delete to remote Leave without crossing same-id room identi
   await expect(collisionActions.getByRole("menuitem", { name: "Delete room Local collision room" })).toBeVisible();
   await expect(collisionActions.getByRole("menuitem", { name: "Leave room Local collision room" })).toHaveCount(0);
   await page.keyboard.press("Escape");
+  await revealOfflineCoordinatorCard(page, remoteCoordinatorPubkey);
   await page.getByRole("button", { name: /Open room Remote collision room/ }).click();
 
   collisionActions = await openRoomActions(page, "Remote collision room");
