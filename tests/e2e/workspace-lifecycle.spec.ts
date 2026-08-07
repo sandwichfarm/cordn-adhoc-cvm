@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { expect, installEstablishedInstallation, test } from "./established-installation-fixture";
-import { generateSecretKey } from "nostr-tools";
+import { finalizeEvent, generateSecretKey } from "nostr-tools";
 import { bytesToHex } from "nostr-tools/utils";
 import { createInviteUrl } from "../../src/chat/invite";
 
@@ -47,44 +47,42 @@ async function configureMockRelay(page: import("@playwright/test").Page): Promis
   await closeCoordinatorSettings(settings);
 }
 
-async function publishRunningCoordinatorHeartbeat(
+const INVITE_AVAILABILITY_RELAY = "wss://invite-availability.example";
+
+async function mockCoordinatorHeartbeat(
   page: import("@playwright/test").Page,
-  coordinatorPubkey: string,
+  getHeartbeat: () => ReturnType<typeof finalizeEvent> | undefined,
 ): Promise<void> {
-  const createdAt = Math.floor(Date.now() / 1_000);
-  await page.evaluate(async ({ relayUrl, coordinatorPubkey, createdAt }) => {
-    await new Promise<void>((resolve, reject) => {
-      const socket = new WebSocket(relayUrl);
-      const timeout = window.setTimeout(() => reject(new Error("Timed out publishing coordinator heartbeat")), 5_000);
-      socket.addEventListener("open", () => {
-        socket.send(JSON.stringify(["EVENT", {
-          id: "1".repeat(64),
-          pubkey: coordinatorPubkey,
-          created_at: createdAt,
-          kind: 30382,
-          tags: [
-            ["d", "cordn-browser-instance"],
-            ["status", "running"],
-            ["instance", "invite-availability-test"],
-            ["expiration", String(createdAt + 20)],
-          ],
-          content: "cordn browser running",
-          sig: "0".repeat(128),
-        }]));
-      });
-      socket.addEventListener("message", (event) => {
-        const message = JSON.parse(String(event.data));
-        if (message[0] !== "OK") return;
-        window.clearTimeout(timeout);
-        socket.close();
-        resolve();
-      });
-      socket.addEventListener("error", () => {
-        window.clearTimeout(timeout);
-        reject(new Error("Could not publish coordinator heartbeat"));
-      });
+  await page.routeWebSocket(INVITE_AVAILABILITY_RELAY, (socket) => {
+    socket.onMessage((message) => {
+      const request = JSON.parse(String(message));
+      if (!Array.isArray(request) || request[0] !== "REQ" || typeof request[1] !== "string") return;
+
+      const heartbeat = getHeartbeat();
+      if (heartbeat) socket.send(JSON.stringify(["EVENT", request[1], heartbeat]));
+      socket.send(JSON.stringify(["EOSE", request[1]]));
     });
-  }, { relayUrl: relay.url, coordinatorPubkey, createdAt });
+  });
+}
+
+function createRunningCoordinatorHeartbeat(): ReturnType<typeof finalizeEvent> {
+  const secretKey = generateSecretKey();
+  const createdAt = Math.floor(Date.now() / 1_000);
+  try {
+    return finalizeEvent({
+      kind: 30382,
+      created_at: createdAt,
+      tags: [
+        ["d", "cordn-browser-instance"],
+        ["status", "running"],
+        ["instance", "invite-availability-test"],
+        ["expiration", String(createdAt + 20)],
+      ],
+      content: "cordn browser running",
+    }, secretKey);
+  } finally {
+    secretKey.fill(0);
+  }
 }
 
 async function openCoordinatorSettings(
@@ -875,13 +873,16 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
 
 test("shared invite follows exact coordinator availability", async ({ page }) => {
   const viewer = "b".repeat(64);
-  const inviteCoordinator = "a".repeat(64);
+  let heartbeat: ReturnType<typeof finalizeEvent> | undefined;
+  const futureHeartbeat = createRunningCoordinatorHeartbeat();
+  const inviteCoordinator = futureHeartbeat.pubkey;
   const invite = createInviteUrl("https://invite.example", {
     groupId: "availability-invite",
     coordinatorPubkey: inviteCoordinator,
-    relayUrls: [relay.url],
+    relayUrls: [INVITE_AVAILABILITY_RELAY],
     title: "Availability room",
   });
+  await mockCoordinatorHeartbeat(page, () => heartbeat);
   await page.goto("/");
   await configureMockRelay(page);
   await page.evaluate(({ viewerPubkey, content }) => {
@@ -903,12 +904,12 @@ test("shared invite follows exact coordinator availability", async ({ page }) =>
   const action = page.getByRole("button", { name: /Join Availability room/ });
   await expect(action).toBeDisabled({ timeout: 20_000 });
   await expect(action).toHaveAttribute("title", "Coordinator is offline");
-  await expect(action).toHaveAttribute("aria-describedby", /guest-invite-availability-/);
+  await expect(action).toHaveAttribute("aria-describedby", /^guest-[a-z0-9]+-invite-availability-\d+$/);
   await expect(action).toHaveCSS("cursor", "not-allowed");
   await expect(page.locator(`#${await action.getAttribute("aria-describedby")}`)).toHaveText("Coordinator is offline");
   const offlineBounds = await action.boundingBox();
 
-  await publishRunningCoordinatorHeartbeat(page, inviteCoordinator);
+  heartbeat = futureHeartbeat;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(action).toBeEnabled({ timeout: 10_000 });
   expect(await action.boundingBox()).toEqual(offlineBounds);
@@ -921,14 +922,17 @@ test("shared invite follows exact coordinator availability", async ({ page }) =>
 
 test("host messages re-probe invite-only coordinators when availability changes", async ({ page }) => {
   test.setTimeout(45_000);
-  const inviteCoordinator = "a".repeat(64);
+  let heartbeat: ReturnType<typeof finalizeEvent> | undefined;
+  const futureHeartbeat = createRunningCoordinatorHeartbeat();
+  const inviteCoordinator = futureHeartbeat.pubkey;
   const sharedInvite = createInviteUrl("https://invite.example", {
     groupId: "host-availability-invite",
     coordinatorPubkey: inviteCoordinator,
-    relayUrls: [relay.url],
+    relayUrls: [INVITE_AVAILABILITY_RELAY],
     title: "Host availability room",
   });
 
+  await mockCoordinatorHeartbeat(page, () => heartbeat);
   await page.goto("/");
   await configureMockRelay(page);
   await page.getByRole("button", { name: "Start", exact: true }).click();
@@ -939,7 +943,7 @@ test("host messages re-probe invite-only coordinators when availability changes"
 
   const action = page.getByRole("button", { name: /Join Host availability room/ });
   await expect(action).toBeDisabled({ timeout: 20_000 });
-  await publishRunningCoordinatorHeartbeat(page, inviteCoordinator);
+  heartbeat = futureHeartbeat;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(action).toBeEnabled({ timeout: 10_000 });
   await action.click();

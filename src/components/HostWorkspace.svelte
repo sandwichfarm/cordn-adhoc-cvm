@@ -403,6 +403,11 @@
       knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
       if (e2eBuild) e2eSessionMessageIds = session.room.messages.map((message) => message.id).join(",");
       room = nextRoom;
+      // Session updates are the authoritative host-message change signal.
+      // Probe immediately after replacing the rendered room so an invite-only
+      // coordinator can transition from disabled to joinable without waiting
+      // for the interval or a route change.
+      probeRemoteCoordinatorsIfTargetsChanged();
       pendingJoinRequests = [...session.pendingJoinRequests];
       hostedRooms = hostedRooms.map((entry) => sameRoomIdentity(entry.room, nextRoom) ? { ...entry, room: nextRoom } : entry);
       if (receivedMessage) playIncomingTone();
