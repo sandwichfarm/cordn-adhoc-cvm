@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { installEstablishedInstallation } from "./established-installation-fixture";
 import { startMockRelay, type MockRelay } from "./mock-relay";
 
 const MOBILE_PROJECTS = ["mobile-chromium", "mobile-webkit"] as const;
@@ -119,7 +120,7 @@ test("mobile projects enumerate real touch Chromium and WebKit contexts", async 
 });
 
 test("complete durable host journey uses touch controls", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile-chromium", "the tracer runs only in the real mobile Chromium project");
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name as (typeof MOBILE_PROJECTS)[number]), "the tracer runs only in real mobile projects");
   test.setTimeout(120_000);
   const diagnostics: string[] = [];
   page.on("console", (message) => {
@@ -182,4 +183,70 @@ test("complete durable host journey uses touch controls", async ({ page }, testI
   await assertSecretSafeDiagnostics(page, diagnostics);
   await stopCoordinator(page);
   await expect(page.getByTestId("status-badge")).toHaveText("idle", { timeout: 35_000 });
+});
+
+test("independent mobile clients exchange an admitted encrypted reaction journey by tap", async ({ page: host, browser }, testInfo) => {
+  test.skip(!MOBILE_PROJECTS.includes(testInfo.project.name as (typeof MOBILE_PROJECTS)[number]), "requires a real mobile project");
+  test.setTimeout(120_000);
+  await installEstablishedInstallation(host);
+  await host.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await host.setViewportSize(MOBILE_VIEWPORT);
+  await host.goto("/");
+  await configureMockRelay(host);
+  await startCoordinator(host);
+  await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
+  await tap(host.getByRole("button", { name: "Create room", exact: true }));
+  const createDialog = host.getByTestId("create-room-dialog");
+  await createDialog.getByPlaceholder("Friday plans").fill("Mobile two-client room");
+  await tap(createDialog.getByLabel("Auto-approve invitees"));
+  await tap(createDialog.getByRole("button", { name: "Create room", exact: true }));
+  await expect(createDialog).toBeHidden();
+
+  await tap(host.getByRole("button", { name: "Open room browser" }));
+  await tap(host.getByTestId("invite-panel").getByRole("button", { name: "Invite", exact: true }));
+  const inviteDialog = host.getByTestId("invite-dialog");
+  await expect(inviteDialog).toBeVisible();
+  const copyInvite = inviteDialog.getByRole("button", { name: "Copy invite link" });
+  const inviteUrl = await host.getByTestId("invite-link").textContent();
+  expect(Boolean(inviteUrl)).toBe(true);
+  await tap(copyInvite);
+  await expect(copyInvite).toHaveText("Copied");
+  expect(await host.evaluate(async () => Boolean(await navigator.clipboard.readText()))).toBe(true);
+  await tap(inviteDialog.getByRole("button", { name: "Close invite dialog" }).last());
+
+  const guestContext = await browser.newContext({ hasTouch: true, isMobile: true, viewport: MOBILE_VIEWPORT });
+  const guest = await guestContext.newPage();
+  try {
+    await installEstablishedInstallation(guest);
+    await guest.goto(inviteUrl!);
+    await expect(guest.getByText("Your encrypted join request is with the host.")).toBeVisible({ timeout: 35_000 });
+
+    await tap(host.getByRole("button", { name: "Open room browser" }));
+    await expect(host.getByTestId("invite-panel").getByRole("heading", { name: "Rooms" })).toBeVisible();
+    const approve = host.getByRole("button", { name: /Approve waiting invitees, 1 request/ });
+    await expect(approve).toBeEnabled({ timeout: 35_000 });
+    await tap(approve);
+    await expect(guest.getByPlaceholder("Message")).toBeVisible({ timeout: 35_000 });
+
+    await host.getByPlaceholder("Message as host").fill("Host message for a mobile guest");
+    await tap(host.getByRole("button", { name: "Send", exact: true }));
+    const guestMessage = guest.locator("article.message").filter({ hasText: "Host message for a mobile guest" });
+    await expect(guestMessage).toBeVisible({ timeout: 35_000 });
+    await tap(guestMessage.getByRole("button", { name: "Add reaction" }));
+    const reactionSheet = guestMessage.getByRole("menu", { name: /Choose reaction/ });
+    await expect(reactionSheet).toBeVisible();
+    await tap(reactionSheet.getByRole("menuitem", { name: "React 👍" }));
+    await expect(guestMessage.getByRole("button", { name: /Remove 👍 reaction, 1 participant/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(host.locator("article.host-message").filter({ hasText: "Host message for a mobile guest" }).getByLabel("👍 reaction, 1 participant")).toBeVisible({ timeout: 35_000 });
+
+    await guest.getByPlaceholder("Message").fill("Guest response from a touch context");
+    await tap(guest.getByRole("button", { name: "Send", exact: true }));
+    await expect(host.getByTestId("host-message-list").getByText("Guest response from a touch context")).toBeVisible({ timeout: 35_000 });
+    await tap(guest.getByRole("button", { name: "Open room browser" }));
+    await tap(guest.getByTestId("invite-panel").getByRole("button", { name: /Open room Mobile two-client room/ }));
+    await expect(guest.getByRole("heading", { name: "Mobile two-client room" })).toBeVisible();
+  } finally {
+    await guestContext.close();
+    await stopCoordinator(host).catch(() => undefined);
+  }
 });
