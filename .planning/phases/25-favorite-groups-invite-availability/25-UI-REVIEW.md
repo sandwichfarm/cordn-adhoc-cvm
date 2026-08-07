@@ -2,7 +2,7 @@
 
 **Audited:** 2026-08-07  
 **Baseline:** `25-UI-SPEC.md`  
-**Screenshots:** captured — desktop, tablet, and mobile at `.planning/ui-reviews/25-20260807-020832/`; each reaches the unauthenticated identity screen, so authenticated sidebar/invite screenshots could not be compared directly.
+**Screenshots:** baseline desktop, tablet, and mobile captures exist at `.planning/ui-reviews/25-20260807-020832/`; they stop at first-run identity selection. Authenticated screenshots were not captured because the established fixture seeds state within Playwright and adding capture instrumentation would modify the test harness.
 
 ---
 
@@ -10,70 +10,68 @@
 
 | Pillar | Score | Key Finding |
 |--------|-------|-------------|
-| 1. Copywriting | 3/4 | Required favorite and offline strings are exact, but non-online states all claim the coordinator is offline. |
-| 2. Visuals | 3/4 | Shared favorite rows, selected-state star, neutral disabled invite, and 44px controls are implemented; authenticated screenshot comparison is unavailable. |
-| 3. Color | 3/4 | Green stays focused on the active rail, selected star, and focus, but the 60/30/10 distribution was not visually provable from the captured route. |
-| 4. Typography | 2/4 | Phase components use weights outside the required 400/600 pair. |
-| 5. Spacing | 2/4 | Several Phase 25 controls use off-grid fractional spacing rather than the specified 4px scale. |
-| 6. Experience Design | 2/4 | Core offline behavior passes, but no browser proof covers online re-enable or Phase 25 reduced motion. |
+| 1. Copywriting | 4/4 | Favorite labels and required offline reason match the contract. |
+| 2. Visuals | 3/4 | Shared rows, selected state, 44px targets, and containment pass; authenticated visual comparison remains unavailable. |
+| 3. Color | 3/4 | Contract color roles are correctly scoped, but 60/30/10 cannot be verified from the available capture. |
+| 4. Typography | 4/4 | Phase-owned sidebar/menu/invite additions now use the declared sizes and 400/600 weights. |
+| 5. Spacing | 4/4 | Phase-owned sidebar/menu/invite layout now uses the declared 4px grid; the 44px target exception is preserved. |
+| 6. Experience Design | 4/4 | Both render paths prove fail-closed offline behavior and live online restoration; reduced motion is covered for star and menu interactions. |
 
-**Overall: 15/24**
+**Overall: 22/24**
+
+**Verdict: PASS WITH VISUAL-EVIDENCE LIMITATION.** No blocker or contract-breaking implementation issue was found. Capture an authenticated rail/invite state before release if a human visual sign-off is required.
 
 ---
 
 ## Top 3 Priority Fixes
 
-1. **WARNING — Add browser coverage for online → offline → online and reduced-motion behavior.** The current invite test establishes only the offline state; a regression can strand Join disabled after reachability returns. Exercise host and invitee paths, stable bounds, re-enable/click behavior, and `prefers-reduced-motion: reduce`.
-2. **WARNING — Conform Phase 25 type weights to 400/600.** Replace 700/620/680/800 weights in sidebar/menu/invite additions with the approved regular or semibold values; this prevents hierarchy from becoming heavier than the contract.
-3. **WARNING — Normalize Phase 25 spacing to the 4px grid.** Replace `.1rem`, `.18rem`, `.22rem`, `.35rem`, `.38rem`, `.45rem`, `.55rem`, `.6rem`, `.65rem`, `.7rem`, and `.8rem` declarations on the phase surfaces with 4/8/16/24px-grid equivalents.
+1. **WARNING — Add authenticated visual snapshots to the established fixture.** The current manual captures only show first-run identity selection, leaving focal hierarchy, selected-star contrast, and unavailable-invite density to code and assertion evidence.
+2. **WARNING — Consider distinct connecting/unknown status copy in a future contract.** The required `Coordinator is offline` text is used for every non-online state; this meets Phase 25’s literal contract but is less precise for transient states.
+3. **WARNING — Add a reduced-motion assertion for the invite action.** Its CSS override is present, while the new browser assertion exercises the star and room-menu trigger.
 
 ---
 
 ## Detailed Findings
 
-### Pillar 1: Copywriting (3/4)
+### Pillar 1: Copywriting (4/4)
 
-- **WARNING:** The menu and star copy match the contract: `Add to favorites` / `Remove from favorites` are first in the menu and star labels are `Favorite # {room}` / `Unfavorite # {room}` ([RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:74), [CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:101)). The exact disabled reason is also present in title and accessible text ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:293)).
-- **WARNING:** `connecting` and `unknown` are correctly disabled but are presented as `Coordinator is offline` because all non-online states share one boolean ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:285)). This follows the literal D-06 copy requirement but sacrifices status truthfulness; retain the required offline copy if locked, or extend the contract with accurate connecting/unknown explanations.
+- **PASS:** The first menu item uses the contract’s `Add to favorites` / `Remove from favorites` copy ([RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:74)), and the selected state exposes `Favorite # {room}` / `Unfavorite # {room}` ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:101)).
+- **WARNING:** Non-online availability maps to the locked `Coordinator is offline` tooltip and accessible text ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:286)). Correct, but connecting/unknown cannot explain their distinct condition.
 
 ### Pillar 2: Visuals (3/4)
 
-- **WARNING:** The same row component renders source and Favorites variants, preserving active rail, badges, avatar, star, and menu parity ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:66), [CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:92)). Focused Chromium tests passed for source/duplicate parity, focus return, 44px geometry, and 320px containment (`workspace-lifecycle.spec.ts:727`, `:770`).
-- **WARNING:** The captured 1440×900, 768×1024, and 375×812 screenshots show only first-run identity selection, not an authenticated Favorites section or invite card. `needs_human_review: true` — capture the authenticated state with a selected favorite and an offline invite to verify the secondary focal weight, selected-star contrast, and no visual clipping.
+- **PASS:** One `CoordinatorRoomCard` implements source and Favorites presentation, retaining active rail, unread badge, avatar, star, and menu parity ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:66), [CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:92)). The focused browser test proves selected-state sync, 44px row/star geometry, and 320px containment ([workspace-lifecycle.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/workspace-lifecycle.spec.ts:808)).
+- **WARNING:** `needs_human_review: true` — no captured image contains an authenticated Favorites fieldset or shared invite. The existing screenshots are first-run only, so direct comparison of secondary hierarchy and real contrast is unavailable.
 
 ### Pillar 3: Color (3/4)
 
-- **WARNING:** Contract roles are implemented in code: green is applied to the active rail and selected star, while ordinary hover is neutral ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:141), [CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:146), [CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:150)). The unavailable invite switches to neutral border/background/text and removes hover accent ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:438)).
-- **WARNING:** Color is hardcoded across all three Phase 25 component styles rather than centralized tokens, and the unauthenticated captures cannot establish the required approximate 60/30/10 surface/neutral/accent distribution. Preserve this manual system only if it is intentional; otherwise expose the reused colors as local design tokens and visually check an authenticated rail.
+- **PASS:** Green is restricted to active rail/selected favorite/focus, ordinary row hover is neutral, and unavailable invites use neutral subdued colors without hover accent ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:145), [CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:150), [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:439)).
+- **WARNING:** The approximate 60/30/10 allocation is not mechanically verifiable and authenticated visual evidence is unavailable. Recheck this balance when snapshot coverage is added.
 
-### Pillar 4: Typography (2/4)
+### Pillar 4: Typography (4/4)
 
-- **WARNING:** The UI-SPEC permits only 400 and 600 weights. Sidebar and menu additions use 700, 620, and 800 ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:122), [RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:128), [RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:135)); invite copy uses 700 ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:442)). Replace with 400/600.
-- **WARNING:** Several sidebar/menu sizes are fractional rem values (`.48rem`–`.8rem`) rather than the declared 8/10/12/14px scale ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:117), [RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:140)). Map phase-owned labels/actions explicitly to the approved sizes.
+- **PASS:** Phase-owned sidebar/menu additions now use 8/10/12px labels/actions and 600 maximum emphasis ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:121), [RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:128), [RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:143)). Invite emphasis is now 600 and explanatory copy maintains 1.45 line-height ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:442)).
 
-### Pillar 5: Spacing (2/4)
+### Pillar 5: Spacing (4/4)
 
-- **WARNING:** Although row/star geometry is correctly 44px (`2.75rem`) and the focused 320px overflow check passed ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:135), [workspace-lifecycle.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/workspace-lifecycle.spec.ts:799)), the Favorites row uses off-grid `.1rem`, `.2rem`, `.35rem`, and `.38rem` gaps/padding ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:116), [CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:129)).
-- **WARNING:** The menu and invite action continue the off-grid pattern, including `.22rem`, `.55rem`, `.6rem`, `.65rem`, `.7rem`, and `.8rem` ([RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:132), [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:436)). These values undermine the stated 4px grid; round to tokens while re-running 320px and overlay bounds checks.
+- **PASS:** Favorites uses 4/8px layout values, while `2.75rem` remains the explicitly permitted 44px row/control minimum ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:120), [CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:139)). Menu and invite additions now use the 4px grid ([RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:126), [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:437)).
 
-### Pillar 6: Experience Design (2/4)
+### Pillar 6: Experience Design (4/4)
 
-- **WARNING:** The implementation fails closed by default (`unknown`), resolves the exact coordinator at the workspace, forwards the resolver to both host and invitee renderers, and disables the action except for `online` ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:65), [HostWorkspace.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/HostWorkspace.svelte:693), [ChatRoute.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/ChatRoute.svelte:842)). The focused test passes for disabled state, tooltip, accessible description, and `not-allowed` cursor ([workspace-lifecycle.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/workspace-lifecycle.spec.ts:829)).
-- **WARNING:** The Phase 25 availability test only checks initial offline rendering; it does not prove the required online → offline → online transition, unchanged bounds, or restored Join navigation ([workspace-lifecycle.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/workspace-lifecycle.spec.ts:803)). Add live reachability transition tests for host and embedded invitee paths.
-- **WARNING:** The selected-star and disabled-invite transitions are removed under reduced motion ([CoordinatorRoomCard.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/CoordinatorRoomCard.svelte:156), [MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:453)), but this phase has no test for those surfaces. The menu’s color transition also lacks a reduced-motion override ([RoomActionsMenu.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/RoomActionsMenu.svelte:128)). Add one override and a focused reduced-motion browser assertion.
+- **PASS:** Availability defaults to unknown and permits Join only for an exact online coordinator; the workspace resolver is forwarded through both host and embedded invitee paths ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:286), [HostWorkspace.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/HostWorkspace.svelte:693), [ChatRoute.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/ChatRoute.svelte:842)).
+- **PASS:** Focused Chromium tests passed for invitee and host offline→online transitions, stable invite bounds, re-enabled Join, and autojoin navigation ([workspace-lifecycle.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/workspace-lifecycle.spec.ts:874), [workspace-lifecycle.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/workspace-lifecycle.spec.ts:923)). They also emulate reduced motion and assert zero transition duration for favorite star and menu ([workspace-lifecycle.spec.ts](/Users/sandwich/Develop/cordn-adhoc-cvm/tests/e2e/workspace-lifecycle.spec.ts:810)).
+- **WARNING:** The invite’s reduced-motion override exists ([MessageGroup.svelte](/Users/sandwich/Develop/cordn-adhoc-cvm/src/components/MessageGroup.svelte:454)) but is not asserted in the focused test; add it with future snapshot coverage.
 
 ---
 
 ## Files Audited
 
-- `25-UI-SPEC.md`, `25-CONTEXT.md`, `25-01-PLAN.md`, `25-01-SUMMARY.md`
-- `src/chat/sidebar-ledger.ts`
+- `25-UI-SPEC.md`, `25-CONTEXT.md`, `25-01-PLAN.md`, `25-01-SUMMARY.md`, `25-REVIEW-FIX.md`
 - `src/components/CoordinatorRoomCard.svelte`
 - `src/components/RoomActionsMenu.svelte`
-- `src/components/HostWorkspace.svelte`
 - `src/components/MessageGroup.svelte`
+- `src/components/HostWorkspace.svelte`
 - `src/components/ChatRoute.svelte`
-- `tests/unit/sidebar-ledger.test.ts`
 - `tests/e2e/workspace-lifecycle.spec.ts`
 
 Registry audit: skipped — no `components.json`; the UI-SPEC declares no third-party registry blocks.
