@@ -20,7 +20,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [ ] **Phase 21: First-Run Coordinator Identity & Profile** - Require deliberate operator identity and coordinator naming before first startup.
 - [x] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history. (completed 2026-08-06)
 - [x] **Phase 23: Bounded Gift-Wrap Delivery** - Stop unavailable relays and room polling from accumulating immortal ContextVM gift-wrap publications.
-- [ ] **Phase 25: Favorite Groups & Invite Availability** - Add persistent duplicate favorites and prevent room-invite actions while their coordinator is offline.
+- [x] **Phase 25: Favorite Groups & Invite Availability** - Add persistent duplicate favorites and prevent room-invite actions while their coordinator is offline. (completed 2026-08-07)
 
 ## Phase Details
 
@@ -273,4 +273,4 @@ Plans:
 | 22. Coordinator-Grouped Sidebar | 2/2 | Complete | 2026-08-06 |
 | 23. Bounded Gift-Wrap Delivery | 2/2 | Complete | 2026-08-06 |
 | 24. Chat User Interactions | 6/6 | Complete    | 2026-08-07 |
-| 25. Favorite Groups & Invite Availability | 1/1 | In Progress|  |
+| 25. Favorite Groups & Invite Availability | 2/2 | Complete    | 2026-08-07 |
