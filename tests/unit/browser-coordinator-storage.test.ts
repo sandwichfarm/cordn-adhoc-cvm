@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import {
   clearPersistedCoordinatorState,
   createBrowserCoordinatorStorage,
-} from "../../src/cordn/coordinator/storage/browserSqliteStorage";
+} from "../../src/cordn/coordinator/storage/indexedDbSnapshotStorage";
 import { CoordinatorStore } from "../../src/coordinator/coordinator.svelte";
 
 describe("browser coordinator deleted-room persistence", () => {
