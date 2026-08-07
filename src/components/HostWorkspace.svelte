@@ -1442,6 +1442,7 @@
       if (createDialogOpen) closeCreateDialog();
       settingsDialogOpen = false;
     };
+    const closeDrawerForMobileSurface = () => closeMobileRoomBrowser(false);
     refreshRemoteRooms();
     const compactQuery = window.matchMedia("(max-width: 900px)");
     const markCoordinatorOnline = (event: Event) => handleCoordinatorReachabilityEvent(event, "online");
@@ -1487,6 +1488,7 @@
     window.addEventListener("online", recheckBrowserOnline);
     document.addEventListener("visibilitychange", recheckWhenVisible);
     window.addEventListener("keydown", closeDialogsOnEscape);
+    window.addEventListener("cahmls:mobile-overlay-open", closeDrawerForMobileSurface);
     const acknowledgeOnVisibility = () => acknowledgeVisibleHostRoom();
     document.addEventListener("visibilitychange", acknowledgeOnVisibility);
     reachabilityTimer = window.setInterval(() => void probeRemoteCoordinators(), 12_000);
@@ -1502,6 +1504,7 @@
       window.removeEventListener("online", recheckBrowserOnline);
       document.removeEventListener("visibilitychange", recheckWhenVisible);
       window.removeEventListener("keydown", closeDialogsOnEscape);
+      window.removeEventListener("cahmls:mobile-overlay-open", closeDrawerForMobileSurface);
       document.removeEventListener("visibilitychange", acknowledgeOnVisibility);
       compactQuery.removeEventListener("change", syncCompactViewport);
     };

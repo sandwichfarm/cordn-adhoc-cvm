@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { Snippet } from "svelte";
 
   /**
@@ -13,10 +14,22 @@
   }
 
   let { open, onClose, children }: Props = $props();
+  let dialog = $state<HTMLDialogElement>();
+
+  onMount(() => {
+    dialog?.showModal();
+    return () => {
+      if (dialog?.open) dialog.close();
+    };
+  });
+
+  function closeFromBackdrop(event: MouseEvent): void {
+    if (event.target === dialog) onClose();
+  }
 </script>
 
 {#if open}
-  <dialog id="room-switcher" class="room-browser room-switcher" open aria-label="Rooms" data-testid="room-switcher">
+  <dialog bind:this={dialog} id="room-switcher" class="room-browser room-switcher" aria-label="Rooms" data-testid="room-switcher" oncancel={(event) => { event.preventDefault(); onClose(); }} onclick={closeFromBackdrop}>
     <header>
       <h2>Rooms</h2>
       <button type="button" aria-label="Close room browser" onclick={onClose}>Close room browser</button>

@@ -41,6 +41,15 @@ export interface ViewportOverlayOptions {
   sheet?: boolean;
 }
 
+let activeMobileOverlay: HTMLElement | undefined;
+
+function requestSurfaceClose(node: HTMLElement): void {
+  const closeControl = node.parentElement?.querySelector<HTMLButtonElement>(
+    ':scope > button[aria-label^="Close"]',
+  );
+  closeControl?.click();
+}
+
 export function calculateOverlayPosition(input: OverlayPositionInput): OverlayPosition {
   const gutter = input.gutter ?? 8;
   const gap = input.gap ?? 8;
@@ -93,6 +102,12 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
   node.setAttribute("popover", "manual");
   node.showPopover();
 
+  const closeFromController = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || activeMobileOverlay !== node) return;
+    event.preventDefault();
+    requestSurfaceClose(node);
+  };
+
   const position = () => {
     animationFrame = 0;
     const anchor = options.anchor;
@@ -111,6 +126,15 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
       options.compactSheetBelow !== undefined
       && window.innerWidth <= options.compactSheetBelow
     );
+    if (compactSheet) {
+      if (activeMobileOverlay && activeMobileOverlay !== node) requestSurfaceClose(activeMobileOverlay);
+      activeMobileOverlay = node;
+      node.setAttribute("aria-modal", "true");
+      window.dispatchEvent(new CustomEvent("cahmls:mobile-overlay-open", { detail: { node } }));
+    } else if (activeMobileOverlay === node) {
+      activeMobileOverlay = undefined;
+      node.removeAttribute("aria-modal");
+    }
     const result = calculateOverlayPosition({
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
@@ -141,6 +165,7 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
 
   window.addEventListener("resize", schedule);
   window.addEventListener("scroll", schedule, true);
+  window.addEventListener("keydown", closeFromController);
   window.visualViewport?.addEventListener("resize", schedule);
   window.visualViewport?.addEventListener("scroll", schedule);
   schedule();
@@ -153,10 +178,13 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
     destroy() {
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("keydown", closeFromController);
       window.visualViewport?.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("scroll", schedule);
       if (animationFrame) cancelAnimationFrame(animationFrame);
       if (node.matches(":popover-open")) node.hidePopover();
+      if (activeMobileOverlay === node) activeMobileOverlay = undefined;
+      node.removeAttribute("aria-modal");
       delete node.dataset.viewportOverlay;
       delete node.dataset.overlaySide;
       node.removeAttribute("popover");
