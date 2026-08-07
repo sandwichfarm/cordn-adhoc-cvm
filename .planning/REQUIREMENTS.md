@@ -118,9 +118,9 @@
 - [ ] **MOBILE-01**: Every primary coordinator, room, chat, invitation, identity, notification, and settings interaction is operable by a single touchscreen tap without requiring hover, a hardware keyboard, or an invisible hit target.
 - [ ] **MOBILE-02**: Mobile navigation uses a deliberate single-pane drawer/sheet model that keeps the active conversation primary, makes coordinator and room switching discoverable, and closes predictably after navigation, outside-tap, or platform back/Escape actions.
 - [ ] **MOBILE-03**: At supported phone portrait, phone landscape, and short-height viewports, controls meet a 44-by-44 CSS-pixel touch target, overlays remain contained and scrollable, and the focused composer or form action remains reachable while the viewport is reduced by an onscreen keyboard.
-- [ ] **MOBILE-04**: A fresh mobile user can choose an identity, start and stop the coordinator, create a room, invite and admit a participant, exchange encrypted messages and reactions in both directions, manage the room, and return after reload using touch interaction alone.
-- [ ] **MOBILE-05**: Durable coordinator state is stored asynchronously in IndexedDB under the exact coordinator identity, survives reload and browser restart, and preserves the full validated coordinator snapshot without synchronous whole-snapshot writes on the UI thread.
-- [ ] **MOBILE-06**: Coordinator startup, mutation, stop, and restart handle unavailable, denied, corrupt, or quota-exhausted persistent storage without recursive failure, cross-identity state attachment, secret-bearing diagnostics, or a falsely successful durability claim.
+- [x] **MOBILE-04**: A fresh mobile user can choose an identity, start and stop the coordinator, create a room, invite and admit a participant, exchange encrypted messages and reactions in both directions, manage the room, and return after reload using touch interaction alone.
+- [x] **MOBILE-05**: Durable coordinator state is stored asynchronously in IndexedDB under the exact coordinator identity, survives reload and browser restart, and preserves the full validated coordinator snapshot without synchronous whole-snapshot writes on the UI thread.
+- [x] **MOBILE-06**: Coordinator startup, mutation, stop, and restart handle unavailable, denied, corrupt, or quota-exhausted persistent storage without recursive failure, cross-identity state attachment, secret-bearing diagnostics, or a falsely successful durability claim.
 - [ ] **MOBILE-07**: Automated mobile-browser coverage uses real touch-enabled Playwright device contexts to prove the complete coordinator and two-client chat journeys on Chromium and WebKit, including tap-only affordances, overlay dismissal, narrow/landscape layouts, reload continuity, and storage failure recovery.
 
 ## Future Requirements
@@ -214,9 +214,9 @@
 | MOBILE-01 | Phase 27 | Pending |
 | MOBILE-02 | Phase 27 | Pending |
 | MOBILE-03 | Phase 27 | Pending |
-| MOBILE-04 | Phase 27 | Pending |
-| MOBILE-05 | Phase 27 | Pending |
-| MOBILE-06 | Phase 27 | Pending |
+| MOBILE-04 | Phase 27 | Complete |
+| MOBILE-05 | Phase 27 | Complete |
+| MOBILE-06 | Phase 27 | Complete |
 | MOBILE-07 | Phase 27 | Pending |
 
 **Coverage:**

@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
 status: planning
-stopped_at: Completed 26-01-PLAN.md
-last_updated: "2026-08-07T01:54:54.851Z"
+stopped_at: Completed 27-01-PLAN.md
+last_updated: "2026-08-07T09:54:59.286Z"
 last_activity: 2026-08-07
-last_activity_desc: Phase 26 complete; offline coordinator chats collapse into an accessible animated disclosure
+last_activity_desc: Phase 26 complete; offline coordinator room disclosure verified
 progress:
-  total_phases: 10
-  completed_phases: 9
-  total_plans: 35
-  completed_plans: 33
+  total_phases: 12
+  completed_phases: 10
+  total_plans: 40
+  completed_plans: 35
 ---
 
 # Project State
@@ -33,7 +33,7 @@ Status: Ready to plan
 Last activity: 2026-08-07 — Phase 26 complete; offline coordinator room disclosure verified
 Pull request: [#13 — favorite groups and online-only invites](https://github.com/sandwichfarm/CAHMLS/pull/13) — open, stacked on [#12 — participant chat interactions](https://github.com/sandwichfarm/CAHMLS/pull/12). [#9](https://github.com/sandwichfarm/CAHMLS/pull/9) merged 2026-08-06.
 
-Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 94%)
+Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 88%)
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 | Phase 24 P04 | 19 min | 2 tasks | 5 files |
 | Phase 24 P05 | 72min | 2 tasks | 5 files |
 | Phase 25-favorite-groups-invite-availability P01 | 9min | 3 tasks | 8 files |
+| Phase 27 P01 | 20m | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Phase 24 participant and room identifiers are excluded from affected DOM IDs while focus restoration remains pane-local.
 - [Phase ?]: Favorites persist only validated coordinator-plus-room composite keys and reconcile against active rooms.
 - [Phase ?]: Shared invite Join defaults to unavailable and enables only for an exact online workspace reachability result.
+- [Phase ?]: Coordinator snapshots are validated IndexedDB records keyed only by normalized coordinator pubkey.
+- [Phase ?]: Coordinator stop waits for the serialized snapshot flush and preserves a live runtime on flush failure.
 
 ### Pending Todos
 
@@ -149,6 +152,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-07T01:01:04.739Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-08-07T09:54:59.279Z
+Stopped at: Completed 27-01-PLAN.md
 Resume file: None

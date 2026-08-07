@@ -97,11 +97,11 @@ and closes with repeatable delivery guidance and automated proof.
   4. Denied, unavailable, corrupt, and quota-exhausted persistence paths fail safely with bounded recovery or an explicitly temporary session, without recursive startup failure or secret-bearing errors.
   5. Chromium and WebKit mobile-device suites prove one complete host journey and a real two-client encrypted chat journey, and all repository quality and Cordn interoperability gates pass.
 
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 Plans:
 
-- [ ] 27-01-PLAN.md — Replace coordinator snapshot persistence with validated identity-scoped IndexedDB, flush-before-stop, and truthful recovery.
+- [x] 27-01-PLAN.md — Replace coordinator snapshot persistence with validated identity-scoped IndexedDB, flush-before-stop, and truthful recovery.
 - [ ] 27-02-PLAN.md — Converge host and guest on one shared mobile Room browser and one deterministic overlay lifecycle.
 - [ ] 27-03-PLAN.md — Harden touch targets, hoverless discovery, action sheets, VisualViewport behavior, safe areas, and responsive containment.
 - [ ] 27-04-PLAN.md — Prove complete host and two-client journeys in touch-enabled mobile Chromium and WebKit and run every quality/interoperability gate.
