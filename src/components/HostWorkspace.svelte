@@ -45,6 +45,7 @@
   import { projectStartupSignal } from "./startup-signal-presentation";
   import UserProfile from "./UserProfile.svelte";
   import WorkspaceNav from "./WorkspaceNav.svelte";
+  import { createMobileOverlayController } from "./mobile-overlay.svelte";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import { channelPreferences } from "../notifications/channel-preferences.svelte";
 
@@ -118,6 +119,12 @@
   let managementOpen = $state(false);
   let compactViewport = $state(false);
   let mobileRailOpen = $state(false);
+  let mobileOverlay = $state<ReturnType<typeof createMobileOverlayController> | null>(null);
+  let hostTopbar = $state<HTMLElement>();
+  let hostChatElement = $state<HTMLElement>();
+  let mobileRoomBrowser = $state<HTMLElement>();
+  let mobileRoomBrowserTrigger = $state<HTMLButtonElement>();
+  let mobileRoomBrowserClose = $state<HTMLButtonElement>();
   let mobileToolsOpen = $state(false);
   let mobileToolsTrigger = $state<HTMLButtonElement>();
   let refreshState = $state<"idle" | "refreshing" | "refreshed">("idle");
@@ -850,7 +857,7 @@
 
   async function openCreateDialog() {
     serverMenuOpen = false;
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     title = "";
     error = "";
@@ -944,6 +951,7 @@
   }
 
   function openInviteDialog() {
+    closeMobileRoomBrowser(false);
     if (room) {
       const entry = buildHostedRoomEntry(room);
       room = entry.room;
@@ -991,7 +999,7 @@
 
   async function selectRoom(entry: HostedRoomEntry) {
     inviteDialogOpen = false;
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     selectedServerPubkey = coordinatorPubkey;
     const latest = loadRoom(entry.room.id, entry.room.coordinatorPubkey) ?? entry.room;
@@ -1001,10 +1009,12 @@
     inviteUrl = refreshedEntry.inviteUrl;
     qrUrl = refreshedEntry.qrUrl;
     if (hasChatIntent) onNavigate("/");
+    await tick();
+    document.querySelector<HTMLElement>("[data-testid='active-conversation-heading']")?.focus();
   }
 
   function navigateFromRail(href: string): void {
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     onNavigate(href);
   }
@@ -1075,14 +1085,34 @@
   }
 
   function openSettings(): void {
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     settingsDialogOpen = true;
   }
 
+  async function openMobileRoomBrowser(): Promise<void> {
+    mobileRailOpen = true;
+    await tick();
+    if (!mobileOverlay || !mobileRoomBrowser) return;
+    mobileOverlay.open({
+      id: "room-browser",
+      element: mobileRoomBrowser,
+      opener: mobileRoomBrowserTrigger,
+      initialFocus: mobileRoomBrowserClose,
+      safeScrim: true,
+      onClose: () => { mobileRailOpen = false; },
+    });
+  }
+
+  function closeMobileRoomBrowser(restoreFocus = true): void {
+    if (mobileOverlay?.activeId === "room-browser") mobileOverlay.close({ restoreFocus });
+    else mobileRailOpen = false;
+  }
+
   function toggleMobileRail(): void {
     mobileToolsOpen = false;
-    mobileRailOpen = !mobileRailOpen;
+    if (mobileRailOpen) closeMobileRoomBrowser();
+    else void openMobileRoomBrowser();
   }
 
   function closeMobileTools(restoreFocus = true): void {
@@ -1092,7 +1122,7 @@
   }
 
   function toggleManagement(): void {
-    mobileRailOpen = false;
+    closeMobileRoomBrowser(false);
     mobileToolsOpen = false;
     managementOpen = !managementOpen;
   }
@@ -1378,6 +1408,7 @@
   }
 
   onDestroy(() => {
+    mobileOverlay?.destroy();
     reachabilityProbeGeneration += 1;
     if (reachabilityTimer !== null) window.clearInterval(reachabilityTimer);
     reachabilityTimer = null;
@@ -1391,6 +1422,13 @@
     session?.stop();
   });
   onMount(() => {
+    if (hostChatElement) {
+      mobileOverlay = createMobileOverlayController({
+        applicationRoot: hostChatElement,
+        backgroundRoots: [hostTopbar, hostChatElement].filter((root): root is HTMLElement => root !== undefined),
+        fallbackFocus: hostChatElement,
+      });
+    }
     setupWasCompleteOnMount = config.isSetupComplete;
     const closeDialogsOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -1399,7 +1437,7 @@
       const targetMessageId = reactionPickerMessageId;
       reactionPickerMessageId = null;
       if (targetMessageId) void tick().then(() => document.getElementById(`host-add-reaction-${targetMessageId}`)?.focus());
-      mobileRailOpen = false;
+      closeMobileRoomBrowser();
       closeMobileTools();
       if (inviteDialogOpen) closeInviteDialog();
       if (createDialogOpen) closeCreateDialog();
@@ -1473,7 +1511,7 @@
 
 <main class="operator-field h-[100dvh] max-h-[100dvh] overflow-x-hidden overflow-y-hidden text-[#dfffe7]">
   <div class:dialog-open={dialogOpen} class="host-workspace relative grid h-full w-full min-w-0 grid-rows-[auto_minmax(0,1fr)]" data-testid="operator-shell">
-    <header class="host-topbar flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-3 sm:flex-nowrap sm:px-5">
+    <header bind:this={hostTopbar} class="host-topbar flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-3 sm:flex-nowrap sm:px-5">
       <WorkspaceNav
         {currentUrl}
         {homeCoordinatorPubkey}
@@ -1490,6 +1528,7 @@
       <div class:guided-setup={guidedSetupMode} class="host-commandbar">
         {#if !setupRequired}
           <button
+            bind:this={mobileRoomBrowserTrigger}
             class:active={mobileRailOpen}
             class="mobile-rail-toggle"
             type="button"
@@ -1544,10 +1583,11 @@
       class="host-layout grid min-h-0 min-w-0"
     >
       {#if mobileRailOpen && compactViewport}
-        <button class="mobile-rail-scrim" type="button" aria-label="Close room browser" onclick={() => mobileRailOpen = false}></button>
+        <button class="mobile-rail-scrim" type="button" aria-label="Close room browser" onclick={() => mobileOverlay?.dismissFromScrim()}></button>
       {/if}
       {#if !setupRequired}
       <aside
+        bind:this={mobileRoomBrowser}
         id="host-room-rail"
         class:mobile-open={mobileRailOpen}
         class="host-rail min-h-0 min-w-0 overflow-y-auto border-b border-[#21352a] p-3 sm:p-4 lg:border-r lg:border-b-0"
@@ -1556,9 +1596,16 @@
         aria-busy={localRailBusy}
         aria-hidden={compactViewport && !mobileRailOpen}
         inert={compactViewport && !mobileRailOpen}
+        role={compactViewport ? "dialog" : undefined}
+        aria-modal={compactViewport && mobileRailOpen ? "true" : undefined}
+        aria-label={compactViewport ? "Rooms" : undefined}
       >
         <span class="sr-only" aria-live="polite">{unreadAnnouncement}</span>
         <div class="flex min-h-full flex-col gap-4">
+            <header class="room-browser-mobile-heading">
+              <h2>Rooms</h2>
+              <button bind:this={mobileRoomBrowserClose} type="button" aria-label="Close room browser" onclick={() => closeMobileRoomBrowser()}>Close room browser</button>
+            </header>
             <div class="rail-join"><InviteRedeemer onNavigate={navigateFromRail} /></div>
             {#if false}
             <nav class="channel-browser" aria-label="Server and channel browser">
@@ -1962,7 +2009,7 @@
       </aside>
       {/if}
 
-      <section class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
+      <section bind:this={hostChatElement} tabindex="-1" class="host-chat min-h-0 min-w-0 overflow-hidden bg-[#101614]" data-testid="host-chat" data-revision={revision}>
         {#if locked && !embeddedChatActive}
           <PassphrasePrompt embedded {coordinator} />
         {:else if setupRequired}
@@ -1993,6 +2040,7 @@
         {:else if localRoomReady}
           {@const composerEnabled = true}
           <div class="room-pane flex h-full min-h-0 flex-col">{#if roomConnectionDetail}<p class="host-connection-banner">{roomConnectionDetail}</p>{/if}
+            <h1 class="sr-only" tabindex="-1" data-testid="active-conversation-heading">{room.title}</h1>
             <RoomActionsMenu
               roomTitle={room.title}
               roomId={room.id}
@@ -2404,7 +2452,7 @@
   .command-cluster { display: flex; min-width: 0; align-items: stretch; gap: .08rem; }
   .command-cluster-label { display: none; align-items: center; padding: 0 .42rem; color: #617268; font-size: .46rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
   .command-cluster-divider { width: 1px; height: 1.55rem; align-self: center; margin: 0 .28rem; background: #2b3c31; }
-  .mobile-rail-toggle, .mobile-tools-toggle, .mobile-tools-scrim, .mobile-rail-scrim { display: none; }
+  .mobile-rail-toggle, .mobile-tools-toggle, .mobile-tools-scrim, .mobile-rail-scrim, .room-browser-mobile-heading { display: none; }
   .host-commandbar :global(.notification-feed), .host-commandbar :global(.notification-center), .host-commandbar :global(.user-profile) { border: 0; }
   .host-commandbar :global(.notification-feed-trigger), .host-commandbar :global(.notification-trigger), .host-commandbar :global(.user-trigger) { border: 0; background: transparent; }
   .host-commandbar :global(.notification-feed-trigger:hover), .host-commandbar :global(.notification-feed-trigger[aria-expanded="true"]), .host-commandbar :global(.notification-trigger:hover), .host-commandbar :global(.notification-trigger[aria-expanded="true"]), .host-commandbar :global(.user-trigger:hover), .host-commandbar :global(.user-trigger[aria-expanded="true"]) { background: #101713; }
@@ -2702,6 +2750,9 @@
     .host-commandbar { display: grid; width: 100%; grid-template-columns: minmax(3.25rem, 1fr) auto auto; align-items: stretch; justify-content: stretch; }
     .host-commandbar.guided-setup { position: absolute; top: 0; right: .45rem; width: auto; grid-template-columns: auto; justify-content: end; }
     .mobile-rail-toggle { display: grid; min-width: 0; height: 2.75rem; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .4rem; padding: 0 .55rem; color: #b9cbbf; text-align: left; font-size: .6rem; }
+    .room-browser-mobile-heading { position: sticky; z-index: 1; top: 0; display: flex; min-height: 2.75rem; align-items: center; justify-content: space-between; border-bottom: 1px solid #293832; background: #0d1310; padding: max(8px, env(safe-area-inset-top)) 8px 8px; }
+    .room-browser-mobile-heading h2 { color: #effff2; font-size: 18px; font-weight: 600; }
+    .room-browser-mobile-heading button { min-width: 2.75rem; min-height: 2.75rem; border: 1px solid #496451; padding: 8px; color: #bde7c7; font-size: 12px; }
     .mobile-rail-toggle:hover, .mobile-rail-toggle.active { background: #142018; color: #effff2; }
     .mobile-rail-toggle > span:first-child { color: #7cf59d; font-size: .78rem; }
     .mobile-rail-toggle > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

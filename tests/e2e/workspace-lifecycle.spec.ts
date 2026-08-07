@@ -469,6 +469,27 @@ async function createRoom(page: import("@playwright/test").Page, title: string):
   await expect(dialog).toBeHidden();
 }
 
+test("host room browser opens and navigates by tap", async ({ page }) => {
+  test.setTimeout(60_000);
+  await installEstablishedInstallation(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await configureMockRelay(page);
+  await startCoordinator(page);
+  await createRoom(page, "Mobile browser room");
+
+  const opener = page.getByRole("button", { name: "Open room browser" });
+  await opener.click();
+  const drawer = page.getByTestId("invite-panel");
+  await expect(drawer.getByRole("heading", { name: "Rooms" })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "Close room browser" })).toBeVisible();
+  await expect.poll(() => page.getByTestId("host-chat").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+
+  await drawer.getByRole("button", { name: /Open room Mobile browser room, hosted by/ }).click();
+  await expect(drawer).toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByTestId("active-conversation-heading")).toBeFocused();
+});
+
 test("global and per-channel sound controls persist and expose non-default state", async ({ page }) => {
   await installEstablishedInstallation(page);
   await page.goto("/");
