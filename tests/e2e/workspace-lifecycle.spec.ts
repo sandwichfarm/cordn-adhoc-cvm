@@ -570,6 +570,14 @@ async function seedJoinedRoom(
   }, { title, coordinatorPubkey, relayUrl: relay.url, privateFixture });
 }
 
+async function revealOfflineCoordinatorCard(page: import("@playwright/test").Page, coordinatorPubkey: string) {
+  const card = page.getByTestId("invite-panel").locator(
+    `[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinatorPubkey}"]`,
+  );
+  if (await card.getAttribute("tabindex") === "0") await card.focus();
+  return card;
+}
+
 async function revealFullWorkspaceControls(page: import("@playwright/test").Page): Promise<void> {
   await seedJoinedRoom(page, "Workspace controls fixture", "9".repeat(64));
   await page.reload();
@@ -594,6 +602,7 @@ test("unread badge lifecycle projects exact room and coordinator counts", async 
   await page.reload();
 
   const rail = page.getByTestId("invite-panel");
+  await revealOfflineCoordinatorCard(page, coordinatorPubkey);
   await expect(rail.getByRole("button", { name: /Open room Unread one/ })).toBeVisible();
   const unreadBadge = rail.getByLabel("100 unread messages");
   await expect(unreadBadge).toHaveText("99+");
@@ -645,6 +654,7 @@ test("repairs replayed message ids before rendering cached production state", as
   });
   await page.reload();
 
+  await revealOfflineCoordinatorCard(page, "7".repeat(64));
   await page.getByRole("button", { name: /Open room Replay-safe room/ }).click();
   await expect(page.getByText("render once", { exact: true })).toHaveCount(1);
   expect(pageErrors.filter((message) => message.includes("each_key_duplicate"))).toEqual([]);
@@ -803,6 +813,33 @@ test("offline coordinator disclosure keeps history reachable by pointer and keyb
   await expect(singularCard.locator(".channel-row")).toHaveCount(0);
 });
 
+test("offline coordinator disclosure survives reachability transitions while focused", async ({ page }) => {
+  const coordinatorPubkey = "9".repeat(64);
+  await page.goto("/");
+  await seedJoinedRoom(page, "Transition archive", coordinatorPubkey);
+  await page.reload();
+
+  const card = page.getByTestId("invite-panel").locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinatorPubkey}"]`);
+  await expect(card).toContainText("1 chat offline", { timeout: 20_000 });
+  await card.focus();
+  const room = card.getByRole("button", { name: /Open room Transition archive, hosted by/ });
+  await expect(room).toBeVisible();
+
+  await page.evaluate((pubkey) => window.dispatchEvent(new CustomEvent("cordn:server-online", {
+    detail: { coordinatorPubkey: pubkey },
+  })), coordinatorPubkey);
+  await expect(page.getByTestId(`coordinator-card-status-${coordinatorPubkey}`)).toHaveAttribute("data-state", "online", { timeout: 10_000 });
+
+  await page.evaluate((pubkey) => window.dispatchEvent(new CustomEvent("cordn:server-offline", {
+    detail: { coordinatorPubkey: pubkey },
+  })), coordinatorPubkey);
+  await expect(page.getByTestId(`coordinator-card-status-${coordinatorPubkey}`)).toHaveAttribute("data-state", "offline", { timeout: 10_000 });
+  await expect(card).toBeFocused();
+  await expect(room).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(room).toBeFocused();
+});
+
 test("offline coordinator disclosure preserves motion and five-room behavior", async ({ page }) => {
   const coordinator = "a".repeat(64);
   await page.goto("/");
@@ -826,13 +863,21 @@ test("offline coordinator disclosure preserves motion and five-room behavior", a
   await expect(card.getByRole("button", { name: "Show fewer chats" })).toBeVisible();
   await expectNoDocumentOverflow(page, { width: 1280, height: 720 });
 
-  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.mouse.move(0, 0);
+  await expect(disclosure).toHaveAttribute("inert", "");
+  await expect(disclosure).toHaveAttribute("aria-hidden", "true");
+  await expect(disclosure).toHaveCSS("pointer-events", "none");
+  expect(await disclosure.evaluate((element) => getComputedStyle(element).animationName)).toContain("offline-rooms-exit");
   await expect(card.locator(".channel-row")).toHaveCount(0);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await card.hover();
   await expect(disclosure).toHaveCSS("animation-name", "none");
   await expect(disclosure).toHaveCSS("transform", "none");
+  await page.mouse.move(0, 0);
+  expect(await card.locator(".channel-row").count()).toBe(0);
+  await card.hover();
   await page.setViewportSize({ width: 320, height: 720 });
   await expectNoDocumentOverflow(page, { width: 320, height: 720 });
 });
@@ -1143,6 +1188,7 @@ test("running coordinator with no local rooms keeps setup quiet while preserving
 
   await savedChats.click();
   await expect(page.getByTestId("invite-panel")).toBeVisible();
+  await revealOfflineCoordinatorCard(page, "e".repeat(64));
   await expect(page.locator(".channel-row").filter({ hasText: "Saved elsewhere" })).toBeVisible();
 });
 
@@ -1361,6 +1407,7 @@ test("browses joined chats from the root shell without starting an unprotected l
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
+  await revealOfflineCoordinatorCard(page, "a".repeat(64));
   await expect(page.getByRole("button", { name: /Open room Elsewhere lounge/ })).toBeVisible();
 });
 
@@ -1375,6 +1422,7 @@ test("browses cached chats while a persisted coordinator stays locked", async ({
   await page.getByRole("button", { name: "Open chats" }).click();
   await expect(page.getByTestId("operator-shell")).toBeVisible();
   await expect(page.getByTestId("workspace-navigation")).toHaveCount(1);
+  await revealOfflineCoordinatorCard(page, "c".repeat(64));
   await page.getByRole("button", { name: /Open room Locked-out lounge/ }).click();
   await expect(page.getByTestId("cached-room-view")).toContainText("Locked-out lounge");
   await expect(page.locator(".presence-control")).toHaveCount(0);
@@ -2427,6 +2475,7 @@ test("emoji shortcuts and offline cached reactions", async ({ page }) => {
     localStorage.setItem(key, JSON.stringify(room));
   });
   await page.reload();
+  await revealOfflineCoordinatorCard(page, "a".repeat(64));
   await page.getByRole("button", { name: /Open room Offline reactions/ }).click();
   const cachedRoom = page.getByTestId("cached-room-view");
   await expect(cachedRoom.getByText("Still readable")).toBeVisible();
@@ -2596,6 +2645,7 @@ test("same-id sidebar removal leaves only the captured remote record", async ({ 
   await page.goto("/");
   await seedJoinedRoom(page, "Sidebar remote", "f".repeat(64));
   await page.reload();
+  await revealOfflineCoordinatorCard(page, "f".repeat(64));
   const targetRow = page.locator(".channel-row").filter({ hasText: "Sidebar remote" });
   const trigger = targetRow.getByRole("button", { name: "More actions for # Sidebar remote" });
   await trigger.click();
@@ -2619,6 +2669,7 @@ test("leaving the last remote room returns to the home coordinator", async ({ pa
   expect(homeCoordinatorPubkey).toBeTruthy();
   await expect(page.getByTestId(`coordinator-card-status-${remoteCoordinatorPubkey}`)).toBeVisible();
 
+  await revealOfflineCoordinatorCard(page, remoteCoordinatorPubkey);
   const targetRow = page.locator(".channel-row").filter({ hasText: "Last remote room" });
   await targetRow.getByRole("button", { name: "More actions for # Last remote room" }).click();
   await page.getByRole("menu", { name: "Room actions for Last remote room" })

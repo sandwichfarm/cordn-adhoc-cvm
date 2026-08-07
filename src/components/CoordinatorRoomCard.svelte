@@ -56,6 +56,7 @@
   let focusInside = $state(false);
   let disclosureState = $state<"compact" | "revealed" | "exiting">("compact");
   let collapseTimer: ReturnType<typeof setTimeout> | undefined;
+  let cardElement = $state<HTMLFieldSetElement>();
   const componentId = $props.id();
   const limit = 5;
   const offlineDisclosure = $derived(presentation === "coordinator" && !local && status === "offline" && rooms.length > 0);
@@ -74,11 +75,13 @@
   const hiddenCount = $derived(Math.max(0, rooms.length - visibleRooms.length));
 
   $effect(() => {
-    if (!offlineDisclosure) {
+    if (offlineDisclosure) {
+      pointerInside = cardElement?.matches(":hover") ?? false;
+      focusInside = cardElement?.contains(document.activeElement) ?? false;
+      if (pointerInside || focusInside) revealOfflineRooms();
+    } else {
       if (collapseTimer) clearTimeout(collapseTimer);
       disclosureState = "compact";
-      pointerInside = false;
-      focusInside = false;
     }
   });
 
@@ -121,14 +124,15 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex (eligible fieldset is the approved keyboard disclosure group stop) -->
 <fieldset
+  bind:this={cardElement}
   class:local
   class:favorites={presentation === "favorites"}
   class:offline-disclosure={offlineDisclosure}
   class="coordinator-room-card"
   data-testid="coordinator-card"
   data-coordinator-pubkey={pubkey}
-  role={offlineDisclosure ? "group" : undefined}
-  tabindex={offlineDisclosure ? 0 : undefined}
+  role={offlineDisclosure || focusInside ? "group" : undefined}
+  tabindex={offlineDisclosure || focusInside ? 0 : undefined}
   aria-describedby={offlineDisclosure ? offlineDescriptionId : undefined}
   onpointerenter={() => {
     if (!offlineDisclosure) return;
@@ -223,7 +227,7 @@
   .coordinator-card-dot.offline, .coordinator-card-dot.unknown { background: #59675f; }
   .coordinator-card-label { min-width: 0; overflow: hidden; color: #cde4d2; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .coordinator-card-status { flex: 0 0 auto; color: #64766b; font-size: 8px; text-transform: capitalize; }
-  .coordinator-create { position: relative; display: grid; width: 1.8rem; height: 1.8rem; flex: 0 0 auto; margin-left: auto; cursor: pointer; place-items: center; border: 1px solid transparent; background: transparent; color: #9bf6b3; font-size: 1.15rem; font-weight: 500; line-height: 1; transition: border-color .15s ease, background .15s ease, color .15s ease, transform .15s ease; }
+  .coordinator-create { position: relative; display: grid; width: 1.8rem; height: 1.8rem; flex: 0 0 auto; margin-left: auto; cursor: pointer; place-items: center; border: 1px solid transparent; background: transparent; color: #9bf6b3; font-size: 1.15rem; font-weight: 400; line-height: 1; transition: border-color .15s ease, background .15s ease, color .15s ease, transform .15s ease; }
   .coordinator-create::before { position: absolute; top: 4px; bottom: 4px; left: -8px; width: 1px; background: #293832; content: ""; pointer-events: none; }
   .coordinator-unread { flex: 0 0 auto; }
   .coordinator-create:hover:not(:disabled), .coordinator-create:focus-visible { border-color: #496451; outline: none; background: #142019; color: #effff2; transform: rotate(90deg) scale(1.08); }
@@ -231,7 +235,7 @@
   .coordinator-card-rooms { display: grid; gap: 4px; }
   .offline-chat-summary { display: flex; min-height: 2.75rem; align-items: center; padding: 4px 8px; color: #718277; font-size: 10px; transition: opacity .15s ease; }
   .offline-chat-summary strong { color: #9aac9f; font-weight: 600; }
-  .offline-chat-summary.receded { opacity: .55; }
+  .offline-chat-summary.receded { position: absolute; width: 1px; height: 1px; min-height: 0; overflow: hidden; padding: 0; clip: rect(0 0 0 0); opacity: 0; white-space: nowrap; }
   .offline-room-disclosure.entering { animation: offline-rooms-enter .15s ease both; }
   .offline-room-disclosure.exiting { pointer-events: none; animation: offline-rooms-exit .15s ease both; }
   .offline-disclosure:focus-visible { outline: 1px solid #7cf59d; outline-offset: 2px; }
