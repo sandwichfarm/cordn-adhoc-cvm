@@ -809,6 +809,7 @@ test("favorite menu duplicates the exact room and survives reload", async ({ pag
 
 test("favorite star mirrors duplicate state and keeps sidebar controls touch-safe", async ({ page }) => {
   const coordinator = "c".repeat(64);
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
   await seedJoinedRoom(page, "Star favorite", coordinator);
   await page.reload();
@@ -816,7 +817,10 @@ test("favorite star mirrors duplicate state and keeps sidebar controls touch-saf
   const rail = page.getByTestId("invite-panel");
   const sourceRow = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinator}"] .channel-row`);
   const star = sourceRow.getByRole("button", { name: "Favorite # Star favorite" });
+  const menuTrigger = sourceRow.getByRole("button", { name: "More actions for # Star favorite" });
   await expect(star).toHaveAttribute("aria-pressed", "false");
+  await expect(star).toHaveCSS("transition-duration", "0s");
+  await expect(menuTrigger).toHaveCSS("transition-duration", "0s");
   const bounds = await Promise.all([sourceRow.boundingBox(), star.boundingBox()]);
   expect(bounds[0]?.height).toBeGreaterThanOrEqual(44);
   expect(bounds[1]?.width).toBeGreaterThanOrEqual(44);
