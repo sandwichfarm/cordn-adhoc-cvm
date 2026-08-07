@@ -945,6 +945,53 @@ test("host messages re-probe invite-only coordinators when availability changes"
   })).toBe("1");
 });
 
+test("shared invite availability descriptions are unique across sender streaks", async ({ page }) => {
+  const viewer = "b".repeat(64);
+  const firstInvite = createInviteUrl("https://invite.example", {
+    groupId: "first-description-invite",
+    coordinatorPubkey: "a".repeat(64),
+    relayUrls: ["wss://relay.example"],
+    title: "First description room",
+  });
+  const secondInvite = createInviteUrl("https://invite.example", {
+    groupId: "second-description-invite",
+    coordinatorPubkey: "e".repeat(64),
+    relayUrls: ["wss://relay.example"],
+    title: "Second description room",
+  });
+
+  await page.goto("/");
+  await page.evaluate(({ viewerPubkey, messages }) => {
+    const coordinatorPubkey = "c".repeat(64);
+    const roomId = "availability-description-renderer";
+    localStorage.setItem(`cordn-adhoc-chat-room:v2:${encodeURIComponent(coordinatorPubkey)}:${encodeURIComponent(roomId)}`, JSON.stringify({
+      version: 1, id: roomId, title: "Availability description renderer", coordinatorPubkey, coordinatorOrigin: window.location.origin,
+      relayUrls: ["ws://127.0.0.1:1"], name: "Guest", stablePubkey: viewerPubkey, isHost: false, stateBase64: "",
+      keyPackage: { reference: "availability-description", publicBase64: "public", privateBase64: "private" }, lastCursor: 0,
+      messages, pending: [], coordinatorKeyMode: "ephemeral", createdAt: Date.now(), updatedAt: Date.now(),
+    }));
+  }, {
+    viewerPubkey: viewer,
+    messages: [
+      { type: "message", id: "first-description-message", sender: "d".repeat(64), name: "First host", content: firstInvite, createdAt: 1 },
+      { type: "message", id: "second-description-message", sender: "f".repeat(64), name: "Second host", content: secondInvite, createdAt: 2 },
+    ],
+  });
+  await page.reload();
+  const room = page.getByRole("button", { name: /^Open room Availability description renderer/ });
+  if (!(await room.isVisible())) await page.getByRole("button", { name: "Open room browser" }).click();
+  await room.click();
+
+  const actions = page.getByRole("button", { name: /Join .* description room/ });
+  await expect(actions).toHaveCount(2);
+  const descriptionIds = await actions.evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-describedby")));
+  expect(descriptionIds.every((id): id is string => Boolean(id))).toBe(true);
+  expect(new Set(descriptionIds).size).toBe(descriptionIds.length);
+  for (const descriptionId of descriptionIds) {
+    await expect(page.locator(`#${descriptionId}`)).toHaveText("Coordinator is offline");
+  }
+});
+
 test("generates copyable identity on first load", async ({ page }) => {
   await page.goto("/");
 

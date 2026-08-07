@@ -73,6 +73,7 @@
     followStatus = "idle",
     onFollow,
   }: Props = $props();
+  const componentId = $props.id();
 
   const first = $derived(messages[0]);
   const mine = $derived(first?.sender === viewerPubkey);
@@ -283,7 +284,7 @@
               {@const groupName = sharedInvite.title || "Chat"}
               {@const coordinatorName = inviteCoordinatorName(sharedInvite)}
               {@const inviteOnline = inviteCoordinatorReachability(sharedInvite.coordinatorPubkey) === "online"}
-              {@const inviteAvailabilityId = `${idPrefix}-invite-availability-${messageIndex}`}
+              {@const inviteAvailabilityId = `${idPrefix}-${componentId}-invite-availability-${messageIndex}`}
               <button
                 class:unavailable={!inviteOnline}
                 class="shared-invite-action"
