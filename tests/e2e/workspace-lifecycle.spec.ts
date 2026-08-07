@@ -788,12 +788,15 @@ test("favorite star mirrors duplicate state and keeps sidebar controls touch-saf
   await expect(star).toHaveAttribute("aria-pressed", "true");
   const favoriteStar = rail.getByRole("group", { name: "Favorites" }).getByRole("button", { name: "Unfavorite # Star favorite" });
   await expect(favoriteStar).toHaveAttribute("aria-pressed", "true");
-
-  await page.setViewportSize({ width: 320, height: 720 });
-  await expectNoDocumentOverflow(page, { width: 320, height: 720 });
+  const favoriteBounds = await favoriteStar.boundingBox();
+  expect(favoriteBounds?.width).toBeGreaterThanOrEqual(44);
+  expect(favoriteBounds?.height).toBeGreaterThanOrEqual(44);
   await favoriteStar.click();
   await expect(rail.getByRole("group", { name: "Favorites" })).toHaveCount(0);
   await expect(sourceRow).toHaveCount(1);
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expectNoDocumentOverflow(page, { width: 320, height: 720 });
 });
 
 test("generates copyable identity on first load", async ({ page }) => {

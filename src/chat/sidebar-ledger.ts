@@ -227,5 +227,8 @@ function isSidebarHistoryEntry(value: unknown): value is SidebarHistoryEntry {
 
 function isCompositeRoomKey(value: string): boolean {
   const separator = value.indexOf("\u0000");
-  return separator > 0 && separator < value.length - 1 && value.indexOf("\u0000", separator + 1) === -1;
+  const coordinatorPubkey = value.slice(0, separator);
+  return /^[0-9a-f]{64}$/i.test(coordinatorPubkey)
+    && separator < value.length - 1
+    && value.indexOf("\u0000", separator + 1) === -1;
 }
