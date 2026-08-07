@@ -747,8 +747,12 @@ test("favorite menu duplicates the exact room and survives reload", async ({ pag
   await expect(favorites.locator(".channel-row")).toHaveCount(1);
   await expect(sourceRow).toHaveCount(1);
   await expect(sameIdOtherCoordinator.locator(".channel-row")).toHaveCount(1);
-  await expect(favorites.locator(`[data-room-key="${favoriteCoordinator}\\0favorite-exact"]`)).toHaveCount(1);
-  await expect(favorites.locator(`[data-room-key="${otherCoordinator}\\0favorite-exact"]`)).toHaveCount(0);
+  expect(await favorites.locator("[data-room-key]").evaluateAll((rows, expectedKey) => (
+    rows.filter((row) => row.getAttribute("data-room-key") === expectedKey).length
+  ), `${favoriteCoordinator}\0favorite-exact`)).toBe(1);
+  expect(await favorites.locator("[data-room-key]").evaluateAll((rows, otherKey) => (
+    rows.filter((row) => row.getAttribute("data-room-key") === otherKey).length
+  ), `${otherCoordinator}\0favorite-exact`)).toBe(0);
 
   await page.reload();
   const reloadedFavorites = page.getByTestId("invite-panel").getByRole("group", { name: "Favorites" });

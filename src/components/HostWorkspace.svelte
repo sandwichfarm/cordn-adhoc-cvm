@@ -11,7 +11,7 @@
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
-  import { emptySidebarLedger, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
+  import { emptySidebarLedger, isSidebarFavorite, parseSidebarLedger, reconcileSidebarLedger, serializeSidebarLedger, SIDEBAR_LEDGER_KEY, toggleSidebarFavorite, type SidebarHistoryEntry, type SidebarLedger } from "../chat/sidebar-ledger";
   import { CHAT_EMOJI_SHORTCUTS, normalizeRecipientPubkeys, type ChatEmojiShortcut } from "../chat/protocol";
   import { projectMessagePresentation } from "../chat/message-presentation";
   import { chatParticipantPreferences, type ParticipantHighlightName } from "../chat/chat-participant-preferences.svelte";
@@ -87,6 +87,7 @@
   let hostedRooms = $state<HostedRoomEntry[]>([]);
   let homeJoinedRooms = $state<StoredRoom[]>([]);
   let remoteRooms = $state<StoredRoom[]>([]);
+  let activeSidebarRooms = $state<StoredRoom[]>([]);
   let previousLocalRooms = $state<StoredRoom[]>([]);
   let sidebarLedger = $state<SidebarLedger>(emptySidebarLedger());
   let sidebarHistory = $state<SidebarHistoryEntry[]>([]);
@@ -162,6 +163,9 @@
     }
     return Object.values(groups);
   });
+  const favoriteRoomItems = $derived.by(() => activeSidebarRooms
+    .filter((storedRoom) => isSidebarFavorite(sidebarLedger, storedRoom))
+    .map(sidebarRoomItem));
   const previousLocalServers = $derived.by(() => {
     const groups: Record<string, RemoteServerGroup> = {};
     for (const storedRoom of previousLocalRooms) {
@@ -584,6 +588,44 @@
     return createSameShellChatHref(window.location.origin, nextRoom);
   }
 
+  function sidebarRoomItem(storedRoom: StoredRoom) {
+    const hosted = storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey
+      ? hostedRooms.find((entry) => sameRoomIdentity(entry.room, storedRoom))
+      : undefined;
+    return {
+      room: storedRoom,
+      inviteUrl: hosted?.inviteUrl ?? remoteRoomHref(storedRoom),
+      removalMode: storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey ? "delete" as const : "leave" as const,
+    };
+  }
+
+  function sidebarLedgerHasContent(ledger: SidebarLedger): boolean {
+    return ledger.coordinatorOrder.length > 0
+      || ledger.history.length > 0
+      || ledger.favorites.length > 0
+      || Object.values(ledger.roomOrder).some((order) => order.length > 0);
+  }
+
+  function persistSidebarLedger(ledger: SidebarLedger): void {
+    sidebarLedger = ledger;
+    try {
+      if (sidebarLedgerHasContent(ledger)) localStorage.setItem(SIDEBAR_LEDGER_KEY, serializeSidebarLedger(ledger));
+      else localStorage.removeItem(SIDEBAR_LEDGER_KEY);
+    } catch { /* favorites remain available for the current session */ }
+  }
+
+  function toggleFavoriteRoom(target: StoredRoom, origin: HTMLButtonElement | undefined = undefined): void {
+    const wasFavorite = isSidebarFavorite(sidebarLedger, target);
+    persistSidebarLedger(toggleSidebarFavorite(sidebarLedger, target));
+    if (!wasFavorite || !origin) return;
+    const targetKey = roomIdentityKey(target.coordinatorPubkey, target.id);
+    void tick().then(() => {
+      const sourceRow = [...document.querySelectorAll<HTMLElement>(".coordinator-card-list [data-room-key]")]
+        .find((element) => element.dataset.roomKey === targetKey);
+      sourceRow?.querySelector<HTMLButtonElement>(".channel-row-primary")?.focus();
+    });
+  }
+
   function shortKey(pubkey: string): string {
     return `${pubkey.slice(0, 6)}…${pubkey.slice(-4)}`;
   }
@@ -727,13 +769,11 @@
     sidebarLedger = projection.ledger;
     sidebarHistory = projection.history;
     try {
-      const ledgerHasContent = projection.ledger.coordinatorOrder.length > 0
-        || projection.ledger.history.length > 0
-        || Object.values(projection.ledger.roomOrder).some((order) => order.length > 0);
-      if (ledgerHasContent) localStorage.setItem(SIDEBAR_LEDGER_KEY, serializeSidebarLedger(projection.ledger));
+      if (sidebarLedgerHasContent(projection.ledger)) localStorage.setItem(SIDEBAR_LEDGER_KEY, serializeSidebarLedger(projection.ledger));
       else localStorage.removeItem(SIDEBAR_LEDGER_KEY);
     } catch { /* presentation order remains in memory */ }
     const activeRooms = projection.activeRooms;
+    activeSidebarRooms = activeRooms;
     hostedRooms = activeRooms
       .filter((storedRoom) => storedRoom.isHost && storedRoom.coordinatorPubkey === coordinatorPubkey)
       .map(buildHostedRoomEntry);
@@ -1804,6 +1844,21 @@
             {/if}
             </div>
 
+            {#if favoriteRoomItems.length > 0}
+              <CoordinatorRoomCard
+                presentation="favorites"
+                pubkey="favorites"
+                label="Favorites"
+                status="online"
+                statusLabel="Favorites"
+                rooms={favoriteRoomItems}
+                favoriteRoomKeys={sidebarLedger.favorites}
+                activeRoomKey={activeSidebarRoomKey}
+                onOpen={openCoordinatorRoom}
+                onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
+                onFavorite={toggleFavoriteRoom}
+              />
+            {/if}
             <nav class="coordinator-card-list" aria-label="Server and channel browser">
               <CoordinatorRoomCard
                 pubkey={coordinatorPubkey}
@@ -1815,6 +1870,7 @@
                   ...hostedRooms.map((entry) => ({ room: entry.room, inviteUrl: entry.inviteUrl, removalMode: "delete" as const })),
                   ...homeJoinedRooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const })),
                 ]}
+                favoriteRoomKeys={sidebarLedger.favorites}
                 unreadCount={coordinatorUnreadCount(coordinatorPubkey)}
                 activeRoomKey={activeSidebarRoomKey}
                 disabled={localRailUnavailable}
@@ -1822,6 +1878,7 @@
                 onCreate={() => void openCreateDialog()}
                 onOpen={openCoordinatorRoom}
                 onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
+                onFavorite={toggleFavoriteRoom}
               />
               {#each remoteServers as server (server.pubkey)}
                 <CoordinatorRoomCard
@@ -1830,10 +1887,12 @@
                   status={externalCoordinatorReachability(server.pubkey)}
                   statusLabel={reachabilityLabel(externalCoordinatorReachability(server.pubkey))}
                   rooms={server.rooms.map((storedRoom) => ({ room: storedRoom, inviteUrl: remoteRoomHref(storedRoom), removalMode: "leave" as const }))}
+                  favoriteRoomKeys={sidebarLedger.favorites}
                   unreadCount={coordinatorUnreadCount(server.pubkey)}
                   activeRoomKey={activeSidebarRoomKey}
                   onOpen={openCoordinatorRoom}
                   onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
+                  onFavorite={toggleFavoriteRoom}
                 />
               {/each}
             </nav>

@@ -16,7 +16,9 @@
     status: "online" | "connecting" | "offline" | "unknown";
     statusLabel: string;
     local?: boolean;
+    presentation?: "coordinator" | "favorites";
     rooms: CoordinatorRoomItem[];
+    favoriteRoomKeys?: readonly string[];
     unreadCount?: number;
     activeRoomKey?: string;
     disabled?: boolean;
@@ -24,6 +26,7 @@
     onCreate?: () => void;
     onOpen: (room: StoredRoom) => void | Promise<void>;
     onRemove: (room: StoredRoom, origin: HTMLButtonElement) => void;
+    onFavorite?: (room: StoredRoom, origin?: HTMLButtonElement) => void;
   }
 
   let {
@@ -32,7 +35,9 @@
     status,
     statusLabel,
     local = false,
+    presentation = "coordinator",
     rooms,
+    favoriteRoomKeys = [],
     unreadCount = 0,
     activeRoomKey,
     disabled = false,
@@ -40,11 +45,12 @@
     onCreate,
     onOpen,
     onRemove,
+    onFavorite,
   }: Props = $props();
   let expanded = $state(false);
   const limit = 5;
   const visibleRooms = $derived.by(() => {
-    if (expanded || rooms.length <= limit) return rooms;
+    if (presentation === "favorites" || expanded || rooms.length <= limit) return rooms;
     const first = rooms.slice(0, limit);
     const active = rooms.find((item) => roomIdentityKey(item.room.coordinatorPubkey, item.room.id) === activeRoomKey);
     if (!active || first.includes(active)) return first;
@@ -57,14 +63,18 @@
   }
 </script>
 
-<fieldset class:local class="coordinator-room-card" data-testid="coordinator-card" data-coordinator-pubkey={pubkey}>
+<fieldset class:local class:favorites={presentation === "favorites"} class="coordinator-room-card" data-testid="coordinator-card" data-coordinator-pubkey={pubkey}>
   <legend>
-    <span class:online={status === "online"} class:connecting={status === "connecting"} class:offline={status === "offline"} class:unknown={status === "unknown"} class="coordinator-card-dot" data-testid={`coordinator-card-status-${pubkey}`} data-state={status} role="img" aria-label={statusLabel}></span>
-    <span class="coordinator-card-label" title={label}>{label}</span>
-    <span class="coordinator-card-status">{status}</span>
-    {#if unreadCount > 0}<span class="unread-badge coordinator-unread" aria-label={`${unreadCount} unread messages for this coordinator`}>{displayUnreadCount(unreadCount)}</span>{/if}
-    {#if local && onCreate}
-      <button class="coordinator-create" type="button" aria-label="Create group" title="Create group" disabled={disabled} onclick={onCreate}>+</button>
+    {#if presentation === "favorites"}
+      <span class="coordinator-card-label">{label}</span>
+    {:else}
+      <span class:online={status === "online"} class:connecting={status === "connecting"} class:offline={status === "offline"} class:unknown={status === "unknown"} class="coordinator-card-dot" data-testid={`coordinator-card-status-${pubkey}`} data-state={status} role="img" aria-label={statusLabel}></span>
+      <span class="coordinator-card-label" title={label}>{label}</span>
+      <span class="coordinator-card-status">{status}</span>
+      {#if unreadCount > 0}<span class="unread-badge coordinator-unread" aria-label={`${unreadCount} unread messages for this coordinator`}>{displayUnreadCount(unreadCount)}</span>{/if}
+      {#if local && onCreate}
+        <button class="coordinator-create" type="button" aria-label="Create group" title="Create group" disabled={disabled} onclick={onCreate}>+</button>
+      {/if}
     {/if}
   </legend>
 
@@ -78,6 +88,7 @@
       {#each visibleRooms as item (roomIdentityKey(item.room.coordinatorPubkey, item.room.id))}
         {@const key = roomIdentityKey(item.room.coordinatorPubkey, item.room.id)}
         {@const unread = roomUnreadCount(item.room)}
+        {@const favorite = favoriteRoomKeys.includes(key)}
         <div class:active={key === activeRoomKey} class:unavailable={disabled} class:busy class="channel-row" data-room-key={key}>
           <button class="channel-row-primary" type="button" aria-label={`Open room ${item.room.title}, hosted by ${hostIdentityForRoom(item.room).name}`} disabled={disabled} onclick={() => onOpen(item.room)}>
             <span class="channel-active-mark" aria-hidden="true"></span>
@@ -86,11 +97,14 @@
             {#if !disabled}<span class="channel-owner-avatar"><RoomHostBadge host={hostIdentityForRoom(item.room)} compact avatarOnly /></span>{/if}
           </button>
           {#if unread > 0}<span class="unread-badge" data-testid={`room-unread-${key}`} title={`${unread} unread messages`} aria-label={`${unread} unread messages`}>{displayUnreadCount(unread)}</span>{/if}
-          {#if !disabled}<RoomActionsMenu sidebar roomTitle={item.room.title} roomId={item.room.id} coordinatorPubkey={item.room.coordinatorPubkey} inviteUrl={item.inviteUrl} removalMode={item.removalMode} onRemove={(origin) => onRemove(item.room, origin)} />{/if}
+          {#if !disabled && onFavorite}
+            <button class:selected={favorite} class="channel-favorite" type="button" aria-label={`${favorite ? "Unfavorite" : "Favorite"} # ${item.room.title}`} aria-pressed={favorite} title={`${favorite ? "Unfavorite" : "Favorite"} # ${item.room.title}`} onclick={(event) => onFavorite(item.room, event.currentTarget)}>★</button>
+          {/if}
+          {#if !disabled}<RoomActionsMenu sidebar roomTitle={item.room.title} roomId={item.room.id} coordinatorPubkey={item.room.coordinatorPubkey} inviteUrl={item.inviteUrl} removalMode={item.removalMode} {favorite} onFavorite={onFavorite ? (origin) => onFavorite(item.room, origin) : undefined} onRemove={(origin) => onRemove(item.room, origin)} />{/if}
         </div>
       {/each}
     </div>
-    {#if rooms.length > limit}
+    {#if presentation !== "favorites" && rooms.length > limit}
       <button class="coordinator-reveal" type="button" aria-expanded={expanded} onclick={() => expanded = !expanded}>
         {expanded ? "Show less" : `Show ${hiddenCount} more`}
       </button>
@@ -113,11 +127,13 @@
   .coordinator-create:hover:not(:disabled), .coordinator-create:focus-visible { border-color: #496451; outline: none; background: #142019; color: #effff2; transform: rotate(90deg) scale(1.08); }
   .coordinator-create:disabled { cursor: not-allowed; opacity: .35; }
   .coordinator-card-rooms { display: grid; gap: .1rem; }
+  .coordinator-room-card.favorites { margin-bottom: .1rem; border-color: #34483a; }
+  .coordinator-room-card.favorites legend { color: #9aac9f; }
   .coordinator-card-empty { display: grid; gap: .2rem; padding: .65rem .55rem; color: #718277; }
   .coordinator-card-empty strong { color: #9aac9f; font-size: .62rem; font-weight: 600; }
   .coordinator-card-empty span { font-size: .54rem; line-height: 1.45; }
-  .channel-row { position: relative; display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; color: #91a59a; font-size: .68rem; }
-  .channel-row-primary { display: grid; min-width: 0; min-height: 2.25rem; grid-template-columns: .15rem auto minmax(0, 1fr) auto; align-items: center; gap: .5rem; padding: .35rem .2rem; color: inherit; text-align: left; }
+  .channel-row { position: relative; display: grid; min-width: 0; min-height: 2.75rem; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; color: #91a59a; font-size: .68rem; }
+  .channel-row-primary { display: grid; min-width: 0; min-height: 2.75rem; grid-template-columns: .15rem auto minmax(0, 1fr) auto; align-items: center; gap: .5rem; padding: .35rem .2rem; color: inherit; text-align: left; }
   .channel-name-with-preferences { display: flex; min-width: 0; align-items: center; gap: .35rem; }
   .channel-name-with-preferences .truncate { min-width: 0; flex: 0 1 auto; }
   .channel-owner-avatar { display: inline-grid; opacity: 0; transition: opacity .15s ease; }
@@ -128,9 +144,14 @@
   .channel-row.unavailable.busy .channel-row-primary { cursor: progress; }
   .channel-active-mark { align-self: stretch; background: transparent; }
   .channel-row.active .channel-active-mark { background: #7cf59d; box-shadow: 0 0 9px rgb(124 245 157 / .2); }
+  .channel-favorite { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border: 1px solid transparent; background: transparent; color: #64766b; cursor: pointer; font-size: .8rem; opacity: 0; transition: color .15s ease, opacity .15s ease; }
+  .channel-row:hover .channel-favorite, .channel-row:focus-within .channel-favorite, .channel-favorite.selected { opacity: 1; }
+  .channel-favorite:hover, .channel-favorite:focus-visible { border-color: #496451; color: #dfffe7; outline: none; }
+  .channel-favorite.selected { color: #7cf59d; }
   .channel-hash { color: #52675a; font-size: .8rem; }
   .channel-row.active .channel-hash { color: #9bf6b3; }
   .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 .25rem; border: 1px solid #3b5943; background: #102216; color: #bfeac8; font-size: .56rem; font-variant-numeric: tabular-nums; }
   .coordinator-reveal { width: 100%; margin-top: .18rem; padding: .35rem .45rem; color: #718277; text-align: left; font-size: .52rem; }
   .coordinator-reveal:hover, .coordinator-reveal:focus-visible { background: #111a14; color: #bfeac8; outline: none; }
+  @media (prefers-reduced-motion: reduce) { .channel-favorite { transition: none; } }
 </style>

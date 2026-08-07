@@ -11,10 +11,12 @@
     inviteUrl: string;
     removalMode: "delete" | "leave";
     onRemove: (origin?: HTMLButtonElement) => void;
+    favorite?: boolean;
+    onFavorite?: (origin?: HTMLButtonElement) => void;
     sidebar?: boolean;
   }
 
-  let { roomTitle, roomId, coordinatorPubkey, inviteUrl, removalMode, onRemove, sidebar = false }: Props = $props();
+  let { roomTitle, roomId, coordinatorPubkey, inviteUrl, removalMode, onRemove, favorite = false, onFavorite, sidebar = false }: Props = $props();
   const preferenceKey = $derived(roomIdentityKey(coordinatorPubkey, roomId));
   let open = $state(false);
   let trigger: HTMLButtonElement | undefined = $state();
@@ -69,6 +71,18 @@
     <button class="room-actions-scrim" type="button" aria-label="Close room actions" onclick={() => close(true)}></button>
     <div use:viewportOverlay={{ anchor: trigger, preferredSide: "below", align: "end", compactSheetBelow: 520 }} class="room-actions-menu" role="menu" aria-label={`Room actions for ${roomTitle}`}>
       <header><span>Room actions</span><strong># {roomTitle}</strong></header>
+      {#if onFavorite}
+        <button
+          class="room-menu-action room-favorite-action"
+          type="button"
+          role="menuitem"
+          aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+          onclick={() => { close(); onFavorite(trigger); }}
+        >
+          <span>{favorite ? "Remove from favorites" : "Add to favorites"}</span>
+          <span aria-hidden="true">★</span>
+        </button>
+      {/if}
       <div class="room-connection-details">
         <button
           class="room-copy-action"
@@ -131,6 +145,7 @@
   .room-menu-action > span:last-child { color: #718277; font-size: .52rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .room-menu-action.delete { color: #ffaaa3; }
   .room-menu-action.delete:hover, .room-menu-action.delete:focus-visible { background: #21110f; }
+  .room-favorite-action > span:last-child { color: #64766b; }
   .room-preference { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .55rem .6rem; color: #b9cbbf; font-size: .62rem; }
   .room-preference select { border: 1px solid #34483a; background: #0b110d; padding: .35rem .45rem; color: #dfffe7; font-size: .58rem; }
 
