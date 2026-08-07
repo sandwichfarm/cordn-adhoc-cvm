@@ -595,7 +595,6 @@ test("both composers restore edited mentions after signer failure", async ({ pag
 test("authenticated host expands filtered ignored streaks", async ({ page: host, browser }) => {
   test.setTimeout(150_000);
   const roomTitle = "Host ignore projection";
-  const filteredInviteCreatedAt = Math.floor(Date.now() / 1_000) * 1_000;
   await installControllableNip07(host);
   await host.goto("/");
   await authenticateNip07(host);
@@ -630,7 +629,6 @@ test("authenticated host expands filtered ignored streaks", async ({ page: host,
     await a.getByRole("button", { name: "Send" }).click();
     await expect(host.getByText("A second visible message")).toBeVisible({ timeout: 20_000 });
 
-    const aIdentity = await roomIdentity(a, roomTitle);
     const bIdentity = await roomIdentity(b, roomTitle);
     const filteredInvite = createInviteUrl(new URL(host.url()).origin, {
       groupId: "filtered-targeted-invite",
@@ -638,48 +636,29 @@ test("authenticated host expands filtered ignored streaks", async ({ page: host,
       relayUrls: ["wss://relay.example"],
       title: "Filtered targeted invite",
     });
-    const filteredInviteId = getEventHash({
-      kind: 9,
-      pubkey: aIdentity.stablePubkey,
-      created_at: Math.floor(filteredInviteCreatedAt / 1_000),
-      tags: [["name", "anon"], ["p", bIdentity.stablePubkey]],
-      content: filteredInvite,
-    });
-    const inserted = await host.evaluate(({ title, sender, target, content, id, createdAt }) => {
-      for (let index = 0; index < localStorage.length; index += 1) {
-        const key = localStorage.key(index);
-        if (!key?.startsWith("cordn-adhoc-chat-room:v2:")) continue;
-        const room = JSON.parse(localStorage.getItem(key) ?? "null") as { title?: string; messages?: unknown[] };
-        if (room.title !== title || !room.messages) continue;
-        room.messages.splice(2, 0, {
-          type: "message", id, sender, name: "anon", content, createdAt,
-          recipientPubkeys: [target], auth: { id, sig: "cordn" },
-        });
-        localStorage.setItem(key, JSON.stringify(room));
-        return true;
-      }
-      return false;
-    }, {
-      title: roomTitle,
-      sender: aIdentity.stablePubkey,
-      target: bIdentity.stablePubkey,
-      content: filteredInvite,
-      id: filteredInviteId,
-      createdAt: filteredInviteCreatedAt,
-    });
-    expect(inserted).toBe(true);
-    // Reopen the source room through the app instead of relying on a stale
-    // in-memory fixture, then prove the authenticated targeted invite arrived.
-    await host.getByRole("button", { name: new RegExp(`^Open room ${roomTitle}, hosted by`) }).click();
+    // Target B through A's active session. This produces the same signed,
+    // encrypted Cordn event the host session normally receives, rather than
+    // fabricating local storage that a later session update can replace.
+    const bActions = a.getByTestId("guest-message-list").locator("[data-testid=message-streak]")
+      .filter({ hasText: "B separates ignored streaks" }).getByRole("button", { name: /^Actions for / });
+    await expect(bActions).toBeVisible({ timeout: 20_000 });
+    await bActions.click();
+    await a.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Mention" }).click();
+    await a.getByPlaceholder("Message").fill(filteredInvite);
+    await a.getByRole("button", { name: "Send" }).click();
+
+    const deliveredFilteredInvite = await waitForStoredMessage(b, roomTitle, (message) => message.content === filteredInvite);
+    expect(deliveredFilteredInvite.recipientPubkeys).toEqual([bIdentity.stablePubkey]);
+    expect(deliveredFilteredInvite.auth).toBeTruthy();
+    const filteredInviteId = deliveredFilteredInvite.id;
     const log = host.getByTestId("host-message-list");
-    await expect(log.getByText("A second visible message")).toBeVisible({ timeout: 35_000 });
-    const deliveredFilteredInvite = await waitForStoredMessage(host, roomTitle, (message) => message.id === filteredInviteId);
-    expect(deliveredFilteredInvite).toMatchObject({
-      id: filteredInviteId,
-      content: filteredInvite,
-      recipientPubkeys: [bIdentity.stablePubkey],
-      auth: { id: filteredInviteId, sig: "cordn" },
-    });
+    // The probe is populated directly from HostWorkspace's active
+    // ChatRoomSession, before projectMessagePresentation filters the invite.
+    await expect(host.getByTestId("host-session-message-probe")).toHaveAttribute(
+      "data-session-message-ids",
+      new RegExp(`(^|,)${filteredInviteId}(,|$)`),
+      { timeout: 35_000 },
+    );
     await expect(log.locator(`[data-message-id="${filteredInviteId}"]`)).toHaveCount(0);
     const firstActions = log.locator("[data-testid=message-streak]").filter({ hasText: "A target host stays visible" }).getByRole("button", { name: /^Actions for / });
     await firstActions.click();

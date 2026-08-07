@@ -138,6 +138,10 @@
   let browserOnline = $state(typeof navigator === "undefined" ? true : navigator.onLine);
   let lastSyncedRouteContext = "";
   let unreadAnnouncement = $state("");
+  // E2E-only metadata lets the transport test distinguish the live session's
+  // unprojected room from the filtered message renderer without exposing text.
+  const e2eBuild = import.meta.env.VITE_E2E === "1";
+  let e2eSessionMessageIds = $state("");
   let autostartAttempted = false;
   let setupWasCompleteOnMount = $state(false);
   const reachabilityProbe = new SimplePoolNostrInstanceNetwork(1_500);
@@ -383,6 +387,7 @@
       const nextRoom = { ...session.room, messages: [...session.room.messages], pending: [...session.room.pending], reactions: [...(session.room.reactions ?? [])] };
       const receivedMessage = nextRoom.messages.some((message) => !knownMessageIds.has(message.id) && message.sender !== nextRoom.stablePubkey);
       knownMessageIds = new Set(nextRoom.messages.map((message) => message.id));
+      if (e2eBuild) e2eSessionMessageIds = session.room.messages.map((message) => message.id).join(",");
       room = nextRoom;
       pendingJoinRequests = [...session.pendingJoinRequests];
       hostedRooms = hostedRooms.map((entry) => sameRoomIdentity(entry.room, nextRoom) ? { ...entry, room: nextRoom } : entry);
@@ -1889,6 +1894,9 @@
               removalMode="delete"
               onRemove={() => roomRemovalTarget = room}
             />
+            {#if e2eBuild}
+              <output hidden aria-hidden="true" data-testid="host-session-message-probe" data-session-message-ids={e2eSessionMessageIds}>host-session-message-probe</output>
+            {/if}
             <div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6" role="log" aria-live="polite" aria-relevant="additions" data-testid="host-message-list">
               {#if room.messages.length === 0}<div class="flex h-full items-center justify-center"><p class="max-w-sm text-center text-sm leading-6 text-[#82958a]">Your room is ready. Invite someone from the left to begin.</p></div>{/if}
               {#each projectMessagePresentation(room.messages, room.stablePubkey, participantIgnored) as streak (streak.instanceKey)}
