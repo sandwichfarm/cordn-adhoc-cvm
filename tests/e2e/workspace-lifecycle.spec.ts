@@ -845,7 +845,7 @@ test("favorite star mirrors duplicate state and keeps sidebar controls touch-saf
 test("unfavoriting a collapsed source keeps its row visible and restores focus", async ({ page }) => {
   const coordinator = "c".repeat(64);
   await page.goto("/");
-  for (let index = 0; index < 6; index += 1) {
+  for (let index = 0; index < 7; index += 1) {
     await seedJoinedRoom(page, `Reveal room ${index}`, coordinator);
   }
   await page.reload();
@@ -853,10 +853,13 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
   const rail = page.getByTestId("invite-panel");
   const sourceCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinator}"]`);
   await expect(sourceCard.locator(".channel-row")).toHaveCount(5);
-  await sourceCard.getByRole("button", { name: "Show 1 more" }).click();
+  await sourceCard.getByRole("button", { name: "Show 2 more" }).click();
   const sixthRoomActions = sourceCard.getByRole("button", { name: "More actions for # Reveal room 5" });
   await sixthRoomActions.click();
   await page.getByRole("menu", { name: "Room actions for Reveal room 5" }).getByRole("menuitem", { name: "Add to favorites" }).click();
+  const seventhRoomActions = sourceCard.getByRole("button", { name: "More actions for # Reveal room 6" });
+  await seventhRoomActions.click();
+  await page.getByRole("menu", { name: "Room actions for Reveal room 6" }).getByRole("menuitem", { name: "Add to favorites" }).click();
   await expect(rail.getByRole("group", { name: "Favorites" })).toContainText("Reveal room 5");
 
   await sourceCard.getByRole("button", { name: "Show less" }).click();
@@ -865,10 +868,15 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
   await favorite.getByRole("button", { name: "More actions for # Reveal room 5" }).click();
   await page.getByRole("menu", { name: "Room actions for Reveal room 5" }).getByRole("menuitem", { name: "Remove from favorites" }).click();
 
-  await expect(favorite).toHaveCount(0);
+  await expect(favorite).not.toContainText("Reveal room 5");
   const restoredSource = sourceCard.getByRole("button", { name: /Open room Reveal room 5, hosted by/ });
   await expect(restoredSource).toBeVisible();
   await expect(restoredSource).toBeFocused();
+
+  await sourceCard.getByRole("button", { name: "Show less" }).click();
+  await favorite.getByRole("button", { name: /Open room Reveal room 6, hosted by/ }).click();
+  const laterActiveSource = sourceCard.locator(".channel-row.active").getByRole("button", { name: /Open room Reveal room 6, hosted by/ });
+  await expect(laterActiveSource).toBeVisible();
 });
 
 test("shared invite follows exact coordinator availability", async ({ page }) => {

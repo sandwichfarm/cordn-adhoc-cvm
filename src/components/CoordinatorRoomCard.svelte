@@ -28,6 +28,7 @@
     onOpen: (room: StoredRoom) => void | Promise<void>;
     onRemove: (room: StoredRoom, origin: HTMLButtonElement) => void;
     onFavorite?: (room: StoredRoom, origin?: HTMLButtonElement) => void;
+    onRevealHandled?: (roomKey: string) => void;
   }
 
   let {
@@ -48,6 +49,7 @@
     onOpen,
     onRemove,
     onFavorite,
+    onRevealHandled,
   }: Props = $props();
   let expanded = $state(false);
   const limit = 5;
@@ -61,6 +63,16 @@
     return [...first.slice(0, limit - 1), requiredRoom];
   });
   const hiddenCount = $derived(Math.max(0, rooms.length - visibleRooms.length));
+
+  $effect(() => {
+    if (presentation !== "coordinator" || !revealRoomKey) return;
+    const containsRevealedRoom = rooms.some(
+      (item) => roomIdentityKey(item.room.coordinatorPubkey, item.room.id) === revealRoomKey,
+    );
+    if (!containsRevealedRoom) return;
+    expanded = true;
+    onRevealHandled?.(revealRoomKey);
+  });
 
   function displayUnreadCount(count: number): string {
     return count > 99 ? "99+" : String(count);

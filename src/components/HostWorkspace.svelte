@@ -1911,6 +1911,9 @@
                 disabled={localRailUnavailable}
                 busy={localRailBusy}
                 revealRoomKey={favoriteRevealRoomKey}
+                onRevealHandled={(roomKey) => {
+                  if (favoriteRevealRoomKey === roomKey) favoriteRevealRoomKey = null;
+                }}
                 onCreate={() => void openCreateDialog()}
                 onOpen={openCoordinatorRoom}
                 onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
@@ -1927,6 +1930,9 @@
                   unreadCount={coordinatorUnreadCount(server.pubkey)}
                   activeRoomKey={activeSidebarRoomKey}
                   revealRoomKey={favoriteRevealRoomKey}
+                  onRevealHandled={(roomKey) => {
+                    if (favoriteRevealRoomKey === roomKey) favoriteRevealRoomKey = null;
+                  }}
                   onOpen={openCoordinatorRoom}
                   onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
                   onFavorite={toggleFavoriteRoom}
