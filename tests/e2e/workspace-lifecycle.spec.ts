@@ -898,10 +898,11 @@ test("offline coordinator disclosure preserves motion and five-room behavior", a
   await expect(card.locator(".channel-row")).toHaveCount(0);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.mouse.move(1270, 700);
   await card.hover();
   await expect(disclosure).toHaveCSS("animation-name", "none");
   await expect(disclosure).toHaveCSS("transform", "none");
-  await page.mouse.move(0, 0);
+  await page.mouse.move(1270, 700);
   expect(await card.locator(".channel-row").count()).toBe(0);
   await card.hover();
   await page.setViewportSize({ width: 320, height: 720 });
