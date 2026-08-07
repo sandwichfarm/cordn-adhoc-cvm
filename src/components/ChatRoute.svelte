@@ -20,6 +20,7 @@
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
   import WorkspaceNav from "./WorkspaceNav.svelte";
+  import { mountAppVisualViewport } from "./app-visual-viewport";
 
   interface Props {
     currentUrl: string;
@@ -434,6 +435,7 @@
   }
 
   onMount(() => {
+    const visualViewport = embedded ? undefined : mountAppVisualViewport(document.documentElement);
     disposed = false;
     const handleRoomsChanged = (event: Event) => {
       const detail = event instanceof CustomEvent ? event.detail as { action?: string; roomId?: string; coordinatorPubkey?: string } : undefined;
@@ -455,6 +457,7 @@
     document.addEventListener("visibilitychange", acknowledgeOnVisibility);
     acknowledgeVisibleRoom();
     return () => {
+      visualViewport?.destroy();
       window.removeEventListener(ROOMS_CHANGED_EVENT, handleRoomsChanged);
       document.removeEventListener("visibilitychange", acknowledgeOnVisibility);
     };
@@ -881,7 +884,7 @@
 <style>
   .ignored-streak-disclosure { width: 100%; border: 1px solid #293832; background: #101614; padding: 8px 16px; color: #82958a; font-size: 14px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; }
   .ignored-streak-disclosure:hover, .ignored-streak-disclosure:focus-visible { border-color: #7cf59d; color: #dfffe7; outline: 2px solid #7cf59d; outline-offset: 2px; }
-  .chat-page { width: 100%; height: 100dvh; max-height: 100dvh; }
+  .chat-page { width: 100%; height: var(--app-visual-height, 100dvh); max-height: var(--app-visual-height, 100dvh); overscroll-behavior: contain; }
   .chat-page.embedded { position: static; inset: auto; width: 100%; min-width: 0; height: 100%; max-width: none; max-height: 100%; background: #101614; }
   .chat-page.embedded > [data-testid="cached-room-view"] { width: 100%; min-width: 0; max-width: none; margin-inline: 0; border-inline: 0; }
   .identity-pending > div { display: grid; max-width: 28rem; justify-items: center; gap: .65rem; text-align: center; }
@@ -927,7 +930,7 @@
   .emoji-button:disabled { cursor: not-allowed; opacity: .28; }
   .room-pane { position: relative; }
   @media (max-width: 900px) {
-    .chat-page { position: fixed; inset: 0; width: 100%; height: 100dvh; max-height: 100dvh; overscroll-behavior: none; }
+    .chat-page { position: fixed; inset: 0; width: 100%; height: var(--app-visual-height, 100dvh); max-height: var(--app-visual-height, 100dvh); overscroll-behavior: contain; }
     .chat-page.embedded { position: static; inset: auto; height: 100%; max-height: 100%; }
     .chat-global-nav { position: relative; z-index: 60; display: flex; min-height: 3.25rem; align-items: center; gap: .35rem; padding: max(.35rem, env(safe-area-inset-top)) .45rem .35rem; }
     .chat-workspace-nav { min-width: 0; overflow: visible; }
@@ -963,11 +966,11 @@
     .remote-resume-qr { flex-direction: row; align-items: center; }
     .remote-resume-qr img { width: 5.5rem; height: 5.5rem; }
     [data-testid="guest-message-list"] { min-block-size: 6rem; padding: .75rem .65rem; overscroll-behavior: contain; }
-    .chat-composer { padding: .45rem .55rem; }
+    .chat-composer { padding: .45rem .55rem max(.45rem, env(safe-area-inset-bottom)); }
     .composer-row { gap: .35rem; }
     .composer-row .guest-input { padding: .58rem .65rem; }
     .composer-row .primary-button { padding: .58rem .72rem; }
-    .emoji-button { min-width: 2rem; min-height: 2rem; padding: .3rem .45rem; }
+    .emoji-button { min-width: 44px; min-height: 44px; padding: .3rem .45rem; }
     .composer-status { margin-top: .35rem; font-size: .58rem; }
     .composer-status:not(.unavailable) { display: none; }
   }

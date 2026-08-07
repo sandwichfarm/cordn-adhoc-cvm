@@ -46,6 +46,7 @@
   import UserProfile from "./UserProfile.svelte";
   import WorkspaceNav from "./WorkspaceNav.svelte";
   import { createMobileOverlayController } from "./mobile-overlay.svelte";
+  import { mountAppVisualViewport } from "./app-visual-viewport";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import { channelPreferences } from "../notifications/channel-preferences.svelte";
 
@@ -1422,6 +1423,7 @@
     session?.stop();
   });
   onMount(() => {
+    const visualViewport = mountAppVisualViewport(document.documentElement);
     if (hostChatElement) {
       mobileOverlay = createMobileOverlayController({
         applicationRoot: hostChatElement,
@@ -1504,6 +1506,7 @@
     document.addEventListener("visibilitychange", acknowledgeOnVisibility);
     reachabilityTimer = window.setInterval(() => void probeRemoteCoordinators(), 12_000);
     return () => {
+      visualViewport.destroy();
       reachabilityProbeGeneration += 1;
       if (reachabilityTimer !== null) window.clearInterval(reachabilityTimer);
       reachabilityTimer = null;
@@ -2449,6 +2452,7 @@
 </main>
 
 <style>
+  .operator-field { height: var(--app-visual-height, 100dvh); max-height: var(--app-visual-height, 100dvh); overscroll-behavior: contain; }
   .ignored-streak-disclosure { width: 100%; border: 1px solid #293832; background: #101614; padding: 8px 16px; color: #82958a; font-size: 14px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; }
   .ignored-streak-disclosure:hover, .ignored-streak-disclosure:focus-visible { border-color: #7cf59d; color: #dfffe7; outline: 2px solid #7cf59d; outline-offset: 2px; }
   .host-workspace { max-width: 100vw; overflow: hidden; background: rgb(7 12 9 / .8); }
@@ -2774,7 +2778,7 @@
     .mobile-tools-toggle { position: relative; z-index: 61; display: grid; width: 2.75rem; height: 2.75rem; place-items: center; color: #82958a; font-size: .7rem; letter-spacing: .08em; }
     .mobile-tools-toggle:hover, .mobile-tools-toggle.active { background: #142018; color: #effff2; }
     .mobile-tools-scrim { position: fixed; z-index: 59; inset: 0; display: block; border: 0; background: rgb(0 0 0 / .38); cursor: default; backdrop-filter: blur(1px); }
-    .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); max-height: calc(100dvh - 1.1rem); grid-template-columns: minmax(0, 1fr); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
+    .host-utilities { position: absolute; z-index: 60; top: calc(100% + .35rem); right: 0; display: none; width: min(20rem, calc(100vw - 1.1rem)); max-height: calc(var(--app-visual-height, 100dvh) - 1.1rem); grid-template-columns: minmax(0, 1fr); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #496451; background: #080d0a; box-shadow: 0 18px 48px rgb(0 0 0 / .62); }
     .host-utilities.open { display: grid; }
     .host-utilities, .command-cluster { gap: 0; }
     .command-cluster { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); }
@@ -2793,7 +2797,7 @@
       bottom: .55rem;
       left: .55rem;
       width: auto;
-      max-height: calc(100dvh - 1.1rem);
+      max-height: calc(var(--app-visual-height, 100dvh) - 1.1rem);
       overflow-y: auto;
       overscroll-behavior: contain;
     }
@@ -2807,7 +2811,7 @@
       bottom: .55rem;
       left: .55rem;
       width: auto;
-      max-height: calc(100dvh - 1.1rem);
+      max-height: calc(var(--app-visual-height, 100dvh) - 1.1rem);
       overflow-y: auto;
       overscroll-behavior: contain;
     }
@@ -2826,7 +2830,7 @@
     .management-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .management-summary > div { padding: .65rem; }
     .share-overlay { padding: .55rem; }
-    .share-dialog { display: grid; max-height: calc(100dvh - 1.1rem); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+    .share-dialog { display: grid; max-height: calc(var(--app-visual-height, 100dvh) - 1.1rem); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
     .share-dialog-header { padding: .7rem .75rem; }
     .share-dialog-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     .share-dialog-content { padding: .75rem; }
@@ -2834,7 +2838,7 @@
     .invite-dialog-header { padding-inline: .85rem; }
     .invite-in-app { margin-inline: .85rem; }
     .share-qr { width: min(100%, 15rem, 42dvh); border-width: .4rem; }
-    .invite-dialog.qr-expanded { width: calc(100vw - 1.1rem); height: calc(100dvh - 1.1rem); }
+    .invite-dialog.qr-expanded { width: calc(100vw - 1.1rem); height: calc(var(--app-visual-height, 100dvh) - 1.1rem); }
     .host-composer-status:not(.unavailable) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   }
 

@@ -2098,6 +2098,41 @@ test("uses the full viewport for the live host workspace on desktop and mobile",
   }
 });
 
+test("visual viewport keeps focused composer reachable", async ({ page }) => {
+  const viewport = { width: 390, height: 430 };
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+  await configureMockRelay(page);
+  await startCoordinator(page);
+  await expectGuidedCoordinatorOnline(page);
+  await createRoom(page, "Visual viewport room");
+
+  const composer = page.getByTestId("host-chat-composer");
+  const input = composer.getByPlaceholder("Message as host");
+  const send = composer.getByRole("button", { name: "Send" });
+  const log = page.getByTestId("host-message-list");
+  const previousScroll = await log.evaluate((element) => element.scrollTop);
+  await input.focus();
+
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--app-visual-height"))).toBe("430px");
+  await expect.poll(() => composer.evaluate((element) => {
+    const container = element.closest<HTMLElement>(".operator-field")?.getBoundingClientRect();
+    const input = element.querySelector<HTMLInputElement>("input");
+    const send = [...element.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === "Send");
+    if (!container || !input || !send) return false;
+    const inputBounds = input.getBoundingClientRect();
+    const sendBounds = send.getBoundingClientRect();
+    return inputBounds.top >= container.top
+      && inputBounds.bottom <= container.bottom
+      && sendBounds.top >= container.top
+      && sendBounds.bottom <= container.bottom
+      && sendBounds.width >= 44
+      && sendBounds.height >= 44;
+  })).toBe(true);
+  await expect(log).toHaveJSProperty("scrollTop", previousScroll);
+  await expectNoDocumentOverflow(page, viewport);
+});
+
 test("keeps host mobile tools and room dialogs bounded inside the app shell", async ({ page }) => {
   const portrait = { width: 320, height: 568 };
   await page.setViewportSize(portrait);

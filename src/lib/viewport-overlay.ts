@@ -135,9 +135,13 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
       activeMobileOverlay = undefined;
       node.removeAttribute("aria-modal");
     }
+    const visualHeight = window.visualViewport?.height;
+    const viewportHeight = typeof visualHeight === "number" && Number.isFinite(visualHeight) && visualHeight > 0
+      ? visualHeight
+      : window.innerHeight;
     const result = calculateOverlayPosition({
       viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
+      viewportHeight,
       anchor: anchorRect,
       overlayWidth: compactSheet ? window.innerWidth - (options.gutter ?? 8) * 2 : naturalRect.width,
       overlayHeight: naturalRect.height,
@@ -159,7 +163,7 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
   };
 
   const schedule = () => {
-    if (animationFrame) cancelAnimationFrame(animationFrame);
+    if (animationFrame) return;
     animationFrame = requestAnimationFrame(position);
   };
 
