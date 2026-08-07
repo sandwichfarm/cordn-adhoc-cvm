@@ -91,6 +91,7 @@
   let previousLocalRooms = $state<StoredRoom[]>([]);
   let sidebarLedger = $state<SidebarLedger>(emptySidebarLedger());
   let sidebarHistory = $state<SidebarHistoryEntry[]>([]);
+  let favoriteRevealRoomKey = $state<string | null>(null);
   let composer = $state("");
   let pendingRecipientPubkeys = $state<string[]>([]);
   const expandedIgnoredStreaks = new SvelteSet<string>();
@@ -625,13 +626,22 @@
 
   function toggleFavoriteRoom(target: StoredRoom, origin: HTMLButtonElement | undefined = undefined): void {
     const wasFavorite = isSidebarFavorite(sidebarLedger, target);
+    const targetKey = roomIdentityKey(target.coordinatorPubkey, target.id);
+    // Keep the source row in its coordinator card while its Favorites copy is
+    // removed, including when that card had collapsed the row past its limit.
+    if (wasFavorite && origin) favoriteRevealRoomKey = targetKey;
     persistSidebarLedger(toggleSidebarFavorite(sidebarLedger, target));
     if (!wasFavorite || !origin) return;
-    const targetKey = roomIdentityKey(target.coordinatorPubkey, target.id);
     void tick().then(() => {
       const sourceRow = [...document.querySelectorAll<HTMLElement>(".coordinator-card-list [data-room-key]")]
         .find((element) => element.dataset.roomKey === targetKey);
-      sourceRow?.querySelector<HTMLButtonElement>(".channel-row-primary")?.focus();
+      const sourceFocusTarget = sourceRow?.querySelector<HTMLButtonElement>(".channel-row-primary");
+      if (sourceFocusTarget) {
+        sourceFocusTarget.focus();
+        return;
+      }
+
+      document.querySelector<HTMLButtonElement>(".coordinator-card-list .coordinator-reveal")?.focus();
     });
   }
 
@@ -1895,6 +1905,7 @@
                 activeRoomKey={activeSidebarRoomKey}
                 disabled={localRailUnavailable}
                 busy={localRailBusy}
+                revealRoomKey={favoriteRevealRoomKey}
                 onCreate={() => void openCreateDialog()}
                 onOpen={openCoordinatorRoom}
                 onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
@@ -1910,6 +1921,7 @@
                   favoriteRoomKeys={sidebarLedger.favorites}
                   unreadCount={coordinatorUnreadCount(server.pubkey)}
                   activeRoomKey={activeSidebarRoomKey}
+                  revealRoomKey={favoriteRevealRoomKey}
                   onOpen={openCoordinatorRoom}
                   onRemove={(target, origin) => requestSidebarRoomRemoval(target, origin)}
                   onFavorite={toggleFavoriteRoom}

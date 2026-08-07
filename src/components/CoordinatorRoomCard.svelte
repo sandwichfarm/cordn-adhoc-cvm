@@ -21,6 +21,7 @@
     favoriteRoomKeys?: readonly string[];
     unreadCount?: number;
     activeRoomKey?: string;
+    revealRoomKey?: string | null;
     disabled?: boolean;
     busy?: boolean;
     onCreate?: () => void;
@@ -40,6 +41,7 @@
     favoriteRoomKeys = [],
     unreadCount = 0,
     activeRoomKey,
+    revealRoomKey = null,
     disabled = false,
     busy = false,
     onCreate,
@@ -53,8 +55,10 @@
     if (presentation === "favorites" || expanded || rooms.length <= limit) return rooms;
     const first = rooms.slice(0, limit);
     const active = rooms.find((item) => roomIdentityKey(item.room.coordinatorPubkey, item.room.id) === activeRoomKey);
-    if (!active || first.includes(active)) return first;
-    return [...first.slice(0, limit - 1), active];
+    const revealed = rooms.find((item) => roomIdentityKey(item.room.coordinatorPubkey, item.room.id) === revealRoomKey);
+    const requiredRoom = revealed ?? active;
+    if (!requiredRoom || first.includes(requiredRoom)) return first;
+    return [...first.slice(0, limit - 1), requiredRoom];
   });
   const hiddenCount = $derived(Math.max(0, rooms.length - visibleRooms.length));
 
