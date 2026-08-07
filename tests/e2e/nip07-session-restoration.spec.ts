@@ -287,7 +287,7 @@ test("rotates a zero-membership local identity only after the approved confirmat
 
   await expect(dialog).toBeHidden();
   await expect(profile.locator("img")).not.toHaveAttribute("src", original ?? "");
-  await expect(page.getByText("Identity rotated. Local room access was removed.")).toBeAttached();
+  await expect(page.getByText("Identity rotated. Previous channels were moved to History.")).toBeAttached();
 });
 
 test("restores NIP-07 before a legacy invite is consumed in the unified root shell", async ({ page, browser }) => {
