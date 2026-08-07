@@ -111,7 +111,7 @@
 
 ### Offline Coordinator Rooms
 
-- [ ] **SIDE-07**: An offline remote coordinator hides its room rows behind a compact “N chats offline” summary by default; hovering or keyboard-focusing the card reveals those navigable historical chats with restrained motion and a reduced-motion fallback.
+- [x] **SIDE-07**: An offline remote coordinator hides its room rows behind a compact “N chats offline” summary by default; hovering or keyboard-focusing the card reveals those navigable historical chats with restrained motion and a reduced-motion fallback.
 
 ## Future Requirements
 
@@ -200,7 +200,7 @@
 | FAV-01 | Phase 25 | Complete |
 | FAV-02 | Phase 25 | Complete |
 | INVMSG-02 | Phase 25 | Complete |
-| SIDE-07 | Phase 26 | Pending |
+| SIDE-07 | Phase 26 | Complete |
 
 **Coverage:**
 

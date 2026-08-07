@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
 status: planning
-stopped_at: Completed 25-01-PLAN.md
+stopped_at: Completed 26-01-PLAN.md
 last_updated: "2026-08-07T01:54:54.851Z"
 last_activity: 2026-08-07
-last_activity_desc: Phase 25 complete, transitioned to Phase 18
+last_activity_desc: Phase 26 complete; offline coordinator chats collapse into an accessible animated disclosure
 progress:
   total_phases: 10
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 35
-  completed_plans: 32
+  completed_plans: 33
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 Phase: 18 — Unified Presence, Notifications & Controls
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-07 — Phase 25 complete, transitioned to Phase 18
+Last activity: 2026-08-07 — Phase 26 complete; offline coordinator room disclosure verified
 Pull request: [#13 — favorite groups and online-only invites](https://github.com/sandwichfarm/CAHMLS/pull/13) — open, stacked on [#12 — participant chat interactions](https://github.com/sandwichfarm/CAHMLS/pull/12). [#9](https://github.com/sandwichfarm/CAHMLS/pull/9) merged 2026-08-06.
 
 Progress: [██████████░░░░░░░░░░] 3/6 phases ([█████████░] 94%)

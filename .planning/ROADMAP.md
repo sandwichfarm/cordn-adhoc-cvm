@@ -21,7 +21,7 @@ and closes with repeatable delivery guidance and automated proof.
 - [x] **Phase 22: Coordinator-Grouped Sidebar** - Replace the selected-coordinator switcher with stable, lightweight coordinator cards and collapsed room history. (completed 2026-08-06)
 - [x] **Phase 23: Bounded Gift-Wrap Delivery** - Stop unavailable relays and room polling from accumulating immortal ContextVM gift-wrap publications.
 - [x] **Phase 25: Favorite Groups & Invite Availability** - Add persistent duplicate favorites and prevent room-invite actions while their coordinator is offline. (completed 2026-08-07)
-- [ ] **Phase 26: Offline Coordinator Room Disclosure** - Collapse offline coordinator rooms into an animated, accessible disclosure.
+- [x] **Phase 26: Offline Coordinator Room Disclosure** - Collapse offline coordinator rooms into an animated, accessible disclosure. (completed 2026-08-07)
 
 ## Phase Details
 
@@ -75,7 +75,9 @@ and closes with repeatable delivery guidance and automated proof.
   3. Keyboard focus reveals the same rooms without requiring a pointer, existing room navigation remains unchanged, and reduced-motion users receive an immediate transition.
   4. Online, connecting, unknown, local, and Favorites presentations retain their existing behavior.
 
-**Plans**: 0/1 plans executed
+**Plans**: 1/1 plans executed
+
+- [x] 26-01-PLAN.md
 
 - [ ] 26-01-PLAN.md
 
@@ -293,4 +295,4 @@ Plans:
 | 23. Bounded Gift-Wrap Delivery | 2/2 | Complete | 2026-08-06 |
 | 24. Chat User Interactions | 6/6 | Complete    | 2026-08-07 |
 | 25. Favorite Groups & Invite Availability | 2/2 | Complete    | 2026-08-07 |
-| 26. Offline Coordinator Room Disclosure | 0/1 | In Progress |  |
+| 26. Offline Coordinator Room Disclosure | 1/1 | Complete | 2026-08-07 |
