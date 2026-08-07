@@ -52,6 +52,7 @@
     onRevealHandled,
   }: Props = $props();
   let expanded = $state(false);
+  let offlineExpanded = $state(false);
   let pointerInside = $state(false);
   let focusInside = $state(false);
   let disclosureState = $state<"compact" | "revealed" | "exiting">("compact");
@@ -61,8 +62,6 @@
   const limit = 5;
   const offlineDisclosure = $derived(presentation === "coordinator" && !local && status === "offline" && rooms.length > 0);
   const offlineDescriptionId = `${componentId}-offline-description`;
-  const offlineCountLabel = $derived(`${rooms.length} ${rooms.length === 1 ? "chat" : "chats"} offline`);
-  const offlineInstruction = $derived(`Focus to reveal ${rooms.length} offline historical ${rooms.length === 1 ? "chat" : "chats"}.`);
   const visibleRooms = $derived.by(() => {
     if (presentation === "favorites" || expanded || rooms.length <= limit) return rooms;
     const first = rooms.slice(0, limit);
@@ -102,8 +101,17 @@
     disclosureState = "revealed";
   }
 
+  function toggleOfflineDisclosure(): void {
+    offlineExpanded = !offlineExpanded;
+    if (offlineExpanded) {
+      revealOfflineRooms();
+    } else {
+      disclosureState = "compact";
+    }
+  }
+
   function collapseOfflineRooms(): void {
-    if (!offlineDisclosure || pointerInside || focusInside) return;
+    if (!offlineDisclosure || offlineExpanded || pointerInside || focusInside) return;
     if (collapseTimer) clearTimeout(collapseTimer);
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       disclosureState = "compact";
@@ -133,7 +141,6 @@
   data-coordinator-pubkey={pubkey}
   role={offlineDisclosure || focusInside ? "group" : undefined}
   tabindex={offlineDisclosure || focusInside ? 0 : undefined}
-  aria-describedby={offlineDisclosure ? offlineDescriptionId : undefined}
   onpointerenter={() => {
     if (!offlineDisclosure) return;
     pointerInside = true;
@@ -175,13 +182,17 @@
     </div>
   {:else}
     {#if offlineDisclosure}
-      <span id={offlineDescriptionId} class="sr-only">{offlineInstruction}</span>
-      <div class:receded={disclosureState !== "compact"} class="offline-chat-summary">
-        <strong>{offlineCountLabel}</strong>
-      </div>
+      <button
+        class="offline-chat-summary"
+        type="button"
+        aria-expanded={offlineExpanded}
+        aria-controls={offlineDescriptionId}
+        onclick={toggleOfflineDisclosure}
+      >{offlineExpanded ? "Hide offline chats" : `Show ${rooms.length} offline ${rooms.length === 1 ? "chat" : "chats"}`}</button>
     {/if}
-    {#if !offlineDisclosure || disclosureState !== "compact"}
+    {#if !offlineDisclosure || offlineExpanded || disclosureState !== "compact"}
     <div
+      id={offlineDisclosure ? offlineDescriptionId : undefined}
       class:entering={offlineDisclosure && disclosureState === "revealed"}
       class:exiting={offlineDisclosure && disclosureState === "exiting"}
       class="offline-room-disclosure"
@@ -233,9 +244,8 @@
   .coordinator-create:hover:not(:disabled), .coordinator-create:focus-visible { border-color: #496451; outline: none; background: #142019; color: #effff2; transform: rotate(90deg) scale(1.08); }
   .coordinator-create:disabled { cursor: not-allowed; opacity: .35; }
   .coordinator-card-rooms { display: grid; gap: 4px; }
-  .offline-chat-summary { display: flex; min-height: 2.75rem; align-items: center; padding: 4px 8px; color: #718277; font-size: 10px; transition: opacity .15s ease; }
-  .offline-chat-summary strong { color: #9aac9f; font-weight: 600; }
-  .offline-chat-summary.receded { position: absolute; width: 1px; height: 1px; min-height: 0; overflow: hidden; padding: 0; clip: rect(0 0 0 0); opacity: 0; white-space: nowrap; }
+  .offline-chat-summary { display: flex; width: 100%; min-height: 44px; align-items: center; border: 1px solid transparent; padding: 8px; color: #9aac9f; font-size: 12px; font-weight: 600; text-align: left; transition: border-color .15s ease, background .15s ease; }
+  .offline-chat-summary:hover, .offline-chat-summary:focus-visible { border-color: #496451; background: #111a14; color: #dfffe7; outline: none; }
   .offline-room-disclosure.entering { animation: offline-rooms-enter .15s ease both; }
   .offline-room-disclosure.exiting { pointer-events: none; animation: offline-rooms-exit .15s ease both; }
   .offline-disclosure:focus-visible { outline: 1px solid #7cf59d; outline-offset: 2px; }
@@ -265,11 +275,14 @@
   .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 4px; border: 1px solid #3b5943; background: #102216; color: #bfeac8; font-size: 8px; font-variant-numeric: tabular-nums; }
   .coordinator-reveal { width: 100%; margin-top: 4px; padding: 4px 8px; color: #718277; text-align: left; font-size: 8px; }
   .coordinator-reveal:hover, .coordinator-reveal:focus-visible { background: #111a14; color: #bfeac8; outline: none; }
-  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   @keyframes offline-rooms-enter { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
   @keyframes offline-rooms-exit { from { opacity: 1; } to { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) {
     .channel-favorite, .offline-chat-summary { transition: none; }
     .offline-room-disclosure.entering, .offline-room-disclosure.exiting { animation: none; transform: none; }
+  }
+  @media (hover: none), (pointer: coarse) {
+    .channel-favorite { opacity: 1; }
+    .channel-owner-avatar { display: none; }
   }
 </style>

@@ -333,7 +333,7 @@
       role="dialog"
       tabindex="-1"
       aria-label={`Actions for ${participantName}`}
-      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520, gutter: 16 }}
+      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 900, gutter: 16 }}
       onkeydown={handleSurfaceKeydown}
     >
       <button id={`${idPrefix}-participant-mention`} type="button" onclick={() => void mentionParticipant()}>Mention</button>
@@ -362,7 +362,7 @@
       role="dialog"
       tabindex="-1"
       aria-label={`Invite ${participantName} to a room`}
-      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 520, gutter: 16 }}
+      use:viewportOverlay={{ anchor: actionTrigger, preferredSide: "above", align: mine ? "end" : "start", compactSheetBelow: 900, gutter: 16 }}
       onkeydown={handleSurfaceKeydown}
     >
       <h2>Invite {participantName} to a room</h2>
