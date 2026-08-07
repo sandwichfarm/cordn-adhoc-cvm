@@ -723,6 +723,45 @@ test("coordinator cards keep stable order and collapse dead groups into history"
   await expect(page.getByTestId("sidebar-history").getByRole("button", { name: /History 4/ })).toBeVisible();
 });
 
+test("favorite menu duplicates the exact room and survives reload", async ({ page }) => {
+  const favoriteCoordinator = "e".repeat(64);
+  const otherCoordinator = "f".repeat(64);
+  await page.goto("/");
+  await seedJoinedRoom(page, "Favorite exact", favoriteCoordinator);
+  await seedJoinedRoom(page, "Favorite exact", otherCoordinator);
+  await page.reload();
+
+  const rail = page.getByTestId("invite-panel");
+  const sourceCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${favoriteCoordinator}"]`);
+  const sameIdOtherCoordinator = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${otherCoordinator}"]`);
+  const sourceRow = sourceCard.locator(".channel-row");
+  await expect(sourceRow).toHaveCount(1);
+  await expect(sameIdOtherCoordinator.locator(".channel-row")).toHaveCount(1);
+
+  await sourceRow.getByRole("button", { name: "More actions for # Favorite exact" }).click();
+  const sourceMenu = page.getByRole("menu", { name: "Room actions for Favorite exact" });
+  await sourceMenu.getByRole("menuitem", { name: "Add to favorites" }).click();
+
+  const favorites = rail.getByRole("group", { name: "Favorites" });
+  await expect(favorites).toBeVisible();
+  await expect(favorites.locator(".channel-row")).toHaveCount(1);
+  await expect(sourceRow).toHaveCount(1);
+  await expect(sameIdOtherCoordinator.locator(".channel-row")).toHaveCount(1);
+  await expect(favorites.locator(`[data-room-key="${favoriteCoordinator}\\0favorite-exact"]`)).toHaveCount(1);
+  await expect(favorites.locator(`[data-room-key="${otherCoordinator}\\0favorite-exact"]`)).toHaveCount(0);
+
+  await page.reload();
+  const reloadedFavorites = page.getByTestId("invite-panel").getByRole("group", { name: "Favorites" });
+  await expect(reloadedFavorites).toHaveCount(1);
+  await reloadedFavorites.getByRole("button", { name: "More actions for # Favorite exact" }).click();
+  await page.getByRole("menu", { name: "Room actions for Favorite exact" }).getByRole("menuitem", { name: "Remove from favorites" }).click();
+
+  await expect(reloadedFavorites).toHaveCount(0);
+  const restoredSource = page.getByTestId("invite-panel").locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${favoriteCoordinator}"]`);
+  await expect(restoredSource.getByRole("button", { name: /Open room Favorite exact, hosted by/ })).toBeFocused();
+  await expect(restoredSource.locator(".channel-row")).toHaveCount(1);
+});
+
 test("generates copyable identity on first load", async ({ page }) => {
   await page.goto("/");
 
