@@ -19,6 +19,7 @@ export interface OverlayPositionInput {
   gutter?: number;
   gap?: number;
   compactSheet?: boolean;
+  sheet?: boolean;
 }
 
 export interface OverlayPosition {
@@ -36,6 +37,8 @@ export interface ViewportOverlayOptions {
   gutter?: number;
   gap?: number;
   compactSheetBelow?: number;
+  /** Fixed, viewport-contained sheet that deliberately ignores its anchor. */
+  sheet?: boolean;
 }
 
 export function calculateOverlayPosition(input: OverlayPositionInput): OverlayPosition {
@@ -46,7 +49,7 @@ export function calculateOverlayPosition(input: OverlayPositionInput): OverlayPo
   const width = Math.max(0, Math.min(input.overlayWidth, viewportWidth - gutter * 2));
   const fullHeight = Math.max(0, viewportHeight - gutter * 2);
 
-  if (input.compactSheet) {
+  if (input.sheet || input.compactSheet) {
     const visibleHeight = Math.min(input.overlayHeight, fullHeight);
     return {
       left: gutter,
@@ -93,8 +96,8 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
   const position = () => {
     animationFrame = 0;
     const anchor = options.anchor;
-    if (!anchor?.isConnected || !node.isConnected) return;
-    const anchorRect = anchor.getBoundingClientRect();
+    if (!node.isConnected || (!options.sheet && !anchor?.isConnected)) return;
+    const anchorRect = anchor?.getBoundingClientRect() ?? { top: 0, right: 0, bottom: 0, left: 0 };
 
     node.style.position = "fixed";
     node.style.zIndex = "1000";
@@ -104,8 +107,10 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
     node.style.width = "";
     node.style.maxHeight = "";
     const naturalRect = node.getBoundingClientRect();
-    const compactSheet = options.compactSheetBelow !== undefined
-      && window.innerWidth <= options.compactSheetBelow;
+    const compactSheet = options.sheet || (
+      options.compactSheetBelow !== undefined
+      && window.innerWidth <= options.compactSheetBelow
+    );
     const result = calculateOverlayPosition({
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
@@ -117,6 +122,7 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
       gutter: options.gutter,
       gap: options.gap,
       compactSheet,
+      sheet: options.sheet,
     });
 
     node.style.left = `${result.left}px`;
@@ -124,6 +130,7 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
     node.style.width = `${result.width}px`;
     node.style.maxHeight = `${result.maxHeight}px`;
     node.style.overflowY = "auto";
+    node.style.overscrollBehavior = "contain";
     node.dataset.overlaySide = result.side;
   };
 
@@ -134,6 +141,8 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
 
   window.addEventListener("resize", schedule);
   window.addEventListener("scroll", schedule, true);
+  window.visualViewport?.addEventListener("resize", schedule);
+  window.visualViewport?.addEventListener("scroll", schedule);
   schedule();
 
   return {
@@ -144,6 +153,8 @@ export function viewportOverlay(node: HTMLElement, initialOptions: ViewportOverl
     destroy() {
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule, true);
+      window.visualViewport?.removeEventListener("resize", schedule);
+      window.visualViewport?.removeEventListener("scroll", schedule);
       if (animationFrame) cancelAnimationFrame(animationFrame);
       if (node.matches(":popover-open")) node.hidePopover();
       delete node.dataset.viewportOverlay;
