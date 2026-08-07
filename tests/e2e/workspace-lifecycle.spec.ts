@@ -574,7 +574,8 @@ async function revealOfflineCoordinatorCard(page: import("@playwright/test").Pag
   const card = page.getByTestId("invite-panel").locator(
     `[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinatorPubkey}"]`,
   );
-  if (await card.getAttribute("tabindex") === "0") await card.focus();
+  await expect(card).toHaveAttribute("tabindex", "0", { timeout: 10_000 });
+  await card.focus();
   return card;
 }
 
