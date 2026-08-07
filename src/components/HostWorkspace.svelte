@@ -7,7 +7,7 @@
   import type { CoordinatorStore } from "../coordinator/coordinator.svelte";
   import type { HostedRoomRecoveryAdapter, HostedRoomRecoveryTarget } from "../coordinator/types";
   import type { ConfigStore } from "../config/config.svelte";
-  import { createInviteUrl, normalizeRoomHostIdentity, parseInviteUrl } from "../chat/invite";
+  import { createInviteUrl, normalizeRoomHostIdentity, parseInviteMessage, parseInviteUrl } from "../chat/invite";
   import type { ChatPaneContext } from "../chat/chat-pane-context";
   import { createSameShellAutoJoinHref, createSameShellChatHref } from "../chat/room-navigation";
   import { ChatRoomSession, coordinatorUnreadTotal, createHostedRoom, hostIdentityForRoom, listRooms, loadLastOpenRoom, loadRoom, reactionSummary, rememberActiveHostRoom, rememberLastOpenRoom, removeStoredRoom, roomIdentityKey, roomUnreadCount, ROOMS_CHANGED_EVENT, rotateRoomInvite, sameRoomIdentity, saveRoom, SERVER_OFFLINE_EVENT, SERVER_ONLINE_EVENT, type RoomIdentity, type StoredRoom } from "../chat/room-store";
@@ -336,6 +336,15 @@
   });
 
   $effect(() => {
+    // Shared invites can introduce a coordinator before the recipient has a
+    // stored room for it. Track both message panes so those invitations are
+    // probed as soon as they render or receive another message.
+    void room?.messages;
+    void embeddedChatContext?.room?.messages;
+    probeRemoteCoordinatorsIfTargetsChanged();
+  });
+
+  $effect(() => {
     const activeSession = session;
     const activeRoom = room;
     const identity = currentHostIdentity();
@@ -641,23 +650,30 @@
 
   function reachabilityTargets(): Array<{ pubkey: string; relayUrls: string[] }> {
     const targets: Record<string, string[]> = {};
-    const addRoom = (storedRoom: StoredRoom) => {
-      if (!storedRoom.coordinatorPubkey || storedRoom.coordinatorPubkey === coordinatorPubkey) return;
-      const relays = targets[storedRoom.coordinatorPubkey] ?? [];
-      for (const relayUrl of storedRoom.relayUrls) {
+    const addTarget = (pubkey: string, relayUrls: readonly string[]) => {
+      if (!pubkey || pubkey === coordinatorPubkey) return;
+      const relays = targets[pubkey] ?? [];
+      for (const relayUrl of relayUrls) {
         if (!relays.includes(relayUrl)) relays.push(relayUrl);
       }
-      targets[storedRoom.coordinatorPubkey] = relays;
+      targets[pubkey] = relays;
+    };
+    const addRoom = (storedRoom: StoredRoom) => {
+      addTarget(storedRoom.coordinatorPubkey, storedRoom.relayUrls);
+    };
+    const addSharedInvites = (messages: readonly { content: string }[]) => {
+      for (const message of messages) {
+        const sharedInvite = parseInviteMessage(message.content);
+        if (sharedInvite) addTarget(sharedInvite.coordinatorPubkey, sharedInvite.relayUrls);
+      }
     };
 
     for (const storedRoom of remoteRooms) addRoom(storedRoom);
     for (const storedRoom of previousLocalRooms) addRoom(storedRoom);
+    if (room) addSharedInvites(room.messages);
+    if (embeddedChatContext?.room) addSharedInvites(embeddedChatContext.room.messages);
     if (activeIntentInvite && activeIntentInvite.coordinatorPubkey !== coordinatorPubkey) {
-      const relays = targets[activeIntentInvite.coordinatorPubkey] ?? [];
-      for (const relayUrl of activeIntentInvite.relayUrls) {
-        if (!relays.includes(relayUrl)) relays.push(relayUrl);
-      }
-      targets[activeIntentInvite.coordinatorPubkey] = relays;
+      addTarget(activeIntentInvite.coordinatorPubkey, activeIntentInvite.relayUrls);
     }
 
     return Object.entries(targets).map(([pubkey, relayUrls]) => ({ pubkey, relayUrls }));

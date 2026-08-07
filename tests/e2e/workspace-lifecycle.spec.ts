@@ -47,6 +47,46 @@ async function configureMockRelay(page: import("@playwright/test").Page): Promis
   await closeCoordinatorSettings(settings);
 }
 
+async function publishRunningCoordinatorHeartbeat(
+  page: import("@playwright/test").Page,
+  coordinatorPubkey: string,
+): Promise<void> {
+  const createdAt = Math.floor(Date.now() / 1_000);
+  await page.evaluate(async ({ relayUrl, coordinatorPubkey, createdAt }) => {
+    await new Promise<void>((resolve, reject) => {
+      const socket = new WebSocket(relayUrl);
+      const timeout = window.setTimeout(() => reject(new Error("Timed out publishing coordinator heartbeat")), 5_000);
+      socket.addEventListener("open", () => {
+        socket.send(JSON.stringify(["EVENT", {
+          id: "1".repeat(64),
+          pubkey: coordinatorPubkey,
+          created_at: createdAt,
+          kind: 30382,
+          tags: [
+            ["d", "cordn-browser-instance"],
+            ["status", "running"],
+            ["instance", "invite-availability-test"],
+            ["expiration", String(createdAt + 20)],
+          ],
+          content: "cordn browser running",
+          sig: "0".repeat(128),
+        }]));
+      });
+      socket.addEventListener("message", (event) => {
+        const message = JSON.parse(String(event.data));
+        if (message[0] !== "OK") return;
+        window.clearTimeout(timeout);
+        socket.close();
+        resolve();
+      });
+      socket.addEventListener("error", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Could not publish coordinator heartbeat"));
+      });
+    });
+  }, { relayUrl: relay.url, coordinatorPubkey, createdAt });
+}
+
 async function openCoordinatorSettings(
   page: import("@playwright/test").Page,
   edit = false,
@@ -806,10 +846,11 @@ test("shared invite follows exact coordinator availability", async ({ page }) =>
   const invite = createInviteUrl("https://invite.example", {
     groupId: "availability-invite",
     coordinatorPubkey: inviteCoordinator,
-    relayUrls: ["wss://relay.example"],
+    relayUrls: [relay.url],
     title: "Availability room",
   });
   await page.goto("/");
+  await configureMockRelay(page);
   await page.evaluate(({ viewerPubkey, content }) => {
     const coordinatorPubkey = "c".repeat(64);
     const roomId = "availability-renderer";
@@ -829,9 +870,50 @@ test("shared invite follows exact coordinator availability", async ({ page }) =>
   const action = page.getByRole("button", { name: /Join Availability room/ });
   await expect(action).toBeDisabled({ timeout: 20_000 });
   await expect(action).toHaveAttribute("title", "Coordinator is offline");
-  await expect(action).toHaveAttribute("aria-describedby", /guest-invite-availability-\d+/);
+  await expect(action).toHaveAttribute("aria-describedby", /guest-invite-availability-/);
   await expect(action).toHaveCSS("cursor", "not-allowed");
   await expect(page.locator(`#${await action.getAttribute("aria-describedby")}`)).toHaveText("Coordinator is offline");
+  const offlineBounds = await action.boundingBox();
+
+  await publishRunningCoordinatorHeartbeat(page, inviteCoordinator);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(action).toBeEnabled({ timeout: 10_000 });
+  expect(await action.boundingBox()).toEqual(offlineBounds);
+  await action.click();
+  await expect.poll(() => page.evaluate(() => {
+    const intent = (history.state as Record<string, unknown> | null)?.cahmlsWorkspaceIntent;
+    return typeof intent === "string" ? new URL(intent).searchParams.get("autojoin") : null;
+  })).toBe("1");
+});
+
+test("host messages re-probe invite-only coordinators when availability changes", async ({ page }) => {
+  test.setTimeout(45_000);
+  const inviteCoordinator = "a".repeat(64);
+  const sharedInvite = createInviteUrl("https://invite.example", {
+    groupId: "host-availability-invite",
+    coordinatorPubkey: inviteCoordinator,
+    relayUrls: [relay.url],
+    title: "Host availability room",
+  });
+
+  await page.goto("/");
+  await configureMockRelay(page);
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expectGuidedCoordinatorOnline(page);
+  await createRoom(page, "Invite probe host");
+  await page.getByPlaceholder("Message as host").fill(sharedInvite);
+  await page.getByPlaceholder("Message as host").press("Enter");
+
+  const action = page.getByRole("button", { name: /Join Host availability room/ });
+  await expect(action).toBeDisabled({ timeout: 20_000 });
+  await publishRunningCoordinatorHeartbeat(page, inviteCoordinator);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(action).toBeEnabled({ timeout: 10_000 });
+  await action.click();
+  await expect.poll(() => page.evaluate(() => {
+    const intent = (history.state as Record<string, unknown> | null)?.cahmlsWorkspaceIntent;
+    return typeof intent === "string" ? new URL(intent).searchParams.get("autojoin") : null;
+  })).toBe("1");
 });
 
 test("generates copyable identity on first load", async ({ page }) => {
