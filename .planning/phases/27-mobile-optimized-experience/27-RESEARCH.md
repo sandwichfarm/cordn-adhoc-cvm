@@ -393,21 +393,19 @@ Use descriptors available in the installed Playwright version, and verify them w
 | A4 | Named `Pixel 5`/`iPhone 13` descriptors exist in the pinned Playwright install. | Code Examples | Config would fail until descriptors are replaced by installed names or equivalent context values. |
 | A5 | A fake/injected IndexedDB factory is sufficient for unit failure injection. | Validation Architecture | jsdom's IndexedDB support may require a minimal test-only adapter rather than an extra dependency. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does persistence availability describe only coordinator snapshots or the existing encrypted identity key too?**
    - What we know: `persistenceEnabled` presently affects coordinator storage and key storage, while UI calls it encrypted/ephemeral. [VERIFIED: src/coordinator/coordinator.svelte.ts; src/components/CoordinatorSettings.svelte]
-   - What's unclear: whether a snapshot-IDB failure after key persistence should allow a temporary coordinator under the same stored identity. [ASSUMED]
-   - Recommendation: keep the two capabilities separately represented internally; present the UI-SPEC's temporary claim specifically about coordinator changes, and ask the planner to map existing key-storage semantics before coding. [ASSUMED]
+   - Resolution: keep encrypted identity-key durability and coordinator-snapshot durability as separate internal capabilities. Phase 27 replaces only coordinator snapshot persistence. If snapshot IndexedDB fails after the identity key is durable, the user may explicitly run a temporary coordinator under that identity; the persistent warning refers specifically to coordinator changes. Existing identity-key behavior remains unchanged unless it independently prevents the required mobile journey. [DECIDED: 27-01-PLAN.md]
 
 2. **What is the approved legacy-data remediation mechanism?**
    - What we know: automatic attachment is forbidden, and corrupt data gets a destructive remove flow. [VERIFIED: 27-CONTEXT.md; 27-UI-SPEC.md]
-   - What's unclear: whether unscoped valid legacy snapshots must be retained untouched, deleted only through a separate explicit action, or deleted during full coordinator destroy. [ASSUMED]
-   - Recommendation: default to ignore-only; make deletion identity-safe and explicit, then record the product decision in the plan before any destructive migration. [ASSUMED]
+   - Resolution: retain valid unscoped legacy snapshots untouched for an explicit future recovery/removal action, never auto-attach them to any coordinator identity, and clear them only through an explicitly scoped destructive flow such as full coordinator destroy. A new identity always starts with a fresh identity-scoped IndexedDB record. [DECIDED: 27-CONTEXT.md; 27-01-PLAN.md]
 
 3. **How is VisualViewport reduced-height behavior injected in WebKit CI?**
    - What we know: the UI-SPEC requires 390x430 proof, while Playwright contexts can set viewport but cannot necessarily summon a real virtual keyboard. [VERIFIED: 27-UI-SPEC.md] [ASSUMED]
-   - Recommendation: test the visual-height primitive by controlled viewport reduction and a test-only `visualViewport` shim where necessary, while keeping one real mobile context test for focused composer visibility. [ASSUMED]
+   - Resolution: provide a deterministic injectable VisualViewport boundary for unit/browser tests, drive the required 390x430 state through that seam when CI cannot summon a virtual keyboard, and retain a real touch-enabled mobile context assertion that the focused composer and Send action remain visible. The seam may change browser geometry input only; it may not bypass application navigation or business state. [DECIDED: 27-03-PLAN.md; 27-04-PLAN.md]
 
 ## Environment Availability
 
