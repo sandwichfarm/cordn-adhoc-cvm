@@ -1,7 +1,8 @@
 import { expect, installEstablishedInstallation, test, type Page } from "./established-installation-fixture";
 import { getEventHash } from "nostr-tools";
 import { createInviteUrl } from "../../src/chat/invite";
-import { emitSocialContactEvent, installControllableNip07, installSocialRelayControl, roomIdentity, socialRelaySubscriptions, waitForStoredMessage } from "./chat-user-interactions-fixture";
+import { emitSocialContactEvent, installControllableNip07, installMockPublicRelayRoute, installSocialRelayControl, roomIdentity, socialRelaySubscriptions, waitForStoredMessage } from "./chat-user-interactions-fixture";
+import { startMockRelay } from "./mock-relay";
 
 interface SeedMessage {
   id: string;
@@ -95,6 +96,23 @@ async function authenticateNip07(page: Page): Promise<void> {
   await menu.getByRole("button", { name: /NIP-07 browser signer/ }).evaluate((button) => (button as HTMLElement).click());
   await expect(menu).toBeHidden();
   await expect(profile).toContainText("NIP-07");
+}
+
+async function expectNoMessageSubtree(
+  page: Page,
+  logTestId: "host-message-list" | "guest-message-list",
+  messageId: string,
+): Promise<void> {
+  const log = page.getByTestId(logTestId);
+  const row = log.locator(`[data-message-id="${messageId}"]`);
+  const streak = log.getByTestId("message-streak").filter({ has: row });
+  await expect(row).toHaveCount(0);
+  await expect(streak).toHaveCount(0);
+  await expect(streak.getByTestId("message-author")).toHaveCount(0);
+  await expect(row.locator("time")).toHaveCount(0);
+  await expect(row.getByRole("group", { name: /Reactions for message from / })).toHaveCount(0);
+  await expect(row.getByRole("button", { name: "Add reaction" })).toHaveCount(0);
+  await expect(row.getByRole("button", { name: /Join / })).toHaveCount(0);
 }
 
 test("signed recipient tracer renders Mentioned you in the shared invitee presentation", async ({ page }) => {
@@ -410,6 +428,8 @@ test("real targeted message and room invite cross production transport", async (
   test.setTimeout(150_000);
   const sourceTitle = "Production transport source";
   const targetRoomTitle = "Production transport target";
+  const publicRelay = await startMockRelay(8896);
+  await installMockPublicRelayRoute(host, publicRelay.url);
   await host.goto("/");
   await host.getByRole("button", { name: "Start", exact: true }).click();
   await expect(host.getByRole("button", { name: "Create room", exact: true })).toBeVisible({ timeout: 35_000 });
@@ -426,7 +446,12 @@ test("real targeted message and room invite cross production transport", async (
   const target = await targetContext.newPage();
   const nonTarget = await nonTargetContext.newPage();
   try {
-    await Promise.all([installEstablishedInstallation(target), installEstablishedInstallation(nonTarget)]);
+    await Promise.all([
+      installEstablishedInstallation(target),
+      installEstablishedInstallation(nonTarget),
+      installMockPublicRelayRoute(target, publicRelay.url),
+      installMockPublicRelayRoute(nonTarget, publicRelay.url),
+    ]);
     // Admit sequentially: the coordinator's real join/admission queue is part
     // of the behavior under test and concurrent initial joins are needlessly
     // timing-sensitive in a one-worker browser trace.
@@ -475,6 +500,7 @@ test("real targeted message and room invite cross production transport", async (
     await targetMessageActions.click();
     await host.getByRole("dialog", { name: /^Actions for / }).getByRole("button", { name: "Invite to room" }).click();
     const chooser = host.getByRole("dialog", { name: /^Invite .+ to a room$/ });
+    const publicEventsBeforeInvite = publicRelay.events().length;
     await chooser.getByRole("button", { name: new RegExp(targetRoomTitle) }).click();
     await expect(chooser).toBeHidden({ timeout: 20_000 });
 
@@ -492,10 +518,14 @@ test("real targeted message and room invite cross production transport", async (
     const deliveredUrl = new URL(deliveredInvite.content ?? "", host.url());
     expect(deliveredUrl.pathname).toContain(targetIdentity.id);
     await expect(target.getByRole("button", { name: new RegExp(`Join ${targetRoomTitle}`) })).toBeVisible({ timeout: 20_000 });
-    await expect(host.getByRole("button", { name: new RegExp(`Join ${targetRoomTitle}`) })).toHaveCount(0);
-    await expect(nonTarget.getByRole("button", { name: new RegExp(`Join ${targetRoomTitle}`) })).toHaveCount(0);
+    await expect.poll(() => publicRelay.events().length).toBeGreaterThan(publicEventsBeforeInvite);
+    const publicEventsAfterInvite = publicRelay.events().slice(publicEventsBeforeInvite);
+    expect(publicEventsAfterInvite.some((event) => event.content?.includes(deliveredInvite.content ?? "") === true)).toBe(false);
+    await expectNoMessageSubtree(host, "host-message-list", deliveredInvite.id);
+    await expectNoMessageSubtree(nonTarget, "guest-message-list", deliveredInvite.id);
   } finally {
     await Promise.all([targetContext.close(), nonTargetContext.close()]);
+    await publicRelay.close();
   }
 });
 
@@ -638,9 +668,8 @@ test("authenticated host expands filtered ignored streaks", async ({ page: host,
       createdAt: filteredInviteCreatedAt,
     });
     expect(inserted).toBe(true);
-    // Recover the active room through the app instead of relying on a stale
+    // Reopen the source room through the app instead of relying on a stale
     // in-memory fixture, then prove the authenticated targeted invite arrived.
-    await host.reload();
     await host.getByRole("button", { name: new RegExp(`^Open room ${roomTitle}, hosted by`) }).click();
     const log = host.getByTestId("host-message-list");
     await expect(log.getByText("A second visible message")).toBeVisible({ timeout: 35_000 });
@@ -677,16 +706,16 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   const signer = await installControllableNip07(page);
   await installSocialRelayControl(page);
   const firstPubkey = signer.pubkey;
-  const kindThreeSubscriptions = async () => (await socialRelaySubscriptions(page))
-    .filter((subscription) => subscription.kinds.includes(3));
+  const contactKindThreeSubscriptions = async () => (await socialRelaySubscriptions(page))
+    .filter((subscription) => subscription.kinds.includes(3) && subscription.authors.length > 0);
   await page.goto("/");
   const probe = page.getByTestId("contact-lifecycle-probe");
   await expect(probe).toHaveAttribute("data-owner-ready", "false");
-  await expect.poll(kindThreeSubscriptions).toEqual([]);
+  await expect.poll(contactKindThreeSubscriptions).toEqual([]);
   await authenticateNip07(page);
   await expect(probe).toHaveAttribute("data-contact-pubkey", firstPubkey, { timeout: 20_000 });
   await expect(probe).toHaveAttribute("data-owner-ready", "true");
-  await expect.poll(kindThreeSubscriptions).toEqual([{
+  await expect.poll(contactKindThreeSubscriptions).toEqual([{
     state: "open",
     kinds: [3],
     authors: [firstPubkey],
@@ -699,7 +728,7 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   await firstMenu.getByRole("button", { name: "Disconnect" }).click();
   await expect(probe).toHaveAttribute("data-contact-pubkey", "");
   await expect(probe).toHaveAttribute("data-owner-ready", "false");
-  await expect.poll(kindThreeSubscriptions).toEqual([{
+  await expect.poll(contactKindThreeSubscriptions).toEqual([{
     state: "closed",
     kinds: [3],
     authors: [firstPubkey],
@@ -709,7 +738,7 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   await authenticateNip07(page);
   await expect(probe).toHaveAttribute("data-contact-pubkey", secondPubkey, { timeout: 20_000 });
   await expect(probe).toHaveAttribute("data-owner-ready", "true");
-  await expect.poll(kindThreeSubscriptions).toEqual(expect.arrayContaining([{
+  await expect.poll(contactKindThreeSubscriptions).toEqual(expect.arrayContaining([{
     state: "closed",
     kinds: [3],
     authors: [firstPubkey],
@@ -718,7 +747,7 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
     kinds: [3],
     authors: [secondPubkey],
   }]));
-  await expect.poll(async () => (await kindThreeSubscriptions())
+  await expect.poll(async () => (await contactKindThreeSubscriptions())
     .filter((subscription) => subscription.state === "open")).toEqual([{
     state: "open",
     kinds: [3],
@@ -739,12 +768,12 @@ test("App owns one current kind-3 lifecycle across logout and replacement", asyn
   await secondMenu.getByRole("button", { name: "Disconnect" }).click();
   await expect(probe).toHaveAttribute("data-contact-pubkey", "");
   await expect(probe).toHaveAttribute("data-owner-ready", "false");
-  await expect.poll(kindThreeSubscriptions).toEqual(expect.arrayContaining([{
+  await expect.poll(contactKindThreeSubscriptions).toEqual(expect.arrayContaining([{
     state: "closed",
     kinds: [3],
     authors: [secondPubkey],
   }]));
-  await expect.poll(async () => (await kindThreeSubscriptions())
+  await expect.poll(async () => (await contactKindThreeSubscriptions())
     .filter((subscription) => subscription.state === "open")).toEqual([]);
 });
 
