@@ -1899,6 +1899,7 @@ test("starts, locks relay configuration, and stops", async ({ page }) => {
   await expect(page.getByTestId("host-chat")).toBeVisible();
 
   await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.getByText("Stopping and saving…", { exact: true })).toBeVisible();
   await expect(page.getByTestId("status-badge")).toHaveText("idle");
   expect(await pageExitIsGuarded(page)).toBe(false);
   await expect(page.getByTestId("resource-monitor")).toHaveCount(0);
