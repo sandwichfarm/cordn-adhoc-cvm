@@ -873,7 +873,7 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
 
 test("shared invite follows exact coordinator availability", async ({ page }) => {
   const viewer = "b".repeat(64);
-  let heartbeat: ReturnType<typeof finalizeEvent> | undefined;
+  const heartbeat = { current: undefined as ReturnType<typeof finalizeEvent> | undefined };
   const futureHeartbeat = createRunningCoordinatorHeartbeat();
   const inviteCoordinator = futureHeartbeat.pubkey;
   const invite = createInviteUrl("https://invite.example", {
@@ -882,7 +882,7 @@ test("shared invite follows exact coordinator availability", async ({ page }) =>
     relayUrls: [INVITE_AVAILABILITY_RELAY],
     title: "Availability room",
   });
-  await mockCoordinatorHeartbeat(page, () => heartbeat);
+  await mockCoordinatorHeartbeat(page, () => heartbeat.current);
   await page.goto("/");
   await configureMockRelay(page);
   await page.evaluate(({ viewerPubkey, content }) => {
@@ -909,7 +909,7 @@ test("shared invite follows exact coordinator availability", async ({ page }) =>
   await expect(page.locator(`#${await action.getAttribute("aria-describedby")}`)).toHaveText("Coordinator is offline");
   const offlineBounds = await action.boundingBox();
 
-  heartbeat = futureHeartbeat;
+  heartbeat.current = futureHeartbeat;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(action).toBeEnabled({ timeout: 10_000 });
   expect(await action.boundingBox()).toEqual(offlineBounds);
@@ -922,7 +922,7 @@ test("shared invite follows exact coordinator availability", async ({ page }) =>
 
 test("host messages re-probe invite-only coordinators when availability changes", async ({ page }) => {
   test.setTimeout(45_000);
-  let heartbeat: ReturnType<typeof finalizeEvent> | undefined;
+  const heartbeat = { current: undefined as ReturnType<typeof finalizeEvent> | undefined };
   const futureHeartbeat = createRunningCoordinatorHeartbeat();
   const inviteCoordinator = futureHeartbeat.pubkey;
   const sharedInvite = createInviteUrl("https://invite.example", {
@@ -932,7 +932,7 @@ test("host messages re-probe invite-only coordinators when availability changes"
     title: "Host availability room",
   });
 
-  await mockCoordinatorHeartbeat(page, () => heartbeat);
+  await mockCoordinatorHeartbeat(page, () => heartbeat.current);
   await page.goto("/");
   await configureMockRelay(page);
   await page.getByRole("button", { name: "Start", exact: true }).click();
@@ -943,7 +943,7 @@ test("host messages re-probe invite-only coordinators when availability changes"
 
   const action = page.getByRole("button", { name: /Join Host availability room/ });
   await expect(action).toBeDisabled({ timeout: 20_000 });
-  heartbeat = futureHeartbeat;
+  heartbeat.current = futureHeartbeat;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(action).toBeEnabled({ timeout: 10_000 });
   await action.click();
