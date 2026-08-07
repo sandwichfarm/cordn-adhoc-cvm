@@ -120,7 +120,6 @@
   let compactViewport = $state(false);
   let mobileRailOpen = $state(false);
   let mobileOverlay = $state<ReturnType<typeof createMobileOverlayController> | null>(null);
-  let hostTopbar = $state<HTMLElement>();
   let hostChatElement = $state<HTMLElement>();
   let mobileRoomBrowser = $state<HTMLElement>();
   let mobileRoomBrowserTrigger = $state<HTMLButtonElement>();
@@ -1425,7 +1424,7 @@
     if (hostChatElement) {
       mobileOverlay = createMobileOverlayController({
         applicationRoot: hostChatElement,
-        backgroundRoots: [hostTopbar, hostChatElement].filter((root): root is HTMLElement => root !== undefined),
+        backgroundRoots: [hostChatElement],
         fallbackFocus: hostChatElement,
       });
     }
@@ -1511,7 +1510,7 @@
 
 <main class="operator-field h-[100dvh] max-h-[100dvh] overflow-x-hidden overflow-y-hidden text-[#dfffe7]">
   <div class:dialog-open={dialogOpen} class="host-workspace relative grid h-full w-full min-w-0 grid-rows-[auto_minmax(0,1fr)]" data-testid="operator-shell">
-    <header bind:this={hostTopbar} class="host-topbar flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-3 sm:flex-nowrap sm:px-5">
+    <header class="host-topbar flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-3 sm:flex-nowrap sm:px-5">
       <WorkspaceNav
         {currentUrl}
         {homeCoordinatorPubkey}
