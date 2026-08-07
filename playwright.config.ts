@@ -20,6 +20,24 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "mobile-chromium",
+      use: {
+        ...devices["Pixel 5"],
+        browserName: "chromium",
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
+    {
+      name: "mobile-webkit",
+      use: {
+        ...devices["iPhone 13"],
+        browserName: "webkit",
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
   ],
   webServer: {
     command: `VITE_E2E=1 pnpm build && vite preview --host 127.0.0.1 --port ${previewPort}`,

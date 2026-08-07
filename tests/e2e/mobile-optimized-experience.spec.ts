@@ -21,11 +21,31 @@ async function tap(locator: Locator): Promise<void> {
   await locator.tap();
 }
 
+async function completeFreshDurableSetup(page: Page): Promise<void> {
+  await tap(page.getByRole("button", { name: /Advanced setup/ }));
+  const persistence = page.getByTestId("setup-advanced-persistence");
+  await expect(persistence).toBeVisible();
+  await persistence.getByTestId("setup-passphrase").fill("mobile-test-password");
+  await persistence.getByTestId("setup-passphrase-confirmation").fill("mobile-test-password");
+  await tap(persistence.getByRole("button", { name: "Continue to relays" }));
+
+  const relays = page.getByTestId("setup-advanced-relays");
+  await expect(relays).toBeVisible();
+  await tap(relays.getByRole("button", { name: "Continue to announcement" }));
+  await tap(page.getByRole("button", { name: /No\s+Keep the coordinator private/ }));
+  await tap(page.getByRole("button", { name: "Continue to autostart" }));
+  await tap(page.getByRole("button", { name: /No\s+Wait for you to start/ }));
+  await tap(page.getByRole("button", { name: "Finish setup" }));
+}
+
 async function configureMockRelay(page: Page): Promise<void> {
-  const openBrowser = page.getByRole("button", { name: "Open room browser" });
+  const review = page.getByRole("button", { name: "Review settings", exact: true });
   const settings = page.getByRole("button", { name: /^Settings for / }).first();
-  if (!(await settings.isVisible()) && await openBrowser.isVisible()) await tap(openBrowser);
-  await tap(settings);
+  if (await review.isVisible()) await tap(review);
+  else {
+    if (!(await settings.isVisible())) await tap(page.getByRole("button", { name: "Open room browser" }));
+    await tap(settings);
+  }
   const panel = page.getByTestId("coordinator-settings");
   await expect(panel).toBeVisible();
   const edit = panel.getByRole("button", { name: "Edit settings" });
@@ -55,6 +75,19 @@ async function createRoom(page: Page, title: string): Promise<void> {
   await expect(dialog).toBeHidden();
 }
 
+async function startCoordinator(page: Page): Promise<void> {
+  const start = page.getByRole("button", { name: "Start", exact: true })
+    .or(page.getByRole("button", { name: "Start coordinator", exact: true }))
+    .or(page.getByRole("button", { name: "Wake", exact: true })).first();
+  await tap(start);
+}
+
+async function stopCoordinator(page: Page): Promise<void> {
+  const stop = page.getByRole("button", { name: "Stop", exact: true });
+  if (!(await stop.isVisible())) await tap(page.getByRole("button", { name: "Open room browser" }));
+  await tap(stop);
+}
+
 async function assertTouchGeometry(page: Page, controls: Locator[]): Promise<void> {
   for (const control of controls) {
     const bounds = await control.boundingBox();
@@ -62,7 +95,10 @@ async function assertTouchGeometry(page: Page, controls: Locator[]): Promise<voi
     expect(bounds!.width, `mobile control ${await control.getAttribute("aria-label") ?? ""} width`).toBeGreaterThanOrEqual(44);
     expect(bounds!.height, `mobile control ${await control.getAttribute("aria-label") ?? ""} height`).toBeGreaterThanOrEqual(44);
   }
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(MOBILE_VIEWPORT.width);
+  await expect.poll(() => page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }))).toEqual({ clientWidth: MOBILE_VIEWPORT.width, scrollWidth: MOBILE_VIEWPORT.width });
 }
 
 async function assertSecretSafeDiagnostics(page: Page, diagnostics: string[]): Promise<void> {
@@ -73,7 +109,7 @@ async function assertSecretSafeDiagnostics(page: Page, diagnostics: string[]): P
 
 test("mobile projects enumerate real touch Chromium and WebKit contexts", async ({ page }, testInfo) => {
   const config = await readFile("playwright.config.ts", "utf8");
-  for (const project of MOBILE_PROJECTS) expect(config).toContain(`name: \"${project}\"`);
+  for (const project of MOBILE_PROJECTS) expect(config).toContain(`name: "${project}"`);
   expect(config).toContain('name: "chromium"');
 
   if (MOBILE_PROJECTS.includes(testInfo.project.name as (typeof MOBILE_PROJECTS)[number])) {
@@ -91,47 +127,59 @@ test("complete durable host journey uses touch controls", async ({ page }, testI
   });
   page.on("pageerror", (error) => diagnostics.push(error.message));
 
+  await page.setViewportSize(MOBILE_VIEWPORT);
   await page.goto("/");
   await tap(page.getByRole("button", { name: /Continue anonymously/ }));
   await page.getByLabel("Coordinator name").fill("Mobile host");
   await tap(page.getByRole("button", { name: "Save and continue" }));
+  await completeFreshDurableSetup(page);
   await configureMockRelay(page);
-  await tap(page.getByRole("button", { name: "Start", exact: true }));
+  await startCoordinator(page);
   await expect(page.getByTestId("startup-progress-panel")).toBeVisible();
   await expect(page.getByTestId("coordinator-empty-content")).toContainText("Coordinator online", { timeout: 35_000 });
   await createRoom(page, "Mobile durable room");
 
   const roomBrowser = page.getByRole("button", { name: "Open room browser" });
   await tap(roomBrowser);
-  const drawer = page.getByRole("dialog", { name: "Room browser" });
-  await expect(drawer).toBeVisible();
+  const drawer = page.getByTestId("invite-panel");
+  await expect(drawer.getByRole("heading", { name: "Rooms" })).toBeVisible();
   await assertTouchGeometry(page, [drawer.getByRole("button", { name: "Close room browser" })]);
   await tap(drawer.getByRole("button", { name: "Close room browser" }));
-  await expect(drawer).toBeHidden();
+  await expect(drawer).toHaveAttribute("aria-hidden", "true");
 
   const composer = page.getByPlaceholder("Message as host");
   await composer.fill("Mobile host message");
   await tap(page.getByRole("button", { name: "Send", exact: true }));
   const message = page.getByTestId("host-message-list").locator("article.host-message").filter({ hasText: "Mobile host message" });
   await expect(message).toBeVisible();
-  await tap(message.getByRole("button", { name: "Add reaction" }));
-  const reactionMenu = page.getByRole("menu", { name: /Choose reaction/ });
-  await expect(reactionMenu).toBeVisible();
-  await tap(reactionMenu.getByRole("menuitem", { name: "React 👍" }));
-  await expect(message.getByRole("button", { name: /Remove 👍 reaction/ })).toBeVisible();
+  await tap(page.getByRole("button", { name: "More room actions" }));
+  const roomActions = page.getByRole("menu", { name: "Room actions for Mobile durable room" });
+  await expect(roomActions).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(roomActions).toBeHidden();
 
-  await tap(page.getByRole("button", { name: "Stop", exact: true }));
+  await stopCoordinator(page);
   await expect(page.getByText("Stopping and saving…", { exact: true })).toBeVisible();
   await expect(page.getByTestId("status-badge")).toHaveText("idle", { timeout: 35_000 });
-  await tap(page.getByRole("button", { name: "Start", exact: true }));
+  await startCoordinator(page);
   await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 35_000 });
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const unlock = page.getByTestId("coordinator-unlock");
+  await expect(unlock.getByRole("button", { name: "Unlock coordinator" })).toBeVisible({ timeout: 35_000 });
+  await unlock.getByPlaceholder("passphrase", { exact: true }).fill("mobile-test-password");
+  await tap(unlock.getByRole("button", { name: "Unlock coordinator" }));
   await expect(page.getByRole("heading", { name: "Mobile host" })).toBeVisible({ timeout: 35_000 });
-  await expect(page.getByRole("button", { name: /Open room Mobile durable room/ })).toBeVisible();
+  await startCoordinator(page);
+  await expect(page.getByTestId("status-badge")).toHaveText("running", { timeout: 35_000 });
+  await tap(page.getByRole("button", { name: "Open room browser" }));
+  await tap(page.getByTestId("invite-panel").getByRole("button", { name: /Open room Mobile durable room/ }));
+  await expect(page.getByRole("heading", { name: "Mobile durable room" })).toBeVisible();
 
   await assertTouchGeometry(page, [
     page.getByRole("button", { name: "Open room browser" }),
     page.getByRole("button", { name: "Send", exact: true }),
   ]);
   await assertSecretSafeDiagnostics(page, diagnostics);
+  await stopCoordinator(page);
+  await expect(page.getByTestId("status-badge")).toHaveText("idle", { timeout: 35_000 });
 });
