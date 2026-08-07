@@ -5,15 +5,15 @@ milestone_name: Quality of Life & Polish
 current_phase: 18
 current_phase_name: Unified Presence, Notifications & Controls
 status: planning
-stopped_at: Completed 24-05-PLAN.md
-last_updated: "2026-08-07T00:24:19.818Z"
+stopped_at: Completed 25-01-PLAN.md
+last_updated: "2026-08-07T01:01:04.745Z"
 last_activity: 2026-08-07
 last_activity_desc: Phase 24 complete, transitioned to Phase 18
 progress:
-  total_phases: 9
-  completed_phases: 8
-  total_plans: 33
-  completed_plans: 31
+  total_phases: 10
+  completed_phases: 9
+  total_plans: 34
+  completed_plans: 32
 ---
 
 # Project State
@@ -72,6 +72,7 @@ Progress: [██████████░░░░░░░░░░] 3/6 pha
 | Phase 24 P03 | 10 min | 2 tasks | 4 files |
 | Phase 24 P04 | 19 min | 2 tasks | 5 files |
 | Phase 24 P05 | 72min | 2 tasks | 5 files |
+| Phase 25-favorite-groups-invite-availability P01 | 9min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Phase 24 participant menus and choosers pass an explicit 16px gutter, preserving the global overlay default.
 - [Phase ?]: Phase 24 highlight state is rendered from the typed persisted prop with named text, aria-pressed, and a visible selected marker.
 - [Phase ?]: Phase 24 participant and room identifiers are excluded from affected DOM IDs while focus restoration remains pane-local.
+- [Phase ?]: Favorites persist only validated coordinator-plus-room composite keys and reconcile against active rooms.
+- [Phase ?]: Shared invite Join defaults to unavailable and enables only for an exact online workspace reachability result.
 
 ### Pending Todos
 
@@ -145,6 +148,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-06T22:12:55.361Z
-Stopped at: Completed 24-05-PLAN.md
+Last session: 2026-08-07T01:01:04.739Z
+Stopped at: Completed 25-01-PLAN.md
 Resume file: None

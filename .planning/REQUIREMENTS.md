@@ -105,9 +105,9 @@
 
 ### Favorite Groups & Invite Availability
 
-- [ ] **FAV-01**: Every active sidebar group exposes an accessible favorite toggle both as a star revealed by row hover or keyboard focus and in its three-dot menu; the exact coordinator-and-room favorite state persists across browser sessions.
-- [ ] **FAV-02**: Favorited groups are duplicated in a dedicated Favorites section above all coordinator groups while remaining in their original coordinator section, and unfavoriting removes only the duplicate.
-- [ ] **INVMSG-02**: A rendered room invite is actionable only while its referenced coordinator is known online; otherwise it is visibly subdued, disabled, uses a not-allowed pointer, and exposes the reason “Coordinator is offline” by tooltip and accessible text.
+- [x] **FAV-01**: Every active sidebar group exposes an accessible favorite toggle both as a star revealed by row hover or keyboard focus and in its three-dot menu; the exact coordinator-and-room favorite state persists across browser sessions.
+- [x] **FAV-02**: Favorited groups are duplicated in a dedicated Favorites section above all coordinator groups while remaining in their original coordinator section, and unfavoriting removes only the duplicate.
+- [x] **INVMSG-02**: A rendered room invite is actionable only while its referenced coordinator is known online; otherwise it is visibly subdued, disabled, uses a not-allowed pointer, and exposes the reason “Coordinator is offline” by tooltip and accessible text.
 
 ## Future Requirements
 
@@ -193,9 +193,9 @@
 | FOLLOW-01 | Phase 24 | Complete |
 | FOLLOW-02 | Phase 24 | Complete |
 | HILITE-01 | Phase 24 | Complete |
-| FAV-01 | Phase 25 | Pending |
-| FAV-02 | Phase 25 | Pending |
-| INVMSG-02 | Phase 25 | Pending |
+| FAV-01 | Phase 25 | Complete |
+| FAV-02 | Phase 25 | Complete |
+| INVMSG-02 | Phase 25 | Complete |
 
 **Coverage:**
 

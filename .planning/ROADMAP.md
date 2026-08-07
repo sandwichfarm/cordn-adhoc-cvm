@@ -56,7 +56,9 @@ and closes with repeatable delivery guidance and automated proof.
   3. Favorite duplicates navigate and expose the same room actions as their source rows, and unfavoriting either copy removes only the Favorites duplicate.
   4. Invite messages are enabled only for coordinators known online; offline, unknown, and connecting states render a subdued disabled action with a not-allowed cursor and the reason “Coordinator is offline.”
 
-**Plans**: 0/1 plans executed
+**Plans**: 1/1 plans executed
+
+- [x] 25-01-PLAN.md
 
 **UI hint**: yes
 
@@ -271,4 +273,4 @@ Plans:
 | 22. Coordinator-Grouped Sidebar | 2/2 | Complete | 2026-08-06 |
 | 23. Bounded Gift-Wrap Delivery | 2/2 | Complete | 2026-08-06 |
 | 24. Chat User Interactions | 6/6 | Complete    | 2026-08-07 |
-| 25. Favorite Groups & Invite Availability | 0/1 | Not started | - |
+| 25. Favorite Groups & Invite Availability | 1/1 | In Progress|  |
