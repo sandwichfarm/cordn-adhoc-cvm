@@ -684,6 +684,7 @@ test("long room navigation stays operable and contained", async ({ page }) => {
     if (viewport.width <= 900) await page.getByRole("button", { name: "Open room browser" }).click();
     const rail = page.getByTestId("invite-panel");
     const remoteCard = rail.getByTestId("coordinator-card").filter({ hasText: "Coordinator dddddd" });
+    await remoteCard.hover();
     await expect(remoteCard.locator(".channel-row")).toHaveCount(5);
     await remoteCard.getByRole("button", { name: "Show 19 more" }).click();
     await expect(remoteCard.locator(".channel-row")).toHaveCount(24);
@@ -724,6 +725,7 @@ test("coordinator cards keep stable order and collapse dead groups into history"
   await expect(cards).toHaveCount(2);
   await expect(cards.first()).toContainText("My coordinator");
   const remote = cards.nth(1);
+  await remote.hover();
   await expect(remote.locator(".channel-row .truncate")).toHaveText(["Active first", "Active second"]);
   await expect(rail.getByRole("button", { name: "Create group" })).toHaveCount(1);
 
@@ -746,7 +748,9 @@ test("coordinator cards keep stable order and collapse dead groups into history"
     }
   });
   await page.reload();
-  await expect(page.getByTestId("coordinator-card").nth(1).locator(".channel-row .truncate")).toHaveText(["Active first", "Active second"]);
+  const reloadedRemote = page.getByTestId("coordinator-card").nth(1);
+  await reloadedRemote.hover();
+  await expect(reloadedRemote.locator(".channel-row .truncate")).toHaveText(["Active first", "Active second"]);
 
   await page.evaluate(() => {
     for (let index = 0; index < localStorage.length; index += 1) {
@@ -799,6 +803,40 @@ test("offline coordinator disclosure keeps history reachable by pointer and keyb
   await expect(singularCard.locator(".channel-row")).toHaveCount(0);
 });
 
+test("offline coordinator disclosure preserves motion and five-room behavior", async ({ page }) => {
+  const coordinator = "a".repeat(64);
+  await page.goto("/");
+  for (let index = 0; index < 7; index += 1) {
+    await seedJoinedRoom(page, `Offline room ${index}`, coordinator);
+  }
+  await page.reload();
+
+  const card = page.getByTestId("invite-panel").locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinator}"]`);
+  await expect(card).toContainText("7 chats offline");
+  await expect(card.locator(".channel-row")).toHaveCount(0);
+
+  await card.hover();
+  const disclosure = card.locator(".offline-room-disclosure");
+  await expect(card.locator(".channel-row")).toHaveCount(5);
+  await expect(card.getByRole("button", { name: "Show 2 more" })).toBeVisible();
+  await expect(disclosure).toHaveCSS("animation-duration", "0.15s");
+  expect(await disclosure.evaluate((element) => getComputedStyle(element).animationName)).toContain("offline-rooms-enter");
+  await card.getByRole("button", { name: "Show 2 more" }).click();
+  await expect(card.locator(".channel-row")).toHaveCount(7);
+  await expect(card.getByRole("button", { name: "Show fewer chats" })).toBeVisible();
+  await expectNoDocumentOverflow(page, { width: 1280, height: 720 });
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.mouse.move(0, 0);
+  await expect(card.locator(".channel-row")).toHaveCount(0);
+  await card.hover();
+  await expect(disclosure).toHaveCSS("animation-name", "none");
+  await expect(disclosure).toHaveCSS("transform", "none");
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expectNoDocumentOverflow(page, { width: 320, height: 720 });
+});
+
 test("favorite menu duplicates the exact room and survives reload", async ({ page }) => {
   const favoriteCoordinator = "e".repeat(64);
   const otherCoordinator = "f".repeat(64);
@@ -811,9 +849,12 @@ test("favorite menu duplicates the exact room and survives reload", async ({ pag
   const sourceCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${favoriteCoordinator}"]`);
   const sameIdOtherCoordinator = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${otherCoordinator}"]`);
   const sourceRow = sourceCard.locator(".channel-row");
+  await sourceCard.hover();
   await expect(sourceRow).toHaveCount(1);
+  await sameIdOtherCoordinator.hover();
   await expect(sameIdOtherCoordinator.locator(".channel-row")).toHaveCount(1);
 
+  await sourceCard.hover();
   await sourceRow.getByRole("button", { name: "More actions for # Favorite exact" }).click();
   const sourceMenu = page.getByRole("menu", { name: "Room actions for Favorite exact" });
   await sourceMenu.getByRole("menuitem", { name: "Add to favorites" }).click();
@@ -821,7 +862,9 @@ test("favorite menu duplicates the exact room and survives reload", async ({ pag
   const favorites = rail.getByRole("group", { name: "Favorites" });
   await expect(favorites).toBeVisible();
   await expect(favorites.locator(".channel-row")).toHaveCount(1);
+  await sourceCard.hover();
   await expect(sourceRow).toHaveCount(1);
+  await sameIdOtherCoordinator.hover();
   await expect(sameIdOtherCoordinator.locator(".channel-row")).toHaveCount(1);
   expect(await favorites.locator("[data-room-key]").evaluateAll((rows, expectedKey) => (
     rows.filter((row) => row.getAttribute("data-room-key") === expectedKey).length
@@ -850,7 +893,9 @@ test("favorite star mirrors duplicate state and keeps sidebar controls touch-saf
   await page.reload();
 
   const rail = page.getByTestId("invite-panel");
-  const sourceRow = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinator}"] .channel-row`);
+  const sourceCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinator}"]`);
+  await sourceCard.hover();
+  const sourceRow = sourceCard.locator(".channel-row");
   const star = sourceRow.getByRole("button", { name: "Favorite # Star favorite" });
   const menuTrigger = sourceRow.getByRole("button", { name: "More actions for # Star favorite" });
   await expect(star).toHaveAttribute("aria-pressed", "false");
@@ -889,6 +934,7 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
 
   const rail = page.getByTestId("invite-panel");
   const sourceCard = rail.locator(`[data-testid="coordinator-card"][data-coordinator-pubkey="${coordinator}"]`);
+  await sourceCard.hover();
   await expect(sourceCard.locator(".channel-row")).toHaveCount(5);
   await sourceCard.getByRole("button", { name: "Show 2 more" }).click();
   const sixthRoomActions = sourceCard.getByRole("button", { name: "More actions for # Reveal room 5" });
@@ -899,7 +945,7 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
   await page.getByRole("menu", { name: "Room actions for Reveal room 6" }).getByRole("menuitem", { name: "Add to favorites" }).click();
   await expect(rail.getByRole("group", { name: "Favorites" })).toContainText("Reveal room 5");
 
-  await sourceCard.getByRole("button", { name: "Show less" }).click();
+  await sourceCard.getByRole("button", { name: "Show fewer chats" }).click();
   await expect(sourceCard.locator(".channel-row")).toHaveCount(5);
   const favorite = rail.getByRole("group", { name: "Favorites" });
   await favorite.getByRole("button", { name: "More actions for # Reveal room 5" }).click();
@@ -910,8 +956,9 @@ test("unfavoriting a collapsed source keeps its row visible and restores focus",
   await expect(restoredSource).toBeVisible();
   await expect(restoredSource).toBeFocused();
 
-  await sourceCard.getByRole("button", { name: "Show less" }).click();
+  await sourceCard.getByRole("button", { name: "Show fewer chats" }).click();
   await favorite.getByRole("button", { name: /Open room Reveal room 6, hosted by/ }).click();
+  await sourceCard.hover();
   const laterActiveSource = sourceCard.locator(".channel-row.active").getByRole("button", { name: /Open room Reveal room 6, hosted by/ });
   await expect(laterActiveSource).toBeVisible();
 });

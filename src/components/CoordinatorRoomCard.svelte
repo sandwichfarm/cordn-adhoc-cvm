@@ -52,7 +52,16 @@
     onRevealHandled,
   }: Props = $props();
   let expanded = $state(false);
+  let pointerInside = $state(false);
+  let focusInside = $state(false);
+  let disclosureState = $state<"compact" | "revealed" | "exiting">("compact");
+  let collapseTimer: ReturnType<typeof setTimeout> | undefined;
+  const componentId = $props.id();
   const limit = 5;
+  const offlineDisclosure = $derived(presentation === "coordinator" && !local && status === "offline" && rooms.length > 0);
+  const offlineDescriptionId = `${componentId}-offline-description`;
+  const offlineCountLabel = $derived(`${rooms.length} ${rooms.length === 1 ? "chat" : "chats"} offline`);
+  const offlineInstruction = $derived(`Focus to reveal ${rooms.length} offline historical ${rooms.length === 1 ? "chat" : "chats"}.`);
   const visibleRooms = $derived.by(() => {
     if (presentation === "favorites" || expanded || rooms.length <= limit) return rooms;
     const first = rooms.slice(0, limit);
@@ -65,21 +74,82 @@
   const hiddenCount = $derived(Math.max(0, rooms.length - visibleRooms.length));
 
   $effect(() => {
+    if (!offlineDisclosure) {
+      if (collapseTimer) clearTimeout(collapseTimer);
+      disclosureState = "compact";
+      pointerInside = false;
+      focusInside = false;
+    }
+  });
+
+  $effect(() => {
     if (presentation !== "coordinator" || !revealRoomKey) return;
     const containsRevealedRoom = rooms.some(
       (item) => roomIdentityKey(item.room.coordinatorPubkey, item.room.id) === revealRoomKey,
     );
     if (!containsRevealedRoom) return;
+    revealOfflineRooms();
     expanded = true;
     onRevealHandled?.(revealRoomKey);
   });
+
+  function revealOfflineRooms(): void {
+    if (collapseTimer) clearTimeout(collapseTimer);
+    collapseTimer = undefined;
+    disclosureState = "revealed";
+  }
+
+  function collapseOfflineRooms(): void {
+    if (!offlineDisclosure || pointerInside || focusInside) return;
+    if (collapseTimer) clearTimeout(collapseTimer);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      disclosureState = "compact";
+      collapseTimer = undefined;
+      return;
+    }
+    disclosureState = "exiting";
+    collapseTimer = setTimeout(() => {
+      if (!pointerInside && !focusInside) disclosureState = "compact";
+      collapseTimer = undefined;
+    }, 150);
+  }
 
   function displayUnreadCount(count: number): string {
     return count > 99 ? "99+" : String(count);
   }
 </script>
 
-<fieldset class:local class:favorites={presentation === "favorites"} class="coordinator-room-card" data-testid="coordinator-card" data-coordinator-pubkey={pubkey}>
+<!-- svelte-ignore a11y_no_noninteractive_tabindex (eligible fieldset is the approved keyboard disclosure group stop) -->
+<fieldset
+  class:local
+  class:favorites={presentation === "favorites"}
+  class:offline-disclosure={offlineDisclosure}
+  class="coordinator-room-card"
+  data-testid="coordinator-card"
+  data-coordinator-pubkey={pubkey}
+  role={offlineDisclosure ? "group" : undefined}
+  tabindex={offlineDisclosure ? 0 : undefined}
+  aria-describedby={offlineDisclosure ? offlineDescriptionId : undefined}
+  onpointerenter={() => {
+    if (!offlineDisclosure) return;
+    pointerInside = true;
+    revealOfflineRooms();
+  }}
+  onpointerleave={() => {
+    pointerInside = false;
+    collapseOfflineRooms();
+  }}
+  onfocusin={() => {
+    if (!offlineDisclosure) return;
+    focusInside = true;
+    revealOfflineRooms();
+  }}
+  onfocusout={(event) => {
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+    focusInside = false;
+    collapseOfflineRooms();
+  }}
+>
   <legend>
     {#if presentation === "favorites"}
       <span class="coordinator-card-label">{label}</span>
@@ -100,6 +170,20 @@
       {#if local}<span>{disabled ? "Start the coordinator, then create a group." : "Create a group when you are ready."}</span>{/if}
     </div>
   {:else}
+    {#if offlineDisclosure}
+      <span id={offlineDescriptionId} class="sr-only">{offlineInstruction}</span>
+      <div class:receded={disclosureState !== "compact"} class="offline-chat-summary">
+        <strong>{offlineCountLabel}</strong>
+      </div>
+    {/if}
+    {#if !offlineDisclosure || disclosureState !== "compact"}
+    <div
+      class:entering={offlineDisclosure && disclosureState === "revealed"}
+      class:exiting={offlineDisclosure && disclosureState === "exiting"}
+      class="offline-room-disclosure"
+      inert={offlineDisclosure && disclosureState === "exiting" ? true : undefined}
+      aria-hidden={offlineDisclosure && disclosureState === "exiting" ? "true" : undefined}
+    >
     <div class="coordinator-card-rooms">
       {#each visibleRooms as item (roomIdentityKey(item.room.coordinatorPubkey, item.room.id))}
         {@const key = roomIdentityKey(item.room.coordinatorPubkey, item.room.id)}
@@ -122,8 +206,10 @@
     </div>
     {#if presentation !== "favorites" && rooms.length > limit}
       <button class="coordinator-reveal" type="button" aria-expanded={expanded} onclick={() => expanded = !expanded}>
-        {expanded ? "Show less" : `Show ${hiddenCount} more`}
+        {expanded ? (offlineDisclosure ? "Show fewer chats" : "Show less") : `Show ${hiddenCount} more`}
       </button>
+    {/if}
+    </div>
     {/if}
   {/if}
 </fieldset>
@@ -143,6 +229,12 @@
   .coordinator-create:hover:not(:disabled), .coordinator-create:focus-visible { border-color: #496451; outline: none; background: #142019; color: #effff2; transform: rotate(90deg) scale(1.08); }
   .coordinator-create:disabled { cursor: not-allowed; opacity: .35; }
   .coordinator-card-rooms { display: grid; gap: 4px; }
+  .offline-chat-summary { display: flex; min-height: 2.75rem; align-items: center; padding: 4px 8px; color: #718277; font-size: 10px; transition: opacity .15s ease; }
+  .offline-chat-summary strong { color: #9aac9f; font-weight: 600; }
+  .offline-chat-summary.receded { opacity: .55; }
+  .offline-room-disclosure.entering { animation: offline-rooms-enter .15s ease both; }
+  .offline-room-disclosure.exiting { pointer-events: none; animation: offline-rooms-exit .15s ease both; }
+  .offline-disclosure:focus-visible { outline: 1px solid #7cf59d; outline-offset: 2px; }
   .coordinator-room-card.favorites { margin-bottom: 4px; border-color: #34483a; }
   .coordinator-room-card.favorites legend { color: #9aac9f; }
   .coordinator-card-empty { display: grid; gap: 4px; padding: 8px; color: #718277; }
@@ -169,5 +261,11 @@
   .unread-badge { display: inline-flex; min-width: 1rem; height: 1rem; align-items: center; justify-content: center; padding: 0 4px; border: 1px solid #3b5943; background: #102216; color: #bfeac8; font-size: 8px; font-variant-numeric: tabular-nums; }
   .coordinator-reveal { width: 100%; margin-top: 4px; padding: 4px 8px; color: #718277; text-align: left; font-size: 8px; }
   .coordinator-reveal:hover, .coordinator-reveal:focus-visible { background: #111a14; color: #bfeac8; outline: none; }
-  @media (prefers-reduced-motion: reduce) { .channel-favorite { transition: none; } }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @keyframes offline-rooms-enter { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  @keyframes offline-rooms-exit { from { opacity: 1; } to { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .channel-favorite, .offline-chat-summary { transition: none; }
+    .offline-room-disclosure.entering, .offline-room-disclosure.exiting { animation: none; transform: none; }
+  }
 </style>
