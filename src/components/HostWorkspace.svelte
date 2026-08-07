@@ -690,6 +690,10 @@
     return measured ?? "unknown";
   }
 
+  function inviteCoordinatorReachability(pubkey: string): CoordinatorReachability {
+    return pubkey === coordinatorPubkey ? localCoordinatorStatus : externalCoordinatorReachability(pubkey);
+  }
+
   function reachabilityLabel(state: CoordinatorReachability): string {
     if (state === "online") return "Coordinator online";
     if (state === "connecting") return "Checking coordinator reachability";
@@ -1939,6 +1943,7 @@
               {identityReady}
               onContextChange={handleEmbeddedChatContext}
               onRoomStored={handleEmbeddedRoomStored}
+              {inviteCoordinatorReachability}
               onNavigate={navigateFromRail}
             />
           {/key}
@@ -1982,6 +1987,7 @@
                     onActivateParticipantSurface={(key) => activeParticipantSurfaceKey = key}
                     onDismissParticipantSurface={(key) => { if (activeParticipantSurfaceKey === key) activeParticipantSurfaceKey = null; }}
                     onJoinInvite={(sharedInvite) => navigateFromRail(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
+                    {inviteCoordinatorReachability}
                     participantRooms={participantRoomChoices()}
                     onMention={mentionParticipant}
                     onInviteToRoom={inviteParticipantToRoom}

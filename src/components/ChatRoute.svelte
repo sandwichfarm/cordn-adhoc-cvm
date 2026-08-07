@@ -15,7 +15,7 @@
   import { nostrSocialStore } from "../invites/nostr-social.svelte";
   import { userProfileStore } from "../identity/user-profile.svelte";
   import { channelPreferences } from "../notifications/channel-preferences.svelte";
-  import MessageGroup, { type ParticipantRoomChoice } from "./MessageGroup.svelte";
+  import MessageGroup, { type CoordinatorReachability, type ParticipantRoomChoice } from "./MessageGroup.svelte";
   import RoomActionsMenu from "./RoomActionsMenu.svelte";
   import RoomHostBadge from "./RoomHostBadge.svelte";
   import RoomRemovalDialog from "./RoomRemovalDialog.svelte";
@@ -33,6 +33,7 @@
     embedded?: boolean;
     onContextChange?: (context: ChatPaneContext | null) => void;
     onRoomStored?: (room: StoredRoom) => void;
+    inviteCoordinatorReachability?: (coordinatorPubkey: string) => CoordinatorReachability;
   }
 
   interface RoomRemovalTarget {
@@ -52,6 +53,7 @@
     embedded = false,
     onContextChange,
     onRoomStored,
+    inviteCoordinatorReachability = () => "unknown",
   }: Props = $props();
   let invite = $state<ChatInvite | null>(null);
   let room = $state<StoredRoom | null>(null);
@@ -837,6 +839,7 @@
                 onActivateParticipantSurface={(key) => activeParticipantSurfaceKey = key}
                 onDismissParticipantSurface={(key) => { if (activeParticipantSurfaceKey === key) activeParticipantSurfaceKey = null; }}
                 onJoinInvite={(sharedInvite) => navigate(createSameShellAutoJoinHref(window.location.origin, sharedInvite))}
+                {inviteCoordinatorReachability}
                 participantRooms={participantRoomChoices()}
                 onMention={mentionParticipant}
                 onInviteToRoom={inviteParticipantToRoom}

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { expect, installEstablishedInstallation, test } from "./established-installation-fixture";
 import { generateSecretKey } from "nostr-tools";
 import { bytesToHex } from "nostr-tools/utils";
+import { createInviteUrl } from "../../src/chat/invite";
 
 import { startMockRelay, type MockRelay } from "./mock-relay";
 
@@ -797,6 +798,40 @@ test("favorite star mirrors duplicate state and keeps sidebar controls touch-saf
 
   await page.setViewportSize({ width: 320, height: 720 });
   await expectNoDocumentOverflow(page, { width: 320, height: 720 });
+});
+
+test("shared invite follows exact coordinator availability", async ({ page }) => {
+  const viewer = "b".repeat(64);
+  const inviteCoordinator = "a".repeat(64);
+  const invite = createInviteUrl("https://invite.example", {
+    groupId: "availability-invite",
+    coordinatorPubkey: inviteCoordinator,
+    relayUrls: ["wss://relay.example"],
+    title: "Availability room",
+  });
+  await page.goto("/");
+  await page.evaluate(({ viewerPubkey, content }) => {
+    const coordinatorPubkey = "c".repeat(64);
+    const roomId = "availability-renderer";
+    localStorage.setItem(`cordn-adhoc-chat-room:v2:${encodeURIComponent(coordinatorPubkey)}:${encodeURIComponent(roomId)}`, JSON.stringify({
+      version: 1, id: roomId, title: "Availability renderer", coordinatorPubkey, coordinatorOrigin: window.location.origin,
+      relayUrls: ["ws://127.0.0.1:1"], name: "Guest", stablePubkey: viewerPubkey, isHost: false, stateBase64: "",
+      keyPackage: { reference: "availability", publicBase64: "public", privateBase64: "private" }, lastCursor: 0,
+      messages: [{ type: "message", id: "availability-message", sender: "d".repeat(64), name: "Host", content, createdAt: 1 }], pending: [],
+      coordinatorKeyMode: "ephemeral", createdAt: Date.now(), updatedAt: Date.now(),
+    }));
+  }, { viewerPubkey: viewer, content: invite });
+  await page.reload();
+  const room = page.getByRole("button", { name: /^Open room Availability renderer/ });
+  if (!(await room.isVisible())) await page.getByRole("button", { name: "Open room browser" }).click();
+  await room.click();
+
+  const action = page.getByRole("button", { name: /Join Availability room/ });
+  await expect(action).toBeDisabled({ timeout: 20_000 });
+  await expect(action).toHaveAttribute("title", "Coordinator is offline");
+  await expect(action).toHaveAttribute("aria-describedby", /guest-invite-availability-\d+/);
+  await expect(action).toHaveCSS("cursor", "not-allowed");
+  await expect(page.locator(`#${await action.getAttribute("aria-describedby")}`)).toHaveText("Coordinator is offline");
 });
 
 test("generates copyable identity on first load", async ({ page }) => {
